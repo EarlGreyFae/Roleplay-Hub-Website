@@ -3,11 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Mobile-first tabletop roleplay hub with 24/7 cross-device WebSockets for Render.com",
-  "main": "server/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node server/server.js",
-    "server": "node server/server.js",
-    "dev": "node server/server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

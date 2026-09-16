@@ -48,12 +48,34 @@
       margin: 0;
       height: 100%;
       width: 100%;
+      height: 100dvh;
       overflow: hidden;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       background-color: #090d16;
       color: #f1f5f9;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
+      -webkit-user-select: none;
+      overscroll-behavior: none;
+    }
+    #root {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .touch-scroll {
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
     }
     .safe-top { padding-top: max(0.5rem, env(safe-area-inset-top)); }
     .safe-bottom { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
@@ -1353,6 +1375,11 @@ function App() {
     };
   });
   const [activeTab, setActiveTab] = useState('chat');
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    if (document.body) document.body.scrollTop = 0;
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+  }, [activeTab]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isWorldModalOpen, setIsWorldModalOpen] = useState(false);
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
@@ -1809,16 +1836,16 @@ function App() {
   const worldChannels = appState.channels.filter(c => c.worldId === activeWorld.id);
   const activeChannel = worldChannels.find(c => c.id === appState.activeChannelId) || worldChannels[0] || appState.channels[0];
   return /*#__PURE__*/React.createElement("div", {
-    className: `h-screen w-full flex flex-col overflow-hidden theme-${appState.theme}`
+    className: `fixed inset-0 w-full h-full h-[100dvh] flex flex-col overflow-hidden theme-${appState.theme}`
   }, /*#__PURE__*/React.createElement("header", {
-    className: "sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 safe-top"
+    className: "flex-shrink-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 safe-top w-full"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "max-w-4xl mx-auto px-3 py-2 flex items-center justify-between"
+    className: "max-w-4xl mx-auto px-2.5 sm:px-3 py-1.5 sm:py-2 flex items-center justify-between gap-1.5"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-1.5 min-w-0"
   }, (activeTab === 'chat' || activeTab === 'wiki') && /*#__PURE__*/React.createElement("button", {
     onClick: () => setIsWorldModalOpen(true),
-    className: "flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-100 text-xs font-bold border border-slate-700 transition truncate max-w-[130px] sm:max-w-[190px]",
+    className: "flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-100 text-xs font-bold border border-slate-700 transition truncate max-w-[105px] sm:max-w-[170px] flex-shrink-0",
     title: "Switch World"
   }, /*#__PURE__*/React.createElement(Icons.Globe, {
     className: "w-3.5 h-3.5 text-cyan-400 flex-shrink-0"
@@ -1834,7 +1861,7 @@ function App() {
       ...prev,
       activeChannelId: e.target.value
     })),
-    className: "bg-slate-850 border border-slate-750 text-slate-200 text-xs font-semibold rounded-xl px-2.5 py-1.5 pr-6 appearance-none cursor-pointer truncate max-w-[120px] sm:max-w-[160px]"
+    className: "bg-slate-850 border border-slate-750 text-slate-200 text-xs font-semibold rounded-xl px-2.5 py-1.5 pr-6 appearance-none cursor-pointer truncate max-w-[115px] sm:max-w-[160px]"
   }, worldChannels.map(c => /*#__PURE__*/React.createElement("option", {
     key: c.id,
     value: c.id
@@ -1877,11 +1904,11 @@ function App() {
     className: "w-3 h-3 text-amber-400"
   }) : getUserWorldRole(activeWorld, appState.userProfile, appState.userId) === 'editor' ? /*#__PURE__*/React.createElement(Icons.Shield, {
     className: "w-3 h-3 text-cyan-400"
-  }) : null, /*#__PURE__*/React.createElement("span", null, getUserWorldRole(activeWorld, appState.userProfile, appState.userId) === 'creator' ? 'Creator' : getUserWorldRole(activeWorld, appState.userProfile, appState.userId) === 'editor' ? 'Editor' : 'Viewer')), /*#__PURE__*/React.createElement("div", {
+  }) : null, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", { className: "hidden sm:inline" }, getUserWorldRole(activeWorld, appState.userProfile, appState.userId) === 'creator' ? 'Creator' : 'Member'))), /*#__PURE__*/React.createElement("div", {
     className: `flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold shadow-sm transition ${isOnline ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-400' : 'bg-rose-950/60 border-rose-500/40 text-rose-400'}`
   }, /*#__PURE__*/React.createElement("span", {
     className: `w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`
-  }), /*#__PURE__*/React.createElement("span", null, isOnline ? 'Server Online' : 'Server Offline')), activeTab === 'chat' && /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("span", { className: "hidden sm:inline" }, isOnline ? 'Online' : 'Offline')), activeTab === 'chat' && /*#__PURE__*/React.createElement("button", {
     onClick: () => setIsSearchOpen(true),
     className: "p-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-cyan-300 transition",
     title: "Search messages"
@@ -2120,7 +2147,7 @@ function App() {
       setActiveTab('settings');
     }
   }), /*#__PURE__*/React.createElement("nav", {
-    className: "fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 safe-bottom"
+    className: "flex-shrink-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 safe-bottom w-full"
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-md mx-auto flex items-center justify-around px-2 py-1"
   }, [{
@@ -3186,7 +3213,7 @@ function DMsScreen({
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
     className: "w-3.5 h-3.5 text-cyan-400"
   }), /*#__PURE__*/React.createElement("span", null, "New Direct Message"))), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 overflow-y-auto divide-y divide-slate-800/60"
+    className: "flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 touch-scroll"
   }, conversations.length === 0 ?
   /*#__PURE__*/
   /* Empty state when in no servers at all and no active DMs */
@@ -3824,10 +3851,10 @@ function ChatScreen({
     });
   };
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col h-full overflow-hidden pb-20"
+    className: "flex-1 min-h-0 flex flex-col overflow-hidden w-full"
   }, /*#__PURE__*/React.createElement("div", {
     ref: messagesContainerRef,
-    className: "flex-1 overflow-y-auto px-3 py-3 space-y-2"
+    className: "flex-1 min-h-0 overflow-y-auto px-3 py-2.5 space-y-2 touch-scroll"
   }, /*#__PURE__*/React.createElement("div", {
     className: "py-3 text-center border-b border-slate-800/80 mb-2"
   }, /*#__PURE__*/React.createElement("div", {
@@ -4240,7 +4267,7 @@ function CastScreen({
     return true;
   });
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col h-full overflow-hidden pb-20"
+    className: "flex-1 min-h-0 flex flex-col overflow-hidden w-full"
   }, /*#__PURE__*/React.createElement("div", {
     className: "p-2.5 sm:p-3 border-b border-slate-800 bg-slate-850 space-y-2"
   }, /*#__PURE__*/React.createElement("div", {
@@ -4272,7 +4299,7 @@ function CastScreen({
     onClick: () => setTypeFilter('npcs'),
     className: typeFilter === 'npcs' ? 'text-purple-400 font-bold' : ''
   }, "NPCs"))), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 overflow-y-auto p-3 space-y-2 max-w-2xl mx-auto w-full"
+    className: "flex-1 min-h-0 overflow-y-auto p-3 space-y-2 max-w-2xl mx-auto w-full touch-scroll"
   }, filtered.map(char => {
     const isNpc = char.category === 'npc';
     const w = worlds.find(w => w.id === char.worldId);
@@ -4603,7 +4630,7 @@ function SettingsScreen({
     setTimeout(() => setLinkMsg(null), 3000);
   };
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 overflow-y-auto pb-24 p-4 space-y-3.5 max-w-lg mx-auto w-full"
+    className: "flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 max-w-lg mx-auto w-full touch-scroll"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
@@ -5337,7 +5364,7 @@ function WikiScreen({
     }
   };
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col h-full overflow-hidden pb-20"
+    className: "flex-1 min-h-0 flex flex-col overflow-hidden w-full"
   }, /*#__PURE__*/React.createElement("div", {
     className: "p-3.5 border-b border-slate-800 bg-slate-850 space-y-3"
   }, /*#__PURE__*/React.createElement("div", {
