@@ -4075,6 +4075,14 @@ function DMsScreen({
 
   const myHandle = (userProfile?.handle || '').toLowerCase();
 
+  const dirMap = useMemo(() => {
+    const m = new Map();
+    (directory || []).forEach(u => {
+      if (u && u.handle) m.set(u.handle.toLowerCase(), u);
+    });
+    return m;
+  }, [directory]);
+
   // Worlds created by the current user
   const myCreatedWorlds = (worlds || []).filter(w => (w.creatorHandle || '').toLowerCase() === myHandle);
 
@@ -4087,15 +4095,22 @@ function DMsScreen({
       if (s !== myHandle && r !== myHandle) return;
       const other = s === myHandle ? msg.recipientHandle : msg.senderHandle;
       const key = other.toLowerCase();
+      const dirUser = dirMap.get(key);
 
       const existing = map.get(key) || {
         handle: other,
-        name: (s === myHandle ? other.replace('@', '') : msg.senderName) || other.replace('@', ''),
-        avatarUrl: s === myHandle ? null : msg.senderAvatarUrl,
+        name: dirUser?.name || (s === myHandle ? other.replace('@', '') : msg.senderName) || other.replace('@', ''),
+        avatarUrl: dirUser?.avatarUrl || (s === myHandle ? null : msg.senderAvatarUrl),
         lastMessage: '',
         lastTimestamp: msg.timestamp,
         unreadCount: 0
       };
+
+      if (dirUser?.avatarUrl) {
+        existing.avatarUrl = dirUser.avatarUrl;
+      } else if (!existing.avatarUrl && s !== myHandle && msg.senderAvatarUrl) {
+        existing.avatarUrl = msg.senderAvatarUrl;
+      }
 
       if (r === myHandle && msg.status !== 'read') {
         existing.unreadCount++;
@@ -4110,7 +4125,7 @@ function DMsScreen({
     });
 
     return Array.from(map.values()).sort((a, b) => new Date(b.lastTimestamp || 0) - new Date(a.lastTimestamp || 0));
-  }, [dmMessages, myHandle]);
+  }, [dmMessages, myHandle, dirMap]);
 
   const [selectedHandle, setSelectedHandle] = useState(() => {
     return conversations[0]?.handle || '';
