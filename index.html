@@ -3,21 +3,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta content="strict-origin-when-cross-origin" name="referrer"/>
-<title>Roleplay Hub</title>
-<meta content="Collaborative 2-player storytelling PWA with multi-world management, narrative character profiles, and real-time narrative filtering." name="description"/>
-<link href="manifest.json" rel="manifest"/>
-<meta content="#090d16" name="theme-color"/>
-<meta content="yes" name="apple-mobile-web-app-capable"/>
-<meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
-<meta content="Roleplay Hub" name="apple-mobile-web-app-title"/>
-<link href="apple-touch-icon.png" rel="apple-touch-icon"/>
-<link href="apple-touch-icon.png" rel="apple-touch-icon" sizes="180x180"/>
-<link href="icon-192.png" rel="apple-touch-icon" sizes="192x192"/>
-<link href="icon-512.png" rel="apple-touch-icon" sizes="512x512"/>
-<link href="icon-192.png" rel="icon" sizes="192x192" type="image/png"/>
+<title>Roleplay Hub — Collaborative Roleplay & Storytelling</title>
+<meta content="Collaborative tabletop roleplay and world lore website. Real-time character chat, lore wikis, and direct messaging across devices in any web browser." name="description"/>
 <link href="favicon.png" rel="icon" sizes="64x64" type="image/png"/>
+<link href="apple-touch-icon.png" rel="apple-touch-icon"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
     tailwind.config = {
@@ -48,30 +39,22 @@
       margin: 0;
       height: 100%;
       width: 100%;
-      height: 100dvh;
-      overflow: hidden;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      min-height: 100%;
       background-color: #090d16;
       color: #f1f5f9;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-tap-highlight-color: transparent;
-      user-select: none;
-      -webkit-user-select: none;
-      overscroll-behavior: none;
+      user-select: auto;
+      -webkit-user-select: auto;
     }
     #root {
-      position: fixed;
-      inset: 0;
       width: 100%;
       height: 100%;
-      height: 100dvh;
-      overflow: hidden;
+      min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
     }
     .touch-scroll {
       -webkit-overflow-scrolling: touch;
