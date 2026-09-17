@@ -1934,7 +1934,9 @@ function App() {
         if (parsed.userProfile) {
           const h = (parsed.userProfile.handle || '').toLowerCase();
           const em = (parsed.userProfile.email || '').toLowerCase();
-          parsed.userProfile.handle = '@EarlGreyFae';
+          if (h === '@mamasoftpaws') {
+            parsed.userProfile.handle = '@EarlGreyFae';
+          }
           if (h === '@earlgreyfae' || em === 'celticheroesscreenshots@gmail.com' || isSuperAdmin(parsed.userProfile)) {
             parsed.userProfile.emailVerified = true;
             parsed.userProfile.linkedGoogleAccount = {
@@ -2071,31 +2073,59 @@ function App() {
       };
     } catch (e) {}
 
-    // Initial persistent hub sync over HTTP
-    try {
+    // Safe entity merge helper for client
+    const safeMerge = (arr1 = [], arr2 = []) => {
+      const map = new Map();
+      (arr1 || []).filter(item => item && item.id).forEach(item => map.set(item.id, item));
+      (arr2 || []).filter(item => item && item.id).forEach(item => map.set(item.id, item));
+      return Array.from(map.values());
+    };
+
+    // Polling & sync function: guarantees DMs and Worlds are fetched even if WebSocket disconnected
+    const syncHubData = () => {
+      if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
       fetch('/api/hub-data')
         .then(r => r.json())
         .then(data => {
-          if (data && (data.dmMessages || data.worlds)) {
-            setAppState(prev => ({
+          if (!data) return;
+          setAppState(prev => {
+            const serverDMs = Array.isArray(data.dmMessages) ? data.dmMessages.filter(d => d && d.id) : [];
+            const localDMs = Array.isArray(prev.dmMessages) ? prev.dmMessages.filter(d => d && d.id) : [];
+            const localIds = new Set(localDMs.map(d => d.id));
+            const hasNew = serverDMs.some(d => !localIds.has(d.id));
+            if (hasNew) {
+              try { SoundFX.play('pop'); } catch(e){}
+            }
+
+            return {
               ...prev,
-              worlds: Array.from(new Map([...prev.worlds, ...(data.worlds || [])].map(w => [w.id, w])).values()),
-              channels: Array.from(new Map([...prev.channels, ...(data.channels || [])].map(c => [c.id, c])).values()),
-              messages: Array.from(new Map([...prev.messages, ...(data.messages || [])].map(m => [m.id, m])).values()),
-              dmMessages: Array.from(new Map([...(prev.dmMessages || []), ...(data.dmMessages || [])].map(d => [d.id, d])).values()),
-              wikiEntries: Array.from(new Map([...prev.wikiEntries, ...(data.wikiEntries || [])].map(w => [w.id, w])).values())
-            }));
-          }
+              worlds: safeMerge(prev.worlds, data.worlds),
+              channels: safeMerge(prev.channels, data.channels),
+              messages: safeMerge(prev.messages, data.messages),
+              dmMessages: safeMerge(localDMs, serverDMs),
+              wikiEntries: safeMerge(prev.wikiEntries, data.wikiEntries)
+            };
+          });
         })
         .catch(() => {});
-    } catch(e) {}
+    };
 
-    // 2. Real-time cross-device WebSocket sync when hosted online
-    if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+    // 1. Run sync immediately
+    syncHubData();
+    // 2. Poll every 3 seconds for guaranteed real-time message delivery
+    const pollTimer = setInterval(syncHubData, 3000);
+
+    // 3. WebSocket connection with automatic exponential reconnect
+    let ws = null;
+    let reconnectTimeout = null;
+    let isMounted = true;
+
+    const connectWS = () => {
+      if (!isMounted || typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${window.location.host}`;
       try {
-        const ws = new WebSocket(wsUrl);
+        ws = new WebSocket(wsUrl);
         wsRef.current = ws;
         ws.onopen = () => {
           setIsOnline(true);
@@ -2104,24 +2134,35 @@ function App() {
           try {
             const payload = JSON.parse(event.data);
             if (payload.type === 'CLOUD_SYNC_RESTORE' && payload.data) {
-              setAppState(prev => ({
-                ...prev,
-                worlds: payload.data.worlds || prev.worlds,
-                channels: payload.data.channels || prev.channels,
-                wikiEntries: payload.data.wikiEntries || prev.wikiEntries,
-                messages: payload.data.messages || prev.messages,
-                dmMessages: payload.data.dmMessages || prev.dmMessages
-              }));
+              syncHubData();
             } else {
               handleIncomingNetworkEvent(payload);
             }
           } catch(e) {}
         };
-        ws.onerror = () => {};
-      } catch(e) {}
-    }
+        ws.onclose = () => {
+          setIsOnline(false);
+          if (isMounted) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(connectWS, 2500);
+          }
+        };
+        ws.onerror = () => {
+          ws?.close();
+        };
+      } catch(e) {
+        if (isMounted) {
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(connectWS, 2500);
+        }
+      }
+    };
+    connectWS();
 
     return () => {
+      isMounted = false;
+      clearInterval(pollTimer);
+      clearTimeout(reconnectTimeout);
       if (channelRef.current) channelRef.current.close();
       if (wsRef.current) wsRef.current.close();
     };
@@ -2353,9 +2394,10 @@ function App() {
     broadcast('NEW_MESSAGE', newMsg);
   };
   const handleSendDM = (content, recipientHandle, imageUrl, invite) => {
-    const targetHandle = recipientHandle.startsWith('@') ? recipientHandle : `@${recipientHandle}`;
+    let targetHandle = (recipientHandle || '').trim();
+    if (!targetHandle.startsWith('@')) targetHandle = `@${targetHandle}`;
     const newDM = {
-      id: `dm_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      id: `dm_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       senderUserId: appState.userId,
       senderName: appState.userProfile.name,
       senderHandle: appState.userProfile.handle,
@@ -2369,10 +2411,13 @@ function App() {
       inviteStatus: invite ? 'pending' : undefined,
       timestamp: new Date().toISOString()
     };
-    setAppState(prev => ({
-      ...prev,
-      dmMessages: [...(prev.dmMessages || []), newDM]
-    }));
+    setAppState(prev => {
+      const list = prev.dmMessages || [];
+      return {
+        ...prev,
+        dmMessages: [...list.filter(d => d.id !== newDM.id), newDM]
+      };
+    });
     broadcast('NEW_DM', newDM);
     try {
       fetch('/api/send-dm', {
@@ -3633,6 +3678,23 @@ function DMsScreen({
 
   // Known lore figures & cast affiliated with specific worlds
   const KNOWN_SERVER_PEOPLE = [
+  // Wonderworld & Aethelgard Key Figures
+  {
+    worldId: 'world_wonderworld',
+    name: 'James',
+    handle: '@GrimGerbil',
+    avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=GrimGerbil',
+    role: 'Wonderworld Creator',
+    serverName: 'Wonderworld'
+  },
+  {
+    worldId: 'world_aethelgard',
+    name: 'Kitty',
+    handle: '@EarlGreyFae',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    role: 'Superadmin & World Creator',
+    serverName: 'Aethelgard: Astral Frontier'
+  },
   // Aethelgard: Astral Frontier (world_aethelgard)
   {
     worldId: 'world_aethelgard',
@@ -3813,22 +3875,20 @@ function DMsScreen({
     });
   }, [isUserInAnyServer, serverPeople, dmMessages, userProfile?.handle]);
 
-  // Active selection
+  // Active selection defaults to @GrimGerbil if viewing as Kitty, or first active conversation
   const [selectedHandle, setSelectedHandle] = useState(() => {
-    return conversations[0]?.handle || '@Barnaby';
+    const myH = (userProfile?.handle || '').toLowerCase();
+    if (myH === '@earlgreyfae') return '@GrimGerbil';
+    if (myH === '@grimgerbil') return '@EarlGreyFae';
+    return conversations[0]?.handle || '@GrimGerbil';
   });
 
-  // Keep selectedHandle valid if current selection is not in list
+  // If no handle is selected yet and conversations exist, default to the first
   useEffect(() => {
-    if (conversations.length > 0) {
-      const exists = conversations.some(c => c.handle.toLowerCase() === (selectedHandle || '').toLowerCase());
-      if (!exists) {
-        setSelectedHandle(conversations[0].handle);
-      }
-    } else {
-      setSelectedHandle('');
+    if (!selectedHandle && conversations.length > 0) {
+      setSelectedHandle(conversations[0].handle);
     }
-  }, [conversations]);
+  }, [conversations, selectedHandle]);
 
   // Messages in active conversation
   const activeMessages = useMemo(() => {
