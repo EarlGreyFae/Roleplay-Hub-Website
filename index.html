@@ -444,6 +444,11 @@ const IconsRaw = {
       points: "18 15 12 9 6 15"
     }))
   })),
+  ChevronLeft: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
+    path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("polyline", {
+      points: "15 18 9 12 15 6"
+    }))
+  })),
   ChevronRight: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
     path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("polyline", {
       points: "9 18 15 12 9 6"
@@ -3793,24 +3798,22 @@ function DMsScreen({
     }
   };
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col sm:flex-row h-full overflow-hidden pb-20"
+    className: "flex-1 min-h-0 flex flex-col sm:flex-row overflow-hidden bg-slate-950 w-full h-full"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-full sm:w-80 bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0"
+    className: `w-full sm:w-80 bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 min-h-0 h-full ${selectedHandle ? 'hidden sm:flex' : 'flex'}`
   }, /*#__PURE__*/React.createElement("div", {
-    className: "p-2.5 border-b border-slate-800 flex items-center justify-between"
+    className: "p-2.5 sm:p-3 border-b border-slate-800 bg-slate-850 flex-shrink-0 flex items-center justify-between"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsNewDMModalOpen(true),
-    className: "w-full py-2 px-3 rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 border border-slate-750 text-xs font-bold flex items-center justify-center space-x-1.5 transition shadow-sm",
+    className: "w-full py-2.5 px-3 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 text-xs font-bold flex items-center justify-center space-x-1.5 transition shadow-sm active:scale-95",
     title: "Start a new Direct Message"
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
-    className: "w-3.5 h-3.5 text-cyan-400"
-  }), /*#__PURE__*/React.createElement("span", null, "New Direct Message"))), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 touch-scroll"
-  }, conversations.length === 0 ?
-  /*#__PURE__*/
-  /* Empty state when in no servers at all and no active DMs */
-  React.createElement("div", {
+    className: "w-4 h-4 text-cyan-400"
+  }), /*#__PURE__*/React.createElement("span", null, "+ New Direct Message"))), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 touch-scroll overscroll-contain",
+    style: { WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', touchAction: 'pan-y' }
+  }, conversations.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "p-4 text-center space-y-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "w-12 h-12 rounded-2xl bg-slate-850 border border-slate-750 flex items-center justify-center mx-auto text-slate-400"
@@ -3820,79 +3823,77 @@ function DMsScreen({
     className: "space-y-1"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-xs font-bold text-slate-200"
-  }, "No Preview Profiles"), /*#__PURE__*/React.createElement("p", {
+  }, "No Conversations Yet"), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 leading-relaxed"
-  }, "You're in no servers at all, so no preview profiles are shown in the sidebar.")), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-2 text-left bg-slate-850 p-3 rounded-xl border border-slate-750 text-[11px] text-slate-300"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-start space-x-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-cyan-400 font-bold flex-shrink-0"
-  }, "1."), /*#__PURE__*/React.createElement("span", null, "Message someone directly by their ", /*#__PURE__*/React.createElement("strong", null, "@handle"), " using the button below.")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-start space-x-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-cyan-400 font-bold flex-shrink-0"
-  }, "2."), /*#__PURE__*/React.createElement("span", null, "Or get invited to join a ", /*#__PURE__*/React.createElement("strong", null, "world"), " to see members of that server."))), /*#__PURE__*/React.createElement("button", {
+  }, "Start a direct message with any player using their @handle.")), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsNewDMModalOpen(true),
-    className: "w-full py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl shadow transition flex items-center justify-center space-x-1.5"
-  }, /*#__PURE__*/React.createElement(Icons.Plus, {
-    className: "w-4 h-4"
-  }), /*#__PURE__*/React.createElement("span", null, "Message by @handle"))) : conversations.map(c => {
-    const isSelected = c.handle.toLowerCase() === (selectedHandle || '').toLowerCase();
-    return /*#__PURE__*/React.createElement("button", {
+    className: "px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow transition"
+  }, "New Direct Message")) : conversations.map(c => {
+    const isSelected = selectedHandle && selectedHandle.toLowerCase() === c.handle.toLowerCase();
+    const isInvite = c.worldInvite;
+
+    return /*#__PURE__*/React.createElement("div", {
       key: c.handle,
-      type: "button",
       onClick: () => setSelectedHandle(c.handle),
-      className: `w-full text-left p-3 flex items-center space-x-3 transition ${isSelected ? 'bg-slate-800/90 border-l-4 border-l-cyan-400' : 'hover:bg-slate-850/60'}`
+      className: `p-3 flex items-center space-x-3 cursor-pointer transition ${isSelected ? 'bg-cyan-950/40 border-l-4 border-l-cyan-400' : 'hover:bg-slate-850/60'}`
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "relative flex-shrink-0"
     }, /*#__PURE__*/React.createElement("img", {
       src: c.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(c.handle)}`,
       alt: c.name,
-      className: "w-10 h-10 rounded-full object-cover border border-slate-700 flex-shrink-0"
-    }), /*#__PURE__*/React.createElement("div", {
+      className: "w-10 h-10 rounded-full object-cover border border-slate-700"
+    })), /*#__PURE__*/React.createElement("div", {
       className: "flex-1 min-w-0"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "font-bold text-xs text-slate-100 truncate"
-    }, c.name), /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] text-slate-500 font-mono"
-    }, c.hasMessages && c.lastTimestamp ? new Date(c.lastTimestamp).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit'
-    }) : '05:00 PM')), /*#__PURE__*/React.createElement("div", {
-      className: "text-[10px] text-cyan-400 font-mono"
-    }, c.handle), /*#__PURE__*/React.createElement("div", {
-      className: "text-[11px] truncate mt-0.5"
-    }, c.hasMessages && c.lastMessage ? /*#__PURE__*/React.createElement("span", {
-      className: "text-slate-400"
-    }, c.lastMessage) : /*#__PURE__*/React.createElement("span", {
-      className: "text-slate-500 italic"
-    }, "No messages yet"))));
+    }, /*#__PURE__*/React.createElement("h4", {
+      className: `font-bold text-xs sm:text-sm truncate ${isSelected ? 'text-cyan-300' : 'text-slate-200'}`
+    }, c.name), c.hasMessages && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] text-slate-500 flex-shrink-0"
+    }, formatFullDate(c.lastTimestamp).split(' at ')[1] || '')), /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-slate-400 font-mono"
+    }, c.handle), isInvite ? /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-amber-400 font-semibold truncate flex items-center space-x-1"
+    }, /*#__PURE__*/React.createElement(Icons.Globe, {
+      className: "w-3 h-3 flex-shrink-0"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "truncate"
+    }, "World Invite: ", isInvite.worldName)) : c.hasMessages ? /*#__PURE__*/React.createElement("p", {
+      className: "text-[11px] text-slate-400 truncate mt-0.5"
+    }, c.lastMessage || '📷 Attached Image') : /*#__PURE__*/React.createElement("p", {
+      className: "text-[11px] text-slate-500 italic"
+    }, "No messages yet")));
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col bg-slate-950 overflow-hidden"
-  }, selectedHandle && activeContact ? /*#__PURE__*/React.createElement("div", {
-    className: "p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between"
+    className: `flex-1 min-h-0 flex flex-col bg-slate-950 overflow-hidden h-full ${selectedHandle ? 'flex' : 'hidden sm:flex'}`
+  }, selectedHandle && activeContact ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "p-2.5 sm:p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between flex-shrink-0"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-3"
-  }, /*#__PURE__*/React.createElement("img", {
+    className: "flex items-center space-x-2 min-w-0"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setSelectedHandle(null),
+    className: "sm:hidden p-1.5 -ml-1 text-cyan-400 hover:text-white rounded-xl flex items-center space-x-0.5 flex-shrink-0 font-bold text-xs"
+  }, /*#__PURE__*/React.createElement(Icons.ChevronLeft, {
+    className: "w-4 h-4"
+  }), /*#__PURE__*/React.createElement("span", null, "DMs")), /*#__PURE__*/React.createElement("img", {
     src: activeContact.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(activeContact.handle)}`,
     alt: activeContact.name,
-    className: "w-9 h-9 rounded-full object-cover border border-slate-700"
-  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
+    className: "w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-700 flex-shrink-0"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-1.5"
   }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-bold text-sm text-slate-100"
+    className: "font-bold text-xs sm:text-sm text-slate-100 truncate"
   }, activeContact.name), /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-cyan-400 font-mono"
+    className: "text-[10px] text-cyan-400 font-mono hidden xs:inline"
   }, activeContact.handle)), activeContact.serverName ? /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400"
-  }, "Server: ", /*#__PURE__*/React.createElement("strong", {
-    className: "text-slate-300"
-  }, activeContact.serverName)) : /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-400 truncate"
+  }, "Server: ", activeContact.serverName) : /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400"
   }, "Direct Message"))), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
+    className: "flex items-center space-x-2 flex-shrink-0"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsInviteModalOpen(true),
@@ -3902,139 +3903,94 @@ function DMsScreen({
     className: "w-3.5 h-3.5"
   }), /*#__PURE__*/React.createElement("span", {
     className: "hidden sm:inline"
-  }, "Invite to World")))) : /*#__PURE__*/React.createElement("div", {
-    className: "p-3 bg-slate-900 border-b border-slate-800"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-bold text-sm text-slate-100"
-  }, "Direct Messages")), /*#__PURE__*/React.createElement("div", {
+  }, "Invite to World")))), /*#__PURE__*/React.createElement("div", {
     ref: messagesContainerRef,
-    className: "flex-1 overflow-y-auto p-4 space-y-4"
+    className: "flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3.5 touch-scroll overscroll-contain",
+    style: { WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', touchAction: 'pan-y' }
   }, activeMessages.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "h-full flex flex-col items-center justify-center p-6 text-center space-y-3"
   }, /*#__PURE__*/React.createElement("img", {
     src: activeContact.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(activeContact.handle)}`,
     alt: activeContact.name,
-    className: "w-16 h-16 rounded-full border-2 border-slate-700 shadow-lg object-cover"
+    className: "w-14 h-14 rounded-full object-cover border-2 border-slate-700 shadow"
   }), /*#__PURE__*/React.createElement("div", {
     className: "space-y-1"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-bold text-base text-slate-100"
-  }, activeContact.name), /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-cyan-400 font-mono"
-  }, activeContact.handle), activeContact.serverName && /*#__PURE__*/React.createElement("div", {
-    className: "text-[11px] text-slate-400"
-  }, "Server: ", /*#__PURE__*/React.createElement("strong", {
-    className: "text-slate-300"
-  }, activeContact.serverName))), /*#__PURE__*/React.createElement("p", {
-    className: "text-xs text-slate-400 max-w-sm"
-  }, "This is the start of your direct message history with ", /*#__PURE__*/React.createElement("strong", {
-    className: "text-slate-200"
-  }, activeContact.name), ". Send a message or invite them to a world!"), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 pt-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setIsInviteModalOpen(true),
-    className: "px-3.5 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center space-x-1.5"
-  }, /*#__PURE__*/React.createElement(Icons.Globe, {
-    className: "w-3.5 h-3.5"
-  }), /*#__PURE__*/React.createElement("span", null, "Invite to World")))) : activeMessages.map(msg => {
-    const isMine = (msg.senderHandle || '').toLowerCase() === userProfile.handle.toLowerCase();
+  }, /*#__PURE__*/React.createElement("h4", {
+    className: "font-bold text-sm text-slate-100"
+  }, "Direct Message with ", activeContact.name), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400"
+  }, "Private OOC conversation between you and ", activeContact.handle, "."))) : activeMessages.map(msg => {
+    const isMe = (msg.senderHandle || '').toLowerCase() === (userProfile.handle || '').toLowerCase();
+    const isInvite = msg.worldInvite;
+
     return /*#__PURE__*/React.createElement("div", {
       key: msg.id,
-      className: `flex flex-col space-y-1 max-w-lg ${isMine ? 'ml-auto items-end' : 'mr-auto items-start'}`
+      className: `flex flex-col ${isMe ? 'items-end' : 'items-start'}`
     }, /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center space-x-2 px-1 text-[11px] text-slate-400"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "font-semibold text-slate-300"
-    }, msg.senderName), /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] text-slate-500 font-mono"
-    }, formatFullDate(msg.timestamp))), msg.inviteWorldId ? /*#__PURE__*/React.createElement("div", {
-      className: "w-full bg-slate-900 border-2 border-cyan-500/50 rounded-2xl p-3.5 space-y-2.5 shadow-xl shadow-cyan-950/30"
+      className: `max-w-[85%] sm:max-w-md rounded-2xl p-3 shadow-md ${isMe ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-slate-850 text-slate-100 border border-slate-750 rounded-bl-none'}`
+    }, isInvite && /*#__PURE__*/React.createElement("div", {
+      className: "mb-2 p-3 bg-slate-900/80 rounded-xl border border-cyan-500/30 space-y-2 text-left"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center space-x-2 text-cyan-400"
+      className: "flex items-center space-x-1.5 text-cyan-300 font-bold text-xs"
     }, /*#__PURE__*/React.createElement(Icons.Globe, {
-      className: "w-5 h-5 flex-shrink-0"
-    }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "text-[10px] uppercase font-bold tracking-wider text-cyan-400"
-    }, "World Collaboration Invite"), /*#__PURE__*/React.createElement("h4", {
-      className: "font-bold text-sm text-slate-100"
-    }, msg.inviteWorldName))), /*#__PURE__*/React.createElement("p", {
-      className: "text-xs text-slate-300 leading-relaxed"
-    }, msg.content), /*#__PURE__*/React.createElement("div", {
-      className: "text-xs text-slate-400"
-    }, "Invited as: ", /*#__PURE__*/React.createElement("span", {
-      className: "text-cyan-300 font-bold uppercase"
-    }, msg.inviteRole || 'member')), /*#__PURE__*/React.createElement("div", {
-      className: "pt-2 border-t border-slate-800 flex items-center space-x-2"
-    }, msg.inviteStatus === 'pending' ? !isMine ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+      className: "w-4 h-4 text-cyan-400"
+    }), /*#__PURE__*/React.createElement("span", null, "World Invitation")), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-slate-200"
+    }, "You've been invited to join ", /*#__PURE__*/React.createElement("strong", {
+      className: "text-white"
+    }, isInvite.worldName), " as ", /*#__PURE__*/React.createElement("strong", {
+      className: "text-cyan-300"
+    }, isInvite.role || 'Member'), "!"), !isMe && /*#__PURE__*/React.createElement("div", {
+      className: "flex space-x-2 pt-1"
+    }, /*#__PURE__*/React.createElement("button", {
       type: "button",
-      onClick: () => onAcceptInvite(msg.id, msg.inviteWorldId, msg.inviteRole),
-      className: "px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center space-x-1"
+      onClick: () => onAcceptInvite && onAcceptInvite(msg),
+      className: "px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center space-x-1"
     }, /*#__PURE__*/React.createElement(Icons.Check, {
       className: "w-3.5 h-3.5"
-    }), /*#__PURE__*/React.createElement("span", null, "Accept & Join World")), /*#__PURE__*/React.createElement("button", {
+    }), /*#__PURE__*/React.createElement("span", null, "Accept & Join")), /*#__PURE__*/React.createElement("button", {
       type: "button",
-      onClick: () => onDeclineInvite(msg.id),
-      className: "px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold transition"
-    }, "Decline")) : /*#__PURE__*/React.createElement("span", {
-      className: "inline-flex items-center space-x-1 text-xs text-amber-400 font-medium"
-    }, /*#__PURE__*/React.createElement(Icons.Clock, {
-      className: "w-3.5 h-3.5"
-    }), /*#__PURE__*/React.createElement("span", null, "Pending recipient response...")) : msg.inviteStatus === 'accepted' ? /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center space-x-2"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "inline-flex items-center space-x-1 text-xs text-emerald-400 font-bold bg-emerald-950/70 border border-emerald-500/40 px-2.5 py-1 rounded-lg"
-    }, /*#__PURE__*/React.createElement(Icons.Check, {
-      className: "w-3.5 h-3.5"
-    }), /*#__PURE__*/React.createElement("span", null, "Invite Accepted \u2022 Joined World")), /*#__PURE__*/React.createElement("button", {
-      type: "button",
-      onClick: () => onSwitchToWorld(msg.inviteWorldId),
-      className: "text-xs text-cyan-400 underline hover:text-cyan-300 font-semibold"
-    }, "Switch to World \u2192")) : /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center space-x-2"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "text-xs text-slate-500 italic"
-    }, "Invite declined"), /*#__PURE__*/React.createElement("button", {
-      type: "button",
-      onClick: () => setIsInviteModalOpen(true),
-      className: "px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 text-[11px] font-semibold flex items-center space-x-1 transition"
-    }, /*#__PURE__*/React.createElement(Icons.Mail, {
-      className: "w-3 h-3"
-    }), /*#__PURE__*/React.createElement("span", null, "Invite Again"))))) :
-    /*#__PURE__*/
-    /* Standard DM Message with Embeds & Image */
-    React.createElement("div", {
-      className: `p-3 rounded-2xl ${isMine ? 'bg-cyan-950/60 border border-cyan-500/30 text-slate-100' : 'bg-slate-900 border border-slate-800 text-slate-200'} shadow-sm`
-    }, /*#__PURE__*/React.createElement(EmbedRenderer, {
-      content: msg.content,
-      imageUrl: msg.imageUrl,
-      onOpenWikiSheet: () => {},
-      activeWorld: worlds[0],
-      wikiEntries: wikiEntries
-    })));
+      onClick: () => onDeclineInvite && onDeclineInvite(msg),
+      className: "px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+    }, "Decline"))), msg.imageUrl && /*#__PURE__*/React.createElement("img", {
+      src: msg.imageUrl,
+      alt: "Attachment",
+      className: "rounded-xl max-h-60 object-cover mb-2 border border-slate-700"
+    }), msg.content && /*#__PURE__*/React.createElement("p", {
+      className: "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words"
+    }, msg.content)), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] text-slate-500 mt-1 px-1"
+    }, formatFullDate(msg.timestamp)));
   }), /*#__PURE__*/React.createElement("div", {
     ref: scrollRef
   })), /*#__PURE__*/React.createElement("div", {
-    className: "p-2 sm:p-3 bg-slate-900/95 backdrop-blur border-t border-slate-800"
+    className: "p-2 sm:p-2.5 bg-slate-900 border-t border-slate-800 flex-shrink-0"
+  }, !userProfile?.emailVerified ? /*#__PURE__*/React.createElement("div", {
+    className: "p-2.5 bg-amber-950/90 border border-amber-500/40 rounded-xl text-center space-y-1.5"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "text-amber-300 text-xs font-bold flex items-center justify-center space-x-1"
+  }, /*#__PURE__*/React.createElement(Icons.Lock, {
+    className: "w-3.5 h-3.5"
+  }), /*#__PURE__*/React.createElement("span", null, "DMs Locked — Email Verification Required")), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-300"
+  }, "Verify your email with the 6-digit confirmation code to send direct messages."), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => onOpenVerifyModal && onOpenVerifyModal(),
+    className: "px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow"
+  }, "Enter 6-Digit Code to Unlock")) : /*#__PURE__*/React.createElement("div", {
     className: "max-w-4xl mx-auto flex flex-col space-y-1.5"
   }, attachedImage && /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 px-3 py-1.5 bg-slate-800/90 rounded-xl border border-slate-750 max-w-full w-fit"
+    className: "flex items-center space-x-2 p-1.5 bg-slate-800 rounded-xl border border-slate-700"
   }, /*#__PURE__*/React.createElement("img", {
     src: attachedImage,
-    alt: "Attachment Preview",
-    className: "w-10 h-10 object-cover rounded-lg border border-slate-700 flex-shrink-0"
+    alt: "Preview",
+    className: "w-8 h-8 rounded-lg object-cover border border-slate-600"
   }), /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 pr-2"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-slate-200 font-semibold truncate"
-  }, "Image attached"), /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400"
-  }, "Ready to send with text or as image-only")), /*#__PURE__*/React.createElement("button", {
+    className: "text-[10px] text-slate-400 flex-1 truncate"
+  }, "Ready to send image"), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setAttachedImage(null),
-    className: "p-1 rounded-lg hover:bg-slate-750 text-slate-400 hover:text-rose-400 transition",
-    title: "Remove Image"
+    className: "p-1 rounded-lg text-slate-400 hover:text-rose-400"
   }, /*#__PURE__*/React.createElement(Icons.X, {
     className: "w-3.5 h-3.5"
   }))), /*#__PURE__*/React.createElement("div", {
@@ -4048,12 +4004,12 @@ function DMsScreen({
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => fileInputRef.current?.click(),
-    className: "p-2.5 rounded-xl border transition flex-shrink-0 bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-cyan-400 border-slate-700",
-    title: "Attach Photo or Image"
+    className: "p-2 sm:p-2.5 rounded-xl border transition flex-shrink-0 bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-cyan-400 border-slate-700",
+    title: "Attach Photo"
   }, /*#__PURE__*/React.createElement(Icons.Image, {
     className: "w-4 h-4"
   })), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 bg-slate-800 rounded-xl px-3 py-2 border border-slate-700 flex items-center space-x-2 focus-within:border-cyan-400"
+    className: "flex-1 bg-slate-800 rounded-xl px-3 py-1.5 sm:py-2 border border-slate-750 flex items-center space-x-2 focus-within:border-cyan-400"
   }, /*#__PURE__*/React.createElement("input", {
     type: "text",
     value: inputText,
@@ -4061,17 +4017,27 @@ function DMsScreen({
     onKeyDown: e => {
       if (e.key === 'Enter') handleSend();
     },
-    placeholder: selectedHandle ? `Message ${activeContact.handle}...` : "Select or message someone by @handle...",
-    className: "flex-1 bg-transparent text-slate-100 text-xs sm:text-sm focus:outline-none"
+    placeholder: `Message ${activeContact.handle}...`,
+    className: "w-full bg-transparent text-slate-100 text-xs sm:text-sm focus:outline-none"
   })), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: handleSend,
-    disabled: !inputText.trim() && !attachedImage || !selectedHandle,
-    className: `p-2.5 rounded-xl ${(inputText.trim() || attachedImage) && selectedHandle ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/20' : 'bg-slate-800 text-slate-600 cursor-not-allowed'} transition font-bold`,
+    disabled: !inputText.trim() && !attachedImage,
+    className: `p-2 sm:p-2.5 rounded-xl ${(inputText.trim() || attachedImage) ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg' : 'bg-slate-800 text-slate-600 cursor-not-allowed'} transition font-bold flex-shrink-0`,
     title: "Send Message"
   }, /*#__PURE__*/React.createElement(Icons.Send, {
     className: "w-4 h-4"
-  })))))), isNewDMModalOpen && /*#__PURE__*/React.createElement("div", {
+  })))))) : /*#__PURE__*/React.createElement("div", {
+    className: "h-full flex flex-col items-center justify-center p-6 text-center space-y-3 text-slate-400"
+  }, /*#__PURE__*/React.createElement(Icons.MessageSquare, {
+    className: "w-12 h-12 text-slate-600"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-200"
+  }, "Select a Conversation"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400"
+  }, "Choose someone from the list or start a new direct message.")))), isNewDMModalOpen && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-fadeIn"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-4 space-y-4"
@@ -4235,26 +4201,9 @@ function InviteToWorldModal({
     type: "button",
     onClick: () => onSendInvite(activeWorldObj.id, activeWorldObj.name, role),
     className: "px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md"
-  }, "Send World Invite")), isPasskeyModalOpen && /*#__PURE__*/React.createElement(PasskeyModal, {
-    isOpen: isPasskeyModalOpen,
-    onClose: () => setIsPasskeyModalOpen(false),
-    userProfile: appState.userProfile,
-    onPasskeyCreated: (credId) => {
-      const updated = { ...appState.userProfile, passkeyCredentialId: credId };
-      onUpdateState({ userProfile: updated });
-      AccountManager.saveAccount(updated);
-    }
-  }), isVerifyModalOpen && /*#__PURE__*/React.createElement(EmailVerificationModal, {
-    isOpen: isVerifyModalOpen,
-    email: appState.userProfile?.email,
-    onClose: () => setIsVerifyModalOpen(false),
-    onVerified: () => {
-      const updated = { ...appState.userProfile, emailVerified: true };
-      onUpdateState({ userProfile: updated });
-      AccountManager.saveAccount(updated);
-    }
-  })));
+  }, "Send World Invite"))));
 }
+
 function ChatScreen({
   messages,
   activeChannel,
@@ -5246,7 +5195,7 @@ function SettingsScreen({
   return /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 max-w-lg mx-auto w-full touch-scroll"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
+    className: "bg-slate-850 p-3.5 sm:p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between"
   }, /*#__PURE__*/React.createElement("span", {
@@ -5258,9 +5207,9 @@ function SettingsScreen({
   }, /*#__PURE__*/React.createElement(Icons.Edit3, {
     className: "w-3.5 h-3.5"
   }), /*#__PURE__*/React.createElement("span", null, "Edit Profile"))), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-3.5 pt-1"
+    className: "flex items-start space-x-3 pt-1"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "relative cursor-pointer",
+    className: "relative cursor-pointer flex-shrink-0",
     onClick: () => setIsEditProfileModalOpen(true),
     title: "Click to edit profile"
   }, /*#__PURE__*/React.createElement("img", {
@@ -5268,26 +5217,26 @@ function SettingsScreen({
     alt: appState.userProfile?.name || 'Profile',
     className: "w-14 h-14 rounded-2xl object-cover border-2 border-slate-700 shadow-md hover:border-cyan-400 transition"
   })), /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 flex-1"
+    className: "min-w-0 flex-1 space-y-1"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
+    className: "flex items-center space-x-2 flex-wrap gap-y-1"
   }, /*#__PURE__*/React.createElement("h4", {
     className: "font-bold text-sm sm:text-base text-slate-100 truncate"
   }, appState.userProfile?.name || 'Kitty'), /*#__PURE__*/React.createElement("span", {
-    className: `px-1.5 py-0.2 rounded text-[10px] font-bold border font-mono ${isSuperAdmin(appState.userProfile) ? 'bg-amber-950 text-amber-300 border-amber-600/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`
+    className: `px-2 py-0.5 rounded text-[10px] font-bold border font-mono ${isSuperAdmin(appState.userProfile) ? 'bg-amber-950 text-amber-300 border-amber-600/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`
   }, isSuperAdmin(appState.userProfile) ? '👑 Superadmin' : 'Player')), /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-cyan-400 font-mono font-medium"
+    className: "text-xs text-cyan-400 font-mono font-semibold"
   }, appState.userProfile?.handle || '@EarlGreyFae'), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-400 mt-0.5 truncate"
-  }, "Author & player identity for OOC chat, DMs, and world collaboration.")), /*#__PURE__*/React.createElement("div", {
-    className: "pt-2"
+    className: "text-[11px] text-slate-400 leading-tight"
+  }, "Author & player identity for OOC chat, DMs, and world collaboration."))), /*#__PURE__*/React.createElement("div", {
+    className: "pt-2 border-t border-slate-750/70 flex items-center justify-end"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: onLogout,
-    className: "px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-rose-300 border border-slate-700 text-[11px] font-semibold flex items-center space-x-1.5 transition"
+    className: "w-full sm:w-auto px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-rose-300 border border-slate-700 text-xs font-semibold flex items-center justify-center space-x-1.5 transition active:scale-98"
   }, /*#__PURE__*/React.createElement(Icons.LogOut, {
-    className: "w-3 h-3"
-  }), /*#__PURE__*/React.createElement("span", null, "Switch Account / Log Out"))))), isEditProfileModalOpen && /*#__PURE__*/React.createElement("div", {
+    className: "w-3.5 h-3.5"
+  }), /*#__PURE__*/React.createElement("span", null, "Switch Account / Log Out")))), isEditProfileModalOpen && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-200",
@@ -5417,43 +5366,49 @@ function SettingsScreen({
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-850 p-3.5 sm:p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2"
   }, /*#__PURE__*/React.createElement(Icons.Mail, {
-    className: "w-4 h-4 text-cyan-400"
+    className: "w-4 h-4 text-cyan-400 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("span", {
     className: "font-bold text-xs text-slate-200"
-  }, "Linked Account & Verification")), appState.userProfile?.emailVerified ? /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-0.5 rounded-full font-bold"
+  }, "Linked Account & Email Verification")), appState.userProfile?.emailVerified ? /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-0.5 rounded-full font-bold whitespace-nowrap"
   }, "✓ Verified & Active") : /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] bg-amber-950 text-amber-300 border border-amber-600/50 px-2 py-0.5 rounded-full font-bold"
+    className: "text-[10px] bg-amber-950 text-amber-300 border border-amber-600/50 px-2 py-0.5 rounded-full font-bold whitespace-nowrap"
   }, "Unverified (Chat Locked)")), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 leading-relaxed"
-  }, "Link any personal email (Gmail, iCloud, Outlook, Yahoo) to verify your account and unlock in-character roleplay chat and DMs. Verification codes are dispatched from system dispatcher (", /*#__PURE__*/React.createElement("strong", {
+  }, "Link any email (Gmail, iCloud, Outlook, Yahoo) to verify your account and unlock in-character chat and DMs. Verification codes are dispatched from system dispatcher (", /*#__PURE__*/React.createElement("strong", {
     className: "text-slate-300"
   }, "celticheroesscreenshots@gmail.com"), ")."), /*#__PURE__*/React.createElement("div", {
-    className: "p-3 bg-slate-800/80 rounded-xl border border-slate-750 flex items-center justify-between"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs font-bold text-slate-200"
+    className: "p-3 bg-slate-800/80 rounded-xl border border-slate-750 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0 flex-1"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs font-bold text-slate-200 break-all"
   }, appState.userProfile?.email || 'celticheroesscreenshots@gmail.com'), /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 mt-0.5 font-mono"
   }, "Bound to ", appState.userProfile?.handle)), !appState.userProfile?.emailVerified && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsVerifyModalOpen(true),
-    className: "px-3 py-1 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow transition"
+    className: "w-full sm:w-auto px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow transition whitespace-nowrap text-center flex-shrink-0 active:scale-98"
   }, "Verify Now"))), /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
+    className: "bg-slate-850 p-3.5 sm:p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between"
+    className: "flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
+    className: "flex items-center space-x-2 min-w-0"
   }, /*#__PURE__*/React.createElement(Icons.Key, {
-    className: "w-4 h-4 text-cyan-400"
+    className: "w-4 h-4 text-cyan-400 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("span", {
     className: "font-bold text-xs text-slate-200"
   }, "Device Passkeys (Face ID / Touch ID)")), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsPasskeyModalOpen(true),
-    className: "px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 border border-cyan-500/30 font-bold text-xs flex items-center space-x-1 shadow transition"
+    className: "px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 border border-cyan-500/30 font-bold text-xs flex items-center space-x-1 shadow transition whitespace-nowrap flex-shrink-0"
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
     className: "w-3 h-3"
   }), /*#__PURE__*/React.createElement("span", null, appState.userProfile?.passkeyCredentialId ? "Manage Passkey" : "Create Passkey"))), /*#__PURE__*/React.createElement("p", {
@@ -5845,7 +5800,27 @@ function SettingsScreen({
     className: "px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold text-xs shadow-lg transition flex items-center space-x-1.5"
   }, /*#__PURE__*/React.createElement(Icons.Trash, {
     className: "w-4 h-4"
-  }), /*#__PURE__*/React.createElement("span", null, "Permanently Delete My Account")))))));
+  }), /*#__PURE__*/React.createElement("span", null, "Permanently Delete My Account"))))), isPasskeyModalOpen && /*#__PURE__*/React.createElement(PasskeyModal, {
+    isOpen: isPasskeyModalOpen,
+    onClose: () => setIsPasskeyModalOpen(false),
+    userProfile: appState.userProfile,
+    onPasskeyCreated: (credId) => {
+      const updated = { ...appState.userProfile, passkeyCredentialId: credId };
+      onUpdateState({ userProfile: updated });
+      AccountManager.saveAccount(updated);
+      setIsPasskeyModalOpen(false);
+    }
+  }), isVerifyModalOpen && /*#__PURE__*/React.createElement(EmailVerificationModal, {
+    isOpen: isVerifyModalOpen,
+    email: appState.userProfile?.email || 'celticheroesscreenshots@gmail.com',
+    onClose: () => setIsVerifyModalOpen(false),
+    onVerified: () => {
+      const updated = { ...appState.userProfile, emailVerified: true };
+      onUpdateState({ userProfile: updated });
+      AccountManager.saveAccount(updated);
+      setIsVerifyModalOpen(false);
+    }
+  })))));
 }
 
 // --- Sub-View: Wiki Screen (Factions, Articles & Cast Hub) ---
