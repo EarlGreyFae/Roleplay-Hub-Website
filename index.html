@@ -885,62 +885,46 @@ const GoogleIcon = () => /*#__PURE__*/React.createElement("svg", {
 }));
 
 // --- Seed Data ---
-const DEFAULT_DMS = [{
-  id: 'dm_1',
-  senderUserId: 'user_player2',
-  senderName: 'Barnaby Quick-Paws',
-  senderHandle: '@Barnaby',
-  senderAvatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-  recipientHandle: '@EarlGreyFae',
-  content: 'Welcome to the frontier! If you ever need shelter or news on astral rifts, my hearth at the Gilded Gryphon is always open.',
-  timestamp: '2026-09-15T20:30:00.000Z'
-}, {
-  id: 'dm_2',
-  senderUserId: 'user_player2',
-  senderName: 'Barnaby Quick-Paws',
-  senderHandle: '@Barnaby',
-  senderAvatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-  recipientHandle: '@EarlGreyFae',
-  content: 'I sent you a world invite to collaborate on Aethelgard as an Editor!',
-  inviteWorldId: 'world_aethelgard',
-  inviteWorldName: 'Aethelgard: The Astral Frontier',
-  inviteRole: 'editor',
-  inviteStatus: 'accepted',
-  timestamp: '2026-09-15T20:32:00.000Z'
-}, {
-  id: 'dm_3',
-  senderUserId: 'user_player1',
-  senderName: 'Kitty',
-  senderHandle: '@EarlGreyFae',
-  senderAvatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  recipientHandle: '@Barnaby',
-  content: 'Thank you Barnaby! The tavern is looking wonderful.',
-  timestamp: '2026-09-15T20:35:00.000Z'
-}, {
-  id: 'dm_4',
-  senderUserId: 'user_netrunner',
-  senderName: 'Galaxy "Glitch" Chen',
-  senderHandle: '@GlitchQueen',
-  senderAvatarUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=200&auto=format&fit=crop&q=80',
-  recipientHandle: '@EarlGreyFae',
-  content: 'Hey Kitty! Slicing through some encrypted Megacorp frequencies right now. Check out this frequency spectrograph: https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80',
-  imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80',
-  timestamp: '2026-09-16T01:40:00.000Z'
-}, {
-  id: 'dm_5',
-  senderUserId: 'user_netrunner',
-  senderName: 'Galaxy "Glitch" Chen',
-  senderHandle: '@GlitchQueen',
-  senderAvatarUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=200&auto=format&fit=crop&q=80',
-  recipientHandle: '@EarlGreyFae',
-  content: 'We need more ears on the ground in Neo-Veridia! Come join the syndicate.',
-  inviteWorldId: 'world_neoveridia',
-  inviteWorldName: 'Neo-Veridia: Neon Shadows',
-  inviteRole: 'editor',
-  inviteStatus: 'pending',
-  timestamp: '2026-09-16T01:42:00.000Z'
-}];
-
+const DEFAULT_DMS = [
+  {
+    id: 'dm_grimgerbil_invite_1',
+    senderUserId: 'user_grimgerbil',
+    senderName: 'James',
+    senderHandle: '@GrimGerbil',
+    senderAvatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=GrimGerbil',
+    recipientHandle: '@EarlGreyFae',
+    content: "I created our world Wonderworld! Here is your invite to join.",
+    inviteWorldId: 'world_wonderworld',
+    inviteWorldName: 'Wonderworld',
+    inviteRole: 'editor',
+    inviteStatus: 'pending',
+    timestamp: '2026-09-16T19:15:00.000Z'
+  },
+  {
+    id: 'dm_1',
+    senderUserId: 'user_player2',
+    senderName: 'Barnaby Quick-Paws',
+    senderHandle: '@Barnaby',
+    senderAvatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
+    recipientHandle: '@EarlGreyFae',
+    content: 'Welcome to the frontier! If you ever need shelter or news on astral rifts, my hearth at the Gilded Gryphon is always open.',
+    timestamp: '2026-09-15T20:30:00.000Z'
+  },
+  {
+    id: 'dm_2',
+    senderUserId: 'user_player2',
+    senderName: 'Barnaby Quick-Paws',
+    senderHandle: '@Barnaby',
+    senderAvatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
+    recipientHandle: '@EarlGreyFae',
+    content: 'I sent you a world invite to collaborate on Aethelgard as an Editor!',
+    inviteWorldId: 'world_aethelgard',
+    inviteWorldName: 'Aethelgard: The Astral Frontier',
+    inviteRole: 'editor',
+    inviteStatus: 'accepted',
+    timestamp: '2026-09-15T20:32:00.000Z'
+  }
+];
 // --- Superadmin & Passkey Utilities ---
 function isSuperAdmin(profile) {
   return (profile?.handle || '').trim().toLowerCase() === '@earlgreyfae';
@@ -1017,8 +1001,6 @@ const SYSTEM_ACCOUNTS = {
   '@earlgreyfae': {
     name: 'Kitty',
     handle: '@EarlGreyFae',
-    email: 'celticheroesscreenshots@gmail.com',
-    emailVerified: true,
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     passkeyCredentialId: null,
     createdAt: '2026-09-16T00:00:00.000Z'
@@ -1087,6 +1069,18 @@ const DEFAULT_USER_PROFILE = {
   linkedGoogleAccount: undefined
 };
 const DEFAULT_WORLDS = [{
+  id: 'world_wonderworld',
+  name: 'Wonderworld',
+  genre: 'Fantasy & Mystery',
+  tagline: 'A fantastical wonderland of mystery, forgotten magic, and hidden realms.',
+  description: 'Created by @GrimGerbil as our dedicated shared campaign world.',
+  coverUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
+  creatorUserId: 'user_grimgerbil',
+  creatorHandle: '@GrimGerbil',
+  members: [
+    { userId: 'user_grimgerbil', handle: '@GrimGerbil', role: 'creator', joinedAt: '2026-09-16T19:00:00.000Z' }
+  ]
+}, {
   id: 'world_aethelgard',
   name: 'Aethelgard: Astral Frontier',
   genre: 'High Mystery Fantasy',
@@ -1131,7 +1125,11 @@ const DEFAULT_WORLDS = [{
     joinedAt: '2026-09-05T12:00:00.000Z'
   }]
 }];
-const DEFAULT_CHANNELS = [{
+const DEFAULT_CHANNELS = [
+  { id: 'ch_ww_main', worldId: 'world_wonderworld', name: 'main-roleplay', description: 'Primary IC roleplay scene thread for Wonderworld.', topic: 'The adventure begins.' },
+  { id: 'ch_ww_images', worldId: 'world_wonderworld', name: 'related-images', description: 'Visual references, maps, and character art.', topic: 'Maps and scene artwork.' },
+  { id: 'ch_ww_ooc', worldId: 'world_wonderworld', name: 'ooc-lounge', description: 'Out-of-character chat and campaign planning.', topic: 'Plot discussion & session notes.' },
+  {
   id: 'ch_tavern',
   worldId: 'world_aethelgard',
   name: 'the-gilded-gryphon',
@@ -1528,136 +1526,29 @@ function PasskeyModal({ isOpen, onClose, userProfile, onPasskeyCreated }) {
   }), /*#__PURE__*/React.createElement("span", null, loading ? "Authenticating..." : "Register Passkey")))));
 }
 
-// --- 6-Digit Email Verification Modal ---
-function EmailVerificationModal({ isOpen, onClose, email, handle, onVerified }) {
-  const [code, setCode] = useState('');
+// --- Change Password Modal ---
+function ChangePasswordModal({ isOpen, onClose, userProfile, onUpdatePassword }) {
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
   const [errorMsg, setErrorMsg] = useState(null);
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [dispatchStatus, setDispatchStatus] = useState({ loading: false, msg: null, isError: false });
-  const [activeCode, setActiveCode] = useState(() => {
-    try {
-      return localStorage.getItem('rphub_active_verification_code') || '582914';
-    } catch (e) {
-      return '582914';
-    }
-  });
-
-  const triggerServerSend = async (targetEmail) => {
-    if (!targetEmail) return;
-    setDispatchStatus({ loading: true, msg: 'Contacting server email dispatcher...', isError: false });
-    setErrorMsg(null);
-    try {
-      const res = await fetch('/api/send-verification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetEmail, handle: handle || '' })
-      });
-      const data = await res.json();
-      if (data.dispatched) {
-        setDispatchStatus({
-          loading: false,
-          msg: `✓ 6-digit confirmation code dispatched to ${targetEmail}! Please check your inbox and spam folder.`,
-          isError: false
-        });
-      } else if (data.configured === false) {
-        setDispatchStatus({
-          loading: false,
-          msg: `Server notice: Outbound mail service (SMTP / Resend API) is not configured in Render environment. (Code: ${data.code}). You can click "Verify & Unlock Chat" below to activate now.`,
-          isError: false
-        });
-        if (data.code) {
-          setActiveCode(data.code);
-          try { localStorage.setItem('rphub_active_verification_code', data.code); } catch(e){}
-        }
-      } else {
-        setDispatchStatus({ loading: false, msg: data.message || 'Verification code requested.', isError: false });
-      }
-    } catch (err) {
-      setDispatchStatus({
-        loading: false,
-        msg: 'Verification server reached offline fallback. You can click "Verify & Unlock Chat" below to activate.',
-        isError: false
-      });
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen && email) {
-      triggerServerSend(email);
-    }
-  }, [isOpen, email]);
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
+  const [successMsg, setSuccessMsg] = useState(null);
 
   if (!isOpen) return null;
 
-  const handleResendCode = () => {
-    if (resendCooldown > 0) return;
-    setCode('');
+  const handleSubmit = (e) => {
+    e.preventDefault();
     setErrorMsg(null);
-    setResendCooldown(30);
-    triggerServerSend(email || 'your email');
-  };
-
-  const handleVerify = async (e) => {
-    e && e.preventDefault();
-    const cleanCode = code.trim();
-
-    // If blank, allow instant activation
-    if (!cleanCode) {
-      onVerified();
+    if (!newPw || newPw.trim().length < 4) {
+      return setErrorMsg('New password must be at least 4 characters.');
+    }
+    if (newPw !== confirmPw) {
+      return setErrorMsg('New passwords do not match.');
+    }
+    onUpdatePassword(newPw.trim());
+    setSuccessMsg('✓ Password updated successfully!');
+    setTimeout(() => {
       onClose();
-      return;
-    }
-
-    if (cleanCode === '749215') {
-      setErrorMsg('Code 749215 has been retired and invalidated. Please use the new code sent to your email.');
-      return;
-    }
-
-    // Try server verification API first
-    try {
-      const res = await fetch('/api/verify-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email || '', code: cleanCode })
-      });
-      const data = await res.json();
-      if (data.verified || data.success) {
-        onVerified();
-        onClose();
-        return;
-      } else if (data.error) {
-        setErrorMsg(data.error);
-        return;
-      }
-    } catch (err) {
-      // Offline fallback
-      if (cleanCode === activeCode || cleanCode.length === 6) {
-        onVerified();
-        onClose();
-        return;
-      }
-    }
-
-    if (cleanCode === activeCode || cleanCode.length === 6) {
-      onVerified();
-      onClose();
-    } else {
-      setErrorMsg('Invalid verification code. Please check your email or click "Resend Code".');
-    }
+    }, 1200);
   };
 
   return /*#__PURE__*/React.createElement("div", {
@@ -1671,55 +1562,48 @@ function EmailVerificationModal({ isOpen, onClose, email, handle, onVerified }) 
     className: "flex items-center space-x-2"
   }, /*#__PURE__*/React.createElement("div", {
     className: "w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400"
-  }, /*#__PURE__*/React.createElement(Icons.Mail, {
+  }, /*#__PURE__*/React.createElement(Icons.Lock || Icons.Key, {
     className: "w-4 h-4"
   })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
     className: "font-bold text-sm text-slate-100"
-  }, "Verify Email Address"), /*#__PURE__*/React.createElement("p", {
+  }, "Change Account Password"), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400"
-  }, "Unlock chat, DMs, and cross-device cloud sync"))), /*#__PURE__*/React.createElement("button", {
+  }, "Update sign-in password for ", userProfile?.handle))), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: onClose,
     className: "p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
   }, /*#__PURE__*/React.createElement(Icons.X, {
     className: "w-5 h-5"
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "p-3 rounded-2xl bg-slate-850 border border-slate-750 space-y-2 text-xs text-slate-300 leading-relaxed"
-  }, /*#__PURE__*/React.createElement("p", null, "A 6-digit confirmation code is dispatched from the server to:"), /*#__PURE__*/React.createElement("div", {
-    className: "font-mono font-bold text-cyan-300 bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-800 break-all"
-  }, email || 'Your Linked Email'), dispatchStatus.msg && /*#__PURE__*/React.createElement("div", {
-    className: `p-2 rounded-xl text-[11px] font-semibold border ${dispatchStatus.isError ? 'bg-rose-950/80 border-rose-500/40 text-rose-300' : 'bg-slate-800/90 border-cyan-500/30 text-cyan-300'}`
-  }, dispatchStatus.msg), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-400 pt-0.5"
-  }, "Enter the 6-digit code below to verify your account:")), /*#__PURE__*/React.createElement("form", {
-    onSubmit: handleVerify,
+  }))), errorMsg && /*#__PURE__*/React.createElement("div", {
+    className: "p-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold text-center"
+  }, errorMsg), successMsg && /*#__PURE__*/React.createElement("div", {
+    className: "p-2 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center"
+  }, successMsg), /*#__PURE__*/React.createElement("form", {
+    onSubmit: handleSubmit,
     className: "space-y-3"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col items-center justify-center py-2 space-y-2"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "text",
-    inputMode: "numeric",
-    pattern: "[0-9]*",
-    maxLength: 6,
-    value: code,
-    onChange: e => {
-      setCode(e.target.value.replace(/\D/g, ''));
-      setErrorMsg(null);
-    },
-    placeholder: "• • • • • •",
-    className: "w-44 text-center text-xl font-mono font-bold tracking-[0.35em] bg-slate-800 border border-slate-750 focus:border-cyan-400 rounded-xl py-2 px-3 text-cyan-300 focus:outline-none shadow-inner placeholder:text-slate-600 placeholder:tracking-widest"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-center"
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    disabled: resendCooldown > 0 || dispatchStatus.loading,
-    onClick: handleResendCode,
-    className: `text-xs px-3 py-1.5 rounded-xl border font-semibold transition flex items-center space-x-1.5 ${resendCooldown > 0 ? 'bg-slate-800/40 border-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-750 text-cyan-300 hover:text-cyan-200 border-slate-700 shadow-sm active:scale-95'}`
-  }, /*#__PURE__*/React.createElement(Icons.Clock, {
-    className: "w-3.5 h-3.5"
-  }), /*#__PURE__*/React.createElement("span", null, resendCooldown > 0 ? `Resend Code (${resendCooldown}s)` : 'Resend Code')))), errorMsg && /*#__PURE__*/React.createElement("div", {
-    className: "p-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold text-center"
-  }, errorMsg), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "New Password"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    required: true,
+    value: newPw,
+    onChange: e => setNewPw(e.target.value),
+    placeholder: "At least 4 characters",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "Confirm New Password"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    required: true,
+    value: confirmPw,
+    onChange: e => setConfirmPw(e.target.value),
+    placeholder: "Repeat new password",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between pt-2 border-t border-slate-800 gap-2"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -1730,14 +1614,12 @@ function EmailVerificationModal({ isOpen, onClose, email, handle, onVerified }) 
     className: "px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition flex items-center space-x-1.5 active:scale-98"
   }, /*#__PURE__*/React.createElement(Icons.Check, {
     className: "w-4 h-4"
-  }), /*#__PURE__*/React.createElement("span", null, "Verify & Unlock Chat"))))))
+  }), /*#__PURE__*/React.createElement("span", null, "Save Password"))))));
 }
-
 function LandingPage({ onLoginSuccess }) {
   const [mode, setMode] = useState('login'); // 'login' or 'create'
   const [handle, setHandle] = useState('');
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [enablePasskey, setEnablePasskey] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -1767,24 +1649,18 @@ function LandingPage({ onLoginSuccess }) {
       return setErrorMsg('No account found for ' + h + '. Check the handle or click "Create Account" below.');
     }
 
-    // Require exact password verification
     if (acc.password) {
       if (acc.password !== password.trim()) {
         return setErrorMsg('Incorrect password for ' + h + '. Access denied.');
       }
     } else {
-      // First time password establishment for this account
       acc.password = password.trim();
       AccountManager.saveAccount(acc);
     }
 
-    const updated = {
-      ...acc,
-      emailVerified: (acc.handle?.toLowerCase() === '@earlgreyfae' || acc.email === 'celticheroesscreenshots@gmail.com') ? true : (acc.emailVerified || false)
-    };
-    AccountManager.setActiveHandle(updated.handle);
-    AccountManager.saveAccount(updated);
-    onLoginSuccess(updated);
+    AccountManager.setActiveHandle(acc.handle);
+    AccountManager.saveAccount(acc);
+    onLoginSuccess(acc);
   };
 
   const handlePasskeySignIn = async () => {
@@ -1818,15 +1694,18 @@ function LandingPage({ onLoginSuccess }) {
     setErrorMsg(null);
 
     let h = handle.trim();
-    if (!h) return setErrorMsg('Please enter a unique @handle.');
+    if (!h) return setErrorMsg('Please enter an @handle.');
     if (!h.startsWith('@')) h = '@' + h;
+
+    if (!/^@[a-zA-Z0-9_]{2,30}$/.test(h)) {
+      return setErrorMsg('Handle format invalid. Must start with @ and contain only letters, numbers, and underscores (e.g. @GrimGerbil).');
+    }
 
     if (h.toLowerCase() === '@earlgreyfae') {
       return setErrorMsg('The handle @EarlGreyFae is reserved for the Superadmin.');
     }
 
     if (!name.trim()) return setErrorMsg('Please enter your display name.');
-    if (!email.trim()) return setErrorMsg('Please enter a valid email address.');
     if (!password || password.trim().length < 4) {
       return setErrorMsg('Please enter a password with at least 4 characters.');
     }
@@ -1846,9 +1725,7 @@ function LandingPage({ onLoginSuccess }) {
     const newAcc = {
       name: name.trim(),
       handle: h,
-      email: email.trim(),
       password: password.trim(),
-      emailVerified: false,
       avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name.trim())}`,
       passkeyCredentialId: passkeyId,
       createdAt: new Date().toISOString()
@@ -1913,7 +1790,7 @@ function LandingPage({ onLoginSuccess }) {
     required: true,
     value: handle,
     onChange: e => setHandle(e.target.value),
-    placeholder: "e.g. @yourhandle",
+    placeholder: "e.g. @GrimGerbil or @EarlGreyFae",
     autoFocus: true,
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400"
   })), /*#__PURE__*/React.createElement("div", {
@@ -1948,33 +1825,24 @@ function LandingPage({ onLoginSuccess }) {
     required: true,
     value: name,
     onChange: e => setName(e.target.value),
-    placeholder: "e.g. Player Name",
+    placeholder: "e.g. Kitty or James",
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
-  })), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] text-slate-400"
+  }, "Your in-game or player display name. You can change this anytime in Settings.")), /*#__PURE__*/React.createElement("div", {
     className: "space-y-1"
   }, /*#__PURE__*/React.createElement("label", {
     className: "block text-xs font-bold text-slate-300"
-  }, "@handle (Unique Identifier)"), /*#__PURE__*/React.createElement("input", {
+  }, "@handle (Unique Username)"), /*#__PURE__*/React.createElement("input", {
     type: "text",
     required: true,
     value: handle,
     onChange: e => setHandle(e.target.value),
-    placeholder: "e.g. @player",
+    placeholder: "e.g. @GrimGerbil",
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-1"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "block text-xs font-bold text-slate-300"
-  }, "Email Address"), /*#__PURE__*/React.createElement("input", {
-    type: "email",
-    required: true,
-    value: email,
-    onChange: e => setEmail(e.target.value),
-    placeholder: "e.g. player@example.com",
-    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
   }), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400"
-  }, "Link your email address to enable cross-device cloud sync and profile recovery.")), /*#__PURE__*/React.createElement("div", {
+  }, "Must start with @, letters, numbers, and underscores only (e.g. @GrimGerbil). Used to log in, DM, and invite to worlds.")), /*#__PURE__*/React.createElement("div", {
     className: "space-y-1"
   }, /*#__PURE__*/React.createElement("label", {
     className: "block text-xs font-bold text-slate-300"
@@ -1983,7 +1851,7 @@ function LandingPage({ onLoginSuccess }) {
     required: true,
     value: password,
     onChange: e => setPassword(e.target.value),
-    placeholder: "Choose a secure password",
+    placeholder: "Choose a secure password (at least 4 characters)",
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
   })), /*#__PURE__*/React.createElement("label", {
     className: "flex items-start space-x-2.5 p-2.5 rounded-xl bg-slate-850 border border-slate-750 cursor-pointer"
@@ -1996,16 +1864,16 @@ function LandingPage({ onLoginSuccess }) {
     className: "text-xs text-slate-300"
   }, /*#__PURE__*/React.createElement("span", {
     className: "font-semibold block text-slate-200"
-  }, "Register Device Passkey"), /*#__PURE__*/React.createElement("span", {
+  }, "Register Device Passkey (Optional)"), /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] text-slate-400 block mt-0.5"
-  }, "Allow signing in instantly using Apple Face ID, Touch ID, Windows Hello, or Android Biometrics."))), /*#__PURE__*/React.createElement("button", {
+  }, "Enables fast one-click sign in using Apple Face ID, Touch ID, or Windows Hello on this device. You can also add or manage passkeys later in Settings."))), /*#__PURE__*/React.createElement("button", {
     type: "submit",
     className: "w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition active:scale-98"
-  }, "Create Roleplay Hub Account"))))
+  }, "Create Account & Enter Roleplay Hub"))))
 }
 function App() {
   const [currentUserHandle, setCurrentUserHandle] = useState(() => AccountManager.getActiveHandle());
-  const [isGlobalVerifyOpen, setIsGlobalVerifyOpen] = useState(false);
+
   const [isGlobalNewDMOpen, setIsGlobalNewDMOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   useEffect(() => {
@@ -2147,6 +2015,15 @@ function App() {
         try { SoundFX.play('pop'); } catch(e){}
         return { ...prev, messages: [...prev.messages, data] };
       });
+    } else if (type === 'NEW_WORLD' && data) {
+      setAppState(prev => {
+        const wExists = prev.worlds.some(w => w.id === data.world?.id);
+        const nextWorlds = wExists ? prev.worlds : [...prev.worlds, data.world];
+        const nextChannels = Array.isArray(data.channels)
+          ? Array.from(new Map([...prev.channels, ...data.channels.map(c => [c.id, c])]).values())
+          : prev.channels;
+        return { ...prev, worlds: nextWorlds, channels: nextChannels };
+      });
     } else if (type === 'NEW_DM' && data) {
       setAppState(prev => {
         if ((prev.dmMessages || []).some(m => m.id === data.id)) return prev;
@@ -2193,6 +2070,25 @@ function App() {
         if (e.data) handleIncomingNetworkEvent(e.data);
       };
     } catch (e) {}
+
+    // Initial persistent hub sync over HTTP
+    try {
+      fetch('/api/hub-data')
+        .then(r => r.json())
+        .then(data => {
+          if (data && (data.dmMessages || data.worlds)) {
+            setAppState(prev => ({
+              ...prev,
+              worlds: Array.from(new Map([...prev.worlds, ...(data.worlds || [])].map(w => [w.id, w])).values()),
+              channels: Array.from(new Map([...prev.channels, ...(data.channels || [])].map(c => [c.id, c])).values()),
+              messages: Array.from(new Map([...prev.messages, ...(data.messages || [])].map(m => [m.id, m])).values()),
+              dmMessages: Array.from(new Map([...(prev.dmMessages || []), ...(data.dmMessages || [])].map(d => [d.id, d])).values()),
+              wikiEntries: Array.from(new Map([...prev.wikiEntries, ...(data.wikiEntries || [])].map(w => [w.id, w])).values())
+            }));
+          }
+        })
+        .catch(() => {});
+    } catch(e) {}
 
     // 2. Real-time cross-device WebSocket sync when hosted online
     if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
@@ -2478,6 +2374,13 @@ function App() {
       dmMessages: [...(prev.dmMessages || []), newDM]
     }));
     broadcast('NEW_DM', newDM);
+    try {
+      fetch('/api/send-dm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDM)
+      }).catch(() => {});
+    } catch(e) {}
   };
   const handleAcceptInvite = inviteMsg => {
     const targetWorldId = inviteMsg.inviteWorldId;
@@ -2785,7 +2688,7 @@ function App() {
     },
     externalNewDMOpen: isGlobalNewDMOpen,
     onCloseExternalNewDM: () => setIsGlobalNewDMOpen(false),
-    onOpenVerifyModal: () => setIsGlobalVerifyOpen(true)
+    
   }), activeTab === 'cast' && /*#__PURE__*/React.createElement(CastScreen, {
     wikiEntries: appState.wikiEntries,
     worlds: appState.worlds,
@@ -2861,11 +2764,16 @@ function App() {
           activeWorldId: w.id,
           activeChannelId: defaultWorldChannels[0].id
         };
-        if (next.userProfile?.linkedGoogleAccount?.email) {
-          saveGoogleWorlds(next.userProfile.linkedGoogleAccount.email, next.worlds);
-        }
         return next;
       });
+      broadcast('NEW_WORLD', { world: w, channels: defaultWorldChannels });
+      try {
+        fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ worlds: [w], channels: defaultWorldChannels })
+        }).catch(() => {});
+      } catch(e) {}
       setIsWorldModalOpen(false);
     },
     onOpenPermissions: targetWorld => {
@@ -2959,17 +2867,7 @@ function App() {
       setIsPlayerProfileOpen(false);
       setActiveTab('settings');
     }
-  }), isGlobalVerifyOpen && /*#__PURE__*/React.createElement(EmailVerificationModal, {
-    isOpen: isGlobalVerifyOpen,
-    email: appState.userProfile?.email,
-    onClose: () => setIsGlobalVerifyOpen(false),
-    onVerified: () => {
-      const updated = { ...appState.userProfile, emailVerified: true };
-      setAppState(prev => ({ ...prev, userProfile: updated }));
-      AccountManager.saveAccount(updated);
-      setIsGlobalVerifyOpen(false);
-    }
-  }), /*#__PURE__*/React.createElement("nav", {
+  }),  /*#__PURE__*/React.createElement("nav", {
     className: "flex-shrink-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 safe-bottom w-full"
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-md mx-auto flex items-center justify-around px-2 py-1"
@@ -4197,19 +4095,7 @@ function DMsScreen({
     ref: scrollRef
   })), /*#__PURE__*/React.createElement("div", {
     className: "p-2 sm:p-2.5 bg-slate-900 border-t border-slate-800 flex-shrink-0"
-  }, (!userProfile?.emailVerified && !isSuperAdmin(userProfile)) ? /*#__PURE__*/React.createElement("div", {
-    className: "p-2.5 bg-amber-950/90 border border-amber-500/40 rounded-xl text-center space-y-1.5"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-amber-300 text-xs font-bold flex items-center justify-center space-x-1"
-  }, /*#__PURE__*/React.createElement(Icons.Lock, {
-    className: "w-3.5 h-3.5"
-  }), /*#__PURE__*/React.createElement("span", null, "DMs Locked — Email Verification Required")), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-300"
-  }, "Verify your email with the 6-digit confirmation code to send direct messages."), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => onOpenVerifyModal && onOpenVerifyModal(),
-    className: "px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow"
-  }, "Enter 6-Digit Code to Unlock")) : /*#__PURE__*/React.createElement("div", {
     className: "max-w-4xl mx-auto flex flex-col space-y-1.5"
   }, attachedImage && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2 p-1.5 bg-slate-800 rounded-xl border border-slate-700"
@@ -5159,7 +5045,7 @@ function SettingsScreen({
   onLogout
 }) {
   const [isPasskeyModalOpen, setIsPasskeyModalOpen] = useState(false);
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const [name, setName] = useState(appState.userProfile?.name || 'Kitty');
   const [handle, setHandle] = useState(appState.userProfile?.handle || '@EarlGreyFae');
   const [avatar, setAvatar] = useState(appState.userProfile?.avatarUrl || '');
@@ -5598,30 +5484,30 @@ function SettingsScreen({
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
-  }, /*#__PURE__*/React.createElement(Icons.Mail, {
+    className: "flex items-center space-x-2 min-w-0"
+  }, /*#__PURE__*/React.createElement(Icons.Lock || Icons.Key, {
     className: "w-4 h-4 text-cyan-400 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("span", {
     className: "font-bold text-xs text-slate-200"
-  }, "Linked Account & Email Verification")), appState.userProfile?.emailVerified ? /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-0.5 rounded-full font-bold whitespace-nowrap"
-  }, "✓ Verified & Active") : /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] bg-amber-950 text-amber-300 border border-amber-600/50 px-2 py-0.5 rounded-full font-bold whitespace-nowrap"
-  }, "Unverified (Chat Locked)")), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-400 leading-relaxed"
-  }, "Link your email (Gmail, iCloud, Outlook, Yahoo) to verify your player account and unlock in-character chat and DMs."), /*#__PURE__*/React.createElement("div", {
-    className: "p-3 bg-slate-800/80 rounded-xl border border-slate-750 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 flex-1"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs font-bold text-slate-200 break-all"
-  }, appState.userProfile?.email || 'celticheroesscreenshots@gmail.com'), /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 mt-0.5 font-mono"
-  }, "Bound to ", appState.userProfile?.handle)), !appState.userProfile?.emailVerified && /*#__PURE__*/React.createElement("button", {
+  }, "Account Password")), /*#__PURE__*/React.createElement("button", {
     type: "button",
-    onClick: () => setIsVerifyModalOpen(true),
-    className: "w-full sm:w-auto px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow transition whitespace-nowrap text-center flex-shrink-0 active:scale-98"
-  }, "Verify Now"))), /*#__PURE__*/React.createElement("div", {
+    onClick: () => setIsChangePasswordModalOpen(true),
+    className: "px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 border border-cyan-500/30 font-bold text-xs flex items-center space-x-1 shadow transition whitespace-nowrap flex-shrink-0"
+  }, /*#__PURE__*/React.createElement(Icons.Edit3, {
+    className: "w-3 h-3"
+  }), /*#__PURE__*/React.createElement("span", null, "Change Password"))), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-400 leading-relaxed"
+  }, "Required when signing into your @handle on any device without a registered biometric passkey."), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between p-2.5 rounded-xl bg-slate-800/70 border border-slate-750 text-xs"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2"
+  }, /*#__PURE__*/React.createElement(Icons.Shield, {
+    className: "w-4 h-4 text-emerald-400"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-200"
+  }, "Password Protection: Active")), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full font-bold"
+  }, "Enabled"))), /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-850 p-3.5 sm:p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap"
@@ -6040,24 +5926,15 @@ function SettingsScreen({
       AccountManager.saveAccount(updated);
       setIsPasskeyModalOpen(false);
     }
-  }), isVerifyModalOpen && /*#__PURE__*/React.createElement(EmailVerificationModal, {
-    isOpen: isVerifyModalOpen,
-    email: appState.userProfile?.email || 'celticheroesscreenshots@gmail.com',
-    onClose: () => setIsVerifyModalOpen(false),
-    onVerified: () => {
-      const email = appState.userProfile?.email || 'celticheroesscreenshots@gmail.com';
-      const updated = {
-        ...appState.userProfile,
-        emailVerified: true,
-        linkedGoogleAccount: {
-          email: email,
-          verified: true,
-          linkedAt: new Date().toISOString()
-        }
-      };
+  }), isChangePasswordModalOpen && /*#__PURE__*/React.createElement(ChangePasswordModal, {
+    isOpen: isChangePasswordModalOpen,
+    userProfile: appState.userProfile,
+    onClose: () => setIsChangePasswordModalOpen(false),
+    onUpdatePassword: (newPw) => {
+      const updated = { ...appState.userProfile, password: newPw };
       onUpdateState({ userProfile: updated });
       AccountManager.saveAccount(updated);
-      setIsVerifyModalOpen(false);
+      setIsChangePasswordModalOpen(false);
     }
   }));
 }
