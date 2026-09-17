@@ -2033,41 +2033,83 @@ function App() {
       return Array.from(map.values());
     };
 
-    // Polling & sync function: guarantees DMs and Worlds are fetched even if WebSocket disconnected
+    // Polling & sync function: guarantees DMs and Worlds are fetched from server & cloud relay
     const syncHubData = () => {
-      if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
-      fetch('/api/hub-data')
-        .then(r => r.json())
-        .then(data => {
-          if (!data) return;
-          setAppState(prev => {
-            const serverDMs = Array.isArray(data.dmMessages) ? data.dmMessages.filter(d => d && d.id) : [];
-            const localDMs = Array.isArray(prev.dmMessages) ? prev.dmMessages.filter(d => d && d.id) : [];
-            const localIds = new Set(localDMs.map(d => d.id));
-            const hasNew = serverDMs.some(d => !localIds.has(d.id));
-            if (hasNew) {
-              try { SoundFX.play('pop'); } catch(e){}
-            }
+      // A. Query local / Render backend server
+      if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+        fetch('/api/hub-data')
+          .then(r => r.json())
+          .then(data => {
+            if (!data) return;
+            setAppState(prev => {
+              const serverDMs = Array.isArray(data.dmMessages) ? data.dmMessages.filter(d => d && d.id) : [];
+              const localDMs = Array.isArray(prev.dmMessages) ? prev.dmMessages.filter(d => d && d.id) : [];
+              const localIds = new Set(localDMs.map(d => d.id));
+              const hasNew = serverDMs.some(d => !localIds.has(d.id));
+              if (hasNew) {
+                try { SoundFX.play('pop'); } catch(e){}
+              }
 
-            return {
-              ...prev,
-              worlds: safeMerge(prev.worlds, data.worlds),
-              channels: safeMerge(prev.channels, data.channels),
-              messages: safeMerge(prev.messages, data.messages),
-              dmMessages: safeMerge(localDMs, serverDMs),
-              wikiEntries: safeMerge(prev.wikiEntries, data.wikiEntries)
-            };
-          });
-        })
-        .catch(() => {});
+              return {
+                ...prev,
+                worlds: safeMerge(prev.worlds, data.worlds),
+                channels: safeMerge(prev.channels, data.channels),
+                messages: safeMerge(prev.messages, data.messages),
+                dmMessages: safeMerge(localDMs, serverDMs),
+                wikiEntries: safeMerge(prev.wikiEntries, data.wikiEntries)
+              };
+            });
+          })
+          .catch(() => {});
+      }
+
+      // B. Query global high-availability cloud relay (catches messages sent while phone was asleep or on static hosting)
+      try {
+        fetch('https://ntfy.sh/rphub_dm_RP7749/json?poll=1&since=12h')
+          .then(r => r.text())
+          .then(raw => {
+            if (!raw) return;
+            const lines = raw.trim().split('\n');
+            lines.forEach(line => {
+              try {
+                const item = JSON.parse(line);
+                if (item && item.message) {
+                  const payload = JSON.parse(item.message);
+                  if (payload && payload.type === 'NEW_DM' && payload.data && payload.data.id) {
+                    setAppState(prev => {
+                      const list = prev.dmMessages || [];
+                      if (list.some(m => m.id === payload.data.id)) return prev;
+                      try { SoundFX.play('pop'); } catch(e){}
+                      return { ...prev, dmMessages: [...list, payload.data] };
+                    });
+                  }
+                }
+              } catch(e) {}
+            });
+          })
+          .catch(() => {});
+      } catch(e) {}
     };
 
-    // 1. Run sync immediately
+    // 1. Initial sync immediately
     syncHubData();
-    // 2. Poll every 3 seconds for guaranteed real-time message delivery
+    // 2. Poll every 3 seconds for guaranteed message delivery
     const pollTimer = setInterval(syncHubData, 3000);
 
-    // 3. WebSocket connection with automatic exponential reconnect
+    // 3. Wake-up listener for mobile phones (when phone unlocks or tab regains focus)
+    const onWakeUp = () => {
+      syncHubData();
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') onWakeUp();
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', onWakeUp);
+    }
+
+    // 4. Primary Local / Render WebSocket connection with auto-reconnect
     let ws = null;
     let reconnectTimeout = null;
     let isMounted = true;
@@ -2093,7 +2135,6 @@ function App() {
           } catch(e) {}
         };
         ws.onclose = () => {
-          setIsOnline(false);
           if (isMounted) {
             clearTimeout(reconnectTimeout);
             reconnectTimeout = setTimeout(connectWS, 2500);
@@ -2111,12 +2152,60 @@ function App() {
     };
     connectWS();
 
+    // 5. Global Cloud Relay WebSocket stream (instant millisecond cross-device push anywhere)
+    let cloudWS = null;
+    let cloudReconnect = null;
+    const connectCloudWS = () => {
+      if (!isMounted || typeof window === 'undefined') return;
+      try {
+        cloudWS = new WebSocket('wss://ntfy.sh/rphub_dm_RP7749/ws');
+        cloudWS.onopen = () => {
+          setIsOnline(true);
+        };
+        cloudWS.onmessage = (event) => {
+          try {
+            const item = JSON.parse(event.data);
+            if (item && item.event === 'message' && item.message) {
+              const payload = JSON.parse(item.message);
+              if (payload && payload.type === 'NEW_DM' && payload.data && payload.data.id) {
+                setAppState(prev => {
+                  const list = prev.dmMessages || [];
+                  if (list.some(m => m.id === payload.data.id)) return prev;
+                  try { SoundFX.play('pop'); } catch(e){}
+                  return { ...prev, dmMessages: [...list, payload.data] };
+                });
+              }
+            }
+          } catch(e) {}
+        };
+        cloudWS.onclose = () => {
+          if (isMounted) {
+            clearTimeout(cloudReconnect);
+            cloudReconnect = setTimeout(connectCloudWS, 3000);
+          }
+        };
+        cloudWS.onerror = () => {
+          cloudWS?.close();
+        };
+      } catch(e) {
+        if (isMounted) {
+          clearTimeout(cloudReconnect);
+          cloudReconnect = setTimeout(connectCloudWS, 3000);
+        }
+      }
+    };
+    connectCloudWS();
+
     return () => {
       isMounted = false;
       clearInterval(pollTimer);
       clearTimeout(reconnectTimeout);
+      clearTimeout(cloudReconnect);
       if (channelRef.current) channelRef.current.close();
       if (wsRef.current) wsRef.current.close();
+      if (cloudWS) cloudWS.close();
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onWakeUp);
+      if (typeof window !== 'undefined') window.removeEventListener('focus', onWakeUp);
     };
   }, [appState.userId]);
   // Ensure Superadmin / EarlGreyFae is permanently verified on mobile and all active sessions
@@ -2348,12 +2437,15 @@ function App() {
   const handleSendDM = (content, recipientHandle, imageUrl, invite) => {
     let targetHandle = (recipientHandle || '').trim();
     if (!targetHandle.startsWith('@')) targetHandle = `@${targetHandle}`;
+    let myH = (appState.userProfile?.handle || currentUserHandle || '@EarlGreyFae').trim();
+    if (!myH.startsWith('@')) myH = `@${myH}`;
+
     const newDM = {
       id: `dm_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       senderUserId: appState.userId,
-      senderName: appState.userProfile.name,
-      senderHandle: appState.userProfile.handle,
-      senderAvatarUrl: appState.userProfile.avatarUrl,
+      senderName: appState.userProfile?.name || myH.replace('@', ''),
+      senderHandle: myH,
+      senderAvatarUrl: appState.userProfile?.avatarUrl,
       recipientHandle: targetHandle,
       content: content || '',
       imageUrl: imageUrl || undefined,
@@ -2363,6 +2455,8 @@ function App() {
       inviteStatus: invite ? 'pending' : undefined,
       timestamp: new Date().toISOString()
     };
+
+    // 1. Immediate local state update (Zero latency on screen)
     setAppState(prev => {
       const list = prev.dmMessages || [];
       return {
@@ -2370,12 +2464,26 @@ function App() {
         dmMessages: [...list.filter(d => d.id !== newDM.id), newDM]
       };
     });
+
+    // 2. Broadcast via BroadcastChannel & Local WebSocket
     broadcast('NEW_DM', newDM);
+
+    // 3. Dispatch to local Node server fallback
     try {
       fetch('/api/send-dm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newDM)
+      }).catch(() => {});
+    } catch(e) {}
+
+    // 4. Dispatch to global high-availability public cloud relay (ntfy.sh)
+    // Ensures real-time delivery even on GitHub Pages or across cellular LTE!
+    try {
+      fetch('https://ntfy.sh/rphub_dm_RP7749', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'NEW_DM', data: newDM })
       }).catch(() => {});
     } catch(e) {}
   };
@@ -3613,8 +3721,7 @@ function DMsScreen({
   onDeclineInvite,
   onSwitchToWorld,
   externalNewDMOpen,
-  onCloseExternalNewDM,
-  onOpenVerifyModal
+  onCloseExternalNewDM
 }) {
   const [inputText, setInputText] = useState('');
   const [attachedImage, setAttachedImage] = useState(null);
@@ -3627,51 +3734,17 @@ function DMsScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
-  // Known lore figures & cast affiliated with specific worlds
-  const KNOWN_SERVER_PEOPLE = [
-  {
-    worldId: 'world_wonderworld',
-    name: 'James',
-    handle: '@GrimGerbil',
-    avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=GrimGerbil',
-    role: 'Wonderworld Creator',
-    serverName: 'Wonderworld'
-  },
-  {
-    worldId: 'world_aethelgard',
-    name: 'Kitty',
-    handle: '@EarlGreyFae',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    role: 'Superadmin & World Creator',
-    serverName: 'Aethelgard: Astral Frontier'
-  }
-];
+  const norm = (h) => (h || '').trim().toLowerCase().replace(/^@/, '');
+  const myHandleNorm = norm(userProfile?.handle);
 
-  // 1. Identify which servers/worlds the user is ACTUALLY in
-  const myWorlds = useMemo(() => {
-    const myHandle = (userProfile?.handle || '').toLowerCase();
-    const myId = userId || '';
-    return (worlds || []).filter(w => {
-      if (!w) return false;
-      if (w.creatorUserId && w.creatorUserId === myId) return true;
-      if (w.creatorHandle && w.creatorHandle.toLowerCase() === myHandle) return true;
-      if (Array.isArray(w.members)) {
-        return w.members.some(m => m.userId && m.userId === myId || m.handle && m.handle.toLowerCase() === myHandle);
-      }
-      return false;
-    });
-  }, [worlds, userId, userProfile?.handle]);
-  const isUserInAnyServer = myWorlds.length > 0;
-
-  // 2. Gather real players only (Purged of all fake personas, NPCs, and wiki characters)
+  // 1. Identify real players
   const serverPeople = useMemo(() => {
-    const myHandle = (userProfile?.handle || '').toLowerCase();
     const map = new Map();
 
-    // Ensure the partner player is always available to chat with
-    if (myHandle === '@earlgreyfae') {
-      map.set('@grimgerbil', {
+    if (myHandleNorm === 'earlgreyfae') {
+      map.set('grimgerbil', {
         worldId: 'world_wonderworld',
         name: 'James',
         handle: '@GrimGerbil',
@@ -3680,7 +3753,7 @@ function DMsScreen({
         role: 'Player'
       });
     } else {
-      map.set('@earlgreyfae', {
+      map.set('earlgreyfae', {
         worldId: 'world_aethelgard',
         name: 'Kitty',
         handle: '@EarlGreyFae',
@@ -3690,19 +3763,18 @@ function DMsScreen({
       });
     }
 
-    // Include other real players who joined worlds
-    const FAKE_HANDLES = new Set(['@barnaby', '@obsidianscribe', '@verastarlight', '@eliasmalakor', '@glitchqueen', '@rookvance', '@storyseeker', '@mamasoftpaws', '@player2', '@netrunner']);
+    const FAKE_HANDLES = new Set(['barnaby', 'obsidianscribe', 'verastarlight', 'eliasmalakor', 'glitchqueen', 'rookvance', 'storyseeker', 'mamasoftpaws', 'player2', 'netrunner']);
     (worlds || []).forEach(w => {
       if (Array.isArray(w.members)) {
         w.members.forEach(m => {
-          const h = (m.handle || '').toLowerCase();
-          if (h && h !== myHandle && !FAKE_HANDLES.has(h)) {
-            if (!map.has(h)) {
-              map.set(h, {
+          const hn = norm(m.handle);
+          if (hn && hn !== myHandleNorm && !FAKE_HANDLES.has(hn)) {
+            if (!map.has(hn)) {
+              map.set(hn, {
                 worldId: w.id,
-                handle: m.handle,
+                handle: m.handle.startsWith('@') ? m.handle : '@' + m.handle,
                 name: m.name || m.handle.replace('@', ''),
-                avatarUrl: m.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(m.handle)}`,
+                avatarUrl: m.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(hn)}`,
                 serverName: w.name,
                 role: m.role || 'Player'
               });
@@ -3713,16 +3785,15 @@ function DMsScreen({
     });
 
     return Array.from(map.values());
-  }, [worlds, userProfile?.handle]);
-  // 3. Group conversations by handle (Real players only)
+  }, [worlds, myHandleNorm]);
+
+  // 2. Group conversations by handle
   const conversations = useMemo(() => {
     const map = new Map();
-    const myHandle = (userProfile?.handle || '').toLowerCase();
-    const FAKE_HANDLES = new Set(['@barnaby', '@obsidianscribe', '@verastarlight', '@eliasmalakor', '@glitchqueen', '@rookvance', '@storyseeker', '@mamasoftpaws', '@player2', '@netrunner']);
+    const FAKE_HANDLES = new Set(['barnaby', 'obsidianscribe', 'verastarlight', 'eliasmalakor', 'glitchqueen', 'rookvance', 'storyseeker', 'mamasoftpaws', 'player2', 'netrunner']);
 
-    // Seed real contacts
     serverPeople.forEach(p => {
-      map.set(p.handle.toLowerCase(), {
+      map.set(norm(p.handle), {
         handle: p.handle,
         name: p.name,
         avatarUrl: p.avatarUrl,
@@ -3734,30 +3805,33 @@ function DMsScreen({
       });
     });
 
-    // Scan all actual DM messages involving this user (purging fake handles)
     (dmMessages || []).forEach(msg => {
       if (!msg || !msg.senderHandle || !msg.recipientHandle) return;
-      const s = msg.senderHandle.toLowerCase();
-      const r = msg.recipientHandle.toLowerCase();
+      const s = norm(msg.senderHandle);
+      const r = norm(msg.recipientHandle);
       if (FAKE_HANDLES.has(s) || FAKE_HANDLES.has(r)) return;
 
-      const isSender = s === myHandle;
-      const isRecipient = r === myHandle;
+      const isSender = s === myHandleNorm;
+      const isRecipient = r === myHandleNorm;
       if (!isSender && !isRecipient) return;
 
       const otherHandle = isSender ? msg.recipientHandle : msg.senderHandle;
-      const low = otherHandle.toLowerCase();
-      const existing = map.get(low) || {
-        handle: otherHandle,
+      const otherNorm = norm(otherHandle);
+
+      const existing = map.get(otherNorm) || {
+        handle: otherHandle.startsWith('@') ? otherHandle : '@' + otherHandle,
         name: (isSender ? otherHandle : msg.senderName) || otherHandle.replace('@', ''),
-        avatarUrl: isSender ? `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(otherHandle)}` : msg.senderAvatarUrl,
+        avatarUrl: isSender ? `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(otherNorm)}` : msg.senderAvatarUrl,
         serverName: null,
         role: 'Player',
         hasMessages: true
       };
 
-      const textPreview = msg.inviteWorldName ? `World Invite: ${msg.inviteWorldName}` : (msg.content || (msg.imageUrl ? '[Image Attached]' : ''));
-      map.set(low, {
+      const textPreview = (msg.inviteWorldName || msg.worldInvite?.worldName)
+        ? `World Invite: ${msg.inviteWorldName || msg.worldInvite?.worldName}`
+        : (msg.content || (msg.imageUrl ? '[Image Attached]' : ''));
+
+      map.set(otherNorm, {
         ...existing,
         lastMessage: textPreview,
         lastTimestamp: msg.timestamp || existing.lastTimestamp,
@@ -3766,7 +3840,6 @@ function DMsScreen({
     });
 
     const list = Array.from(map.values());
-
     return list.sort((a, b) => {
       if (a.hasMessages && b.hasMessages) {
         return new Date(b.lastTimestamp || 0) - new Date(a.lastTimestamp || 0);
@@ -3775,100 +3848,66 @@ function DMsScreen({
       if (b.hasMessages) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [serverPeople, dmMessages, userProfile?.handle]);
-  // Active selection defaults to @GrimGerbil if viewing as Kitty, or first active conversation
+  }, [serverPeople, dmMessages, myHandleNorm]);
+
+  // 3. Selection
   const [selectedHandle, setSelectedHandle] = useState(() => {
-    const myH = (userProfile?.handle || '').toLowerCase();
-    if (myH === '@earlgreyfae') return '@GrimGerbil';
-    if (myH === '@grimgerbil') return '@EarlGreyFae';
+    if (myHandleNorm === 'earlgreyfae') return '@GrimGerbil';
+    if (myHandleNorm === 'grimgerbil') return '@EarlGreyFae';
     return conversations[0]?.handle || '@GrimGerbil';
   });
 
-  // If no handle is selected yet and conversations exist, default to the first
   useEffect(() => {
     if (!selectedHandle && conversations.length > 0) {
       setSelectedHandle(conversations[0].handle);
     }
   }, [conversations, selectedHandle]);
 
-  // Messages in active conversation
+  // 4. Messages in active conversation
   const activeMessages = useMemo(() => {
     if (!selectedHandle) return [];
-    const cur = selectedHandle.trim().toLowerCase();
-    const myHandle = (userProfile?.handle || '').trim().toLowerCase();
-    const FAKE_HANDLES = new Set(['@barnaby', '@obsidianscribe', '@verastarlight', '@eliasmalakor', '@glitchqueen', '@rookvance', '@storyseeker', '@mamasoftpaws']);
+    const curNorm = norm(selectedHandle);
+    const FAKE_HANDLES = new Set(['barnaby', 'obsidianscribe', 'verastarlight', 'eliasmalakor', 'glitchqueen', 'rookvance', 'storyseeker', 'mamasoftpaws']);
 
     return (dmMessages || []).filter(m => {
       if (!m || !m.senderHandle || !m.recipientHandle) return false;
-      const s = m.senderHandle.trim().toLowerCase();
-      const r = m.recipientHandle.trim().toLowerCase();
+      const s = norm(m.senderHandle);
+      const r = norm(m.recipientHandle);
       if (FAKE_HANDLES.has(s) || FAKE_HANDLES.has(r)) return false;
-      return (s === cur && r === myHandle) || (s === myHandle && r === cur);
+      return (s === curNorm && r === myHandleNorm) || (s === myHandleNorm && r === curNorm);
     });
-  }, [dmMessages, selectedHandle, userProfile?.handle]);
-  const messagesContainerRef = useRef(null);
+  }, [dmMessages, selectedHandle, myHandleNorm]);
+
   const scrollToBottom = (behavior = 'auto') => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
-    scrollRef.current?.scrollIntoView({
-      behavior,
-      block: 'end'
-    });
+    scrollRef.current?.scrollIntoView({ behavior, block: 'end' });
   };
+
   useEffect(() => {
-    // 1. Initial immediate scroll upon chat selection
     scrollToBottom('auto');
-
-    // 2. Next animation frame
-    const rAF = requestAnimationFrame(() => scrollToBottom('auto'));
-
-    // 3. Staggered timers to re-scroll as link previews, images, and embeds finish loading/layout
-    const t1 = setTimeout(() => scrollToBottom('auto'), 40);
-    const t2 = setTimeout(() => scrollToBottom('auto'), 120);
-    const t3 = setTimeout(() => scrollToBottom('auto'), 250);
-    const t4 = setTimeout(() => scrollToBottom('auto'), 500);
-    return () => {
-      cancelAnimationFrame(rAF);
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-    };
+    const t1 = setTimeout(() => scrollToBottom('auto'), 60);
+    const t2 = setTimeout(() => scrollToBottom('auto'), 200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [selectedHandle, activeMessages.length]);
 
-  // Keep viewport pinned to bottom if embeds or images resize dynamically
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container || typeof ResizeObserver === 'undefined') return;
-    let initial = true;
-    const ro = new ResizeObserver(() => {
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (initial || distanceFromBottom < 180) {
-        container.scrollTop = container.scrollHeight;
-      }
-      initial = false;
-    });
-    ro.observe(container);
-    Array.from(container.children).forEach(c => ro.observe(c));
-    return () => ro.disconnect();
-  }, [selectedHandle]);
-  const activeContact = conversations.find(c => c.handle.toLowerCase() === (selectedHandle || '').toLowerCase()) || {
+  const activeContact = conversations.find(c => norm(c.handle) === norm(selectedHandle)) || {
     handle: selectedHandle || '@User',
     name: (selectedHandle || '@User').replace('@', ''),
-    avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(selectedHandle || 'user')}`
+    avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(norm(selectedHandle) || 'user')}`
   };
-  const handleImageSelect = e => {
+
+  const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
-        setAttachedImage(reader.result);
-      };
+      reader.onload = () => setAttachedImage(reader.result);
       reader.readAsDataURL(file);
     }
     e.target.value = '';
   };
+
   const handleSend = () => {
     const text = inputText.trim();
     if (!text && !attachedImage) return;
@@ -3877,21 +3916,16 @@ function DMsScreen({
     setInputText('');
     setAttachedImage(null);
   };
-  const formatFullDate = ts => {
+
+  const formatFullDate = (ts) => {
     try {
       const d = new Date(ts);
-      return d.toLocaleDateString([], {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-      }) + ' at ' + d.toLocaleTimeString([], {
-        hour: 'numeric',
-        minute: '2-digit'
-      });
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     } catch (e) {
-      return ts;
+      return ts || '';
     }
   };
+
   return /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-h-0 flex flex-col sm:flex-row overflow-hidden bg-slate-950 w-full h-full"
   }, /*#__PURE__*/React.createElement("div", {
@@ -3901,33 +3935,15 @@ function DMsScreen({
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsNewDMModalOpen(true),
-    className: "w-full py-2.5 px-3 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 text-xs font-bold flex items-center justify-center space-x-1.5 transition shadow-sm active:scale-95",
+    className: "w-full py-2 px-3 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 text-xs font-bold flex items-center justify-center space-x-1.5 transition shadow-sm active:scale-95",
     title: "Start a new Direct Message"
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
     className: "w-4 h-4 text-cyan-400"
   }), /*#__PURE__*/React.createElement("span", null, "New Direct Message"))), /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 touch-scroll overscroll-contain",
     style: { WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', touchAction: 'pan-y' }
-  }, conversations.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "p-4 text-center space-y-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-12 h-12 rounded-2xl bg-slate-850 border border-slate-750 flex items-center justify-center mx-auto text-slate-400"
-  }, /*#__PURE__*/React.createElement(Icons.Users, {
-    className: "w-6 h-6 text-slate-400"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-1"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "text-xs font-bold text-slate-200"
-  }, "No Conversations Yet"), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-400 leading-relaxed"
-  }, "Start a direct message with any player using their @handle.")), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setIsNewDMModalOpen(true),
-    className: "px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow transition"
-  }, "New Direct Message")) : conversations.map(c => {
-    const isSelected = selectedHandle && selectedHandle.toLowerCase() === c.handle.toLowerCase();
-    const isInvite = c.worldInvite;
-
+  }, conversations.map(c => {
+    const isSelected = selectedHandle && norm(selectedHandle) === norm(c.handle);
     return /*#__PURE__*/React.createElement("div", {
       key: c.handle,
       onClick: () => setSelectedHandle(c.handle),
@@ -3935,7 +3951,7 @@ function DMsScreen({
     }, /*#__PURE__*/React.createElement("div", {
       className: "relative flex-shrink-0"
     }, /*#__PURE__*/React.createElement("img", {
-      src: c.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(c.handle)}`,
+      src: c.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(norm(c.handle))}`,
       alt: c.name,
       className: "w-10 h-10 rounded-full object-cover border border-slate-700"
     })), /*#__PURE__*/React.createElement("div", {
@@ -3948,17 +3964,11 @@ function DMsScreen({
       className: "text-[10px] text-slate-500 flex-shrink-0"
     }, formatFullDate(c.lastTimestamp).split(' at ')[1] || '')), /*#__PURE__*/React.createElement("div", {
       className: "text-[11px] text-slate-400 font-mono"
-    }, c.handle), isInvite ? /*#__PURE__*/React.createElement("div", {
-      className: "text-[11px] text-amber-400 font-semibold truncate flex items-center space-x-1"
-    }, /*#__PURE__*/React.createElement(Icons.Globe, {
-      className: "w-3 h-3 flex-shrink-0"
-    }), /*#__PURE__*/React.createElement("span", {
-      className: "truncate"
-    }, "World Invite: ", isInvite.worldName)) : c.hasMessages ? /*#__PURE__*/React.createElement("p", {
+    }, c.handle), c.hasMessages ? /*#__PURE__*/React.createElement("p", {
       className: "text-[11px] text-slate-400 truncate mt-0.5"
     }, c.lastMessage || '📷 Attached Image') : /*#__PURE__*/React.createElement("p", {
       className: "text-[11px] text-slate-500 italic"
-    }, "No messages yet")));
+    }, "Direct message")));
   }))), /*#__PURE__*/React.createElement("div", {
     className: `flex-1 min-h-0 flex flex-col bg-slate-950 overflow-hidden h-full ${selectedHandle ? 'flex' : 'hidden sm:flex'}`
   }, selectedHandle && activeContact ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -3972,7 +3982,7 @@ function DMsScreen({
   }, /*#__PURE__*/React.createElement(Icons.ChevronLeft, {
     className: "w-4 h-4"
   }), /*#__PURE__*/React.createElement("span", null, "DMs")), /*#__PURE__*/React.createElement("img", {
-    src: activeContact.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(activeContact.handle)}`,
+    src: activeContact.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(norm(activeContact.handle))}`,
     alt: activeContact.name,
     className: "w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-700 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("div", {
@@ -3983,11 +3993,11 @@ function DMsScreen({
     className: "font-bold text-xs sm:text-sm text-slate-100 truncate"
   }, activeContact.name), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-cyan-400 font-mono hidden xs:inline"
-  }, activeContact.handle)), activeContact.serverName ? /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 truncate"
-  }, "Server: ", activeContact.serverName) : /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400"
-  }, "Direct Message"))), /*#__PURE__*/React.createElement("div", {
+  }, activeContact.handle)), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-emerald-400 flex items-center space-x-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
+  }), /*#__PURE__*/React.createElement("span", null, "Active Direct Chat")))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2 flex-shrink-0"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -4005,7 +4015,7 @@ function DMsScreen({
   }, activeMessages.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "h-full flex flex-col items-center justify-center p-6 text-center space-y-3"
   }, /*#__PURE__*/React.createElement("img", {
-    src: activeContact.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(activeContact.handle)}`,
+    src: activeContact.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(norm(activeContact.handle))}`,
     alt: activeContact.name,
     className: "w-14 h-14 rounded-full object-cover border-2 border-slate-700 shadow"
   }), /*#__PURE__*/React.createElement("div", {
@@ -4014,40 +4024,47 @@ function DMsScreen({
     className: "font-bold text-sm text-slate-100"
   }, "Direct Message with ", activeContact.name), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400"
-  }, "Private OOC conversation between you and ", activeContact.handle, "."))) : activeMessages.map(msg => {
-    const isMe = (msg.senderHandle || '').toLowerCase() === (userProfile.handle || '').toLowerCase();
-    const isInvite = msg.worldInvite;
+  }, "Private chat between you and ", activeContact.handle, ". Messages sync in real time across devices."))) : activeMessages.map(msg => {
+    const isMe = norm(msg.senderHandle) === myHandleNorm;
+    const hasInvite = Boolean(msg.inviteWorldId || msg.inviteWorldName || msg.worldInvite);
+    const inviteWorldName = msg.inviteWorldName || msg.worldInvite?.worldName || 'Wonderworld';
+    const inviteWorldRole = msg.inviteRole || msg.worldInvite?.role || 'editor';
+    const isAccepted = msg.inviteStatus === 'accepted';
 
     return /*#__PURE__*/React.createElement("div", {
       key: msg.id,
       className: `flex flex-col ${isMe ? 'items-end' : 'items-start'}`
     }, /*#__PURE__*/React.createElement("div", {
       className: `max-w-[85%] sm:max-w-md rounded-2xl p-3 shadow-md ${isMe ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-slate-850 text-slate-100 border border-slate-750 rounded-bl-none'}`
-    }, isInvite && /*#__PURE__*/React.createElement("div", {
-      className: "mb-2 p-3 bg-slate-900/80 rounded-xl border border-cyan-500/30 space-y-2 text-left"
+    }, hasInvite && /*#__PURE__*/React.createElement("div", {
+      className: "mb-2.5 p-3 bg-slate-900/90 rounded-xl border border-cyan-500/40 space-y-2 text-left shadow-inner"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center space-x-1.5 text-cyan-300 font-bold text-xs"
     }, /*#__PURE__*/React.createElement(Icons.Globe, {
       className: "w-4 h-4 text-cyan-400"
-    }), /*#__PURE__*/React.createElement("span", null, "World Invitation")), /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("span", null, "World Collaboration Invitation")), /*#__PURE__*/React.createElement("p", {
       className: "text-xs text-slate-200"
-    }, "You've been invited to join ", /*#__PURE__*/React.createElement("strong", {
+    }, "You have been invited to join ", /*#__PURE__*/React.createElement("strong", {
       className: "text-white"
-    }, isInvite.worldName), " as ", /*#__PURE__*/React.createElement("strong", {
-      className: "text-cyan-300"
-    }, isInvite.role || 'Member'), "!"), !isMe && /*#__PURE__*/React.createElement("div", {
+    }, inviteWorldName), " as ", /*#__PURE__*/React.createElement("strong", {
+      className: "text-cyan-300 capitalize"
+    }, inviteWorldRole), "!"), isAccepted ? /*#__PURE__*/React.createElement("div", {
+      className: "pt-1 text-[11px] text-emerald-400 font-bold flex items-center space-x-1"
+    }, /*#__PURE__*/React.createElement(Icons.Check, {
+      className: "w-3.5 h-3.5"
+    }), /*#__PURE__*/React.createElement("span", null, `✓ Accepted & Joined ${inviteWorldName}`)) : (!isMe && /*#__PURE__*/React.createElement("div", {
       className: "flex space-x-2 pt-1"
     }, /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => onAcceptInvite && onAcceptInvite(msg),
-      className: "px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center space-x-1"
+      className: "px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center space-x-1 shadow active:scale-95"
     }, /*#__PURE__*/React.createElement(Icons.Check, {
       className: "w-3.5 h-3.5"
-    }), /*#__PURE__*/React.createElement("span", null, "Accept & Join")), /*#__PURE__*/React.createElement("button", {
+    }), /*#__PURE__*/React.createElement("span", null, "Accept & Join World")), /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => onDeclineInvite && onDeclineInvite(msg),
-      className: "px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
-    }, "Decline"))), msg.imageUrl && /*#__PURE__*/React.createElement("img", {
+      className: "px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold transition"
+    }, "Decline")))), msg.imageUrl && /*#__PURE__*/React.createElement("img", {
       src: msg.imageUrl,
       alt: "Attachment",
       className: "rounded-xl max-h-60 object-cover mb-2 border border-slate-700"
@@ -4106,7 +4123,7 @@ function DMsScreen({
     type: "button",
     onClick: handleSend,
     disabled: !inputText.trim() && !attachedImage,
-    className: `p-2 sm:p-2.5 rounded-xl ${(inputText.trim() || attachedImage) ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg' : 'bg-slate-800 text-slate-600 cursor-not-allowed'} transition font-bold flex-shrink-0`,
+    className: `p-2 sm:p-2.5 rounded-xl ${(inputText.trim() || attachedImage) ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg active:scale-95' : 'bg-slate-800 text-slate-600 cursor-not-allowed'} transition font-bold flex-shrink-0`,
     title: "Send Message"
   }, /*#__PURE__*/React.createElement(Icons.Send, {
     className: "w-4 h-4"
@@ -4120,7 +4137,7 @@ function DMsScreen({
     className: "font-bold text-sm text-slate-200"
   }, "Select a Conversation"), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400"
-  }, "Choose someone from the list or start a new direct message.")))), isNewDMModalOpen && /*#__PURE__*/React.createElement("div", {
+  }, "Choose someone from the list or start a new direct message."))))), isNewDMModalOpen && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-fadeIn"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-4 space-y-4"
@@ -4151,7 +4168,7 @@ function DMsScreen({
       }
     },
     placeholder: "e.g. @GrimGerbil or @EarlGreyFae",
-    className: "flex-1 bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400 font-mono"
+    className: "flex-1 bg-slate-800 border border-slate-750 rounded-xl p-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400 font-mono"
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => {
@@ -4163,49 +4180,17 @@ function DMsScreen({
         setSearchQuery('');
       }
     },
-    className: "px-3.5 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl shadow"
-  }, "Chat"))), isUserInAnyServer ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2"
-  }, "People in Your Servers (", serverPeople.length, ")"), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-1 max-h-48 overflow-y-auto"
-  }, serverPeople.map(k => /*#__PURE__*/React.createElement("button", {
-    key: k.handle,
-    type: "button",
-    onClick: () => {
-      setSelectedHandle(k.handle);
-      setIsNewDMModalOpen(false);
-    },
-    className: "w-full text-left p-2 rounded-xl hover:bg-slate-800 flex items-center space-x-2.5 transition"
-  }, /*#__PURE__*/React.createElement("img", {
-    src: k.avatarUrl,
-    alt: k.name,
-    className: "w-8 h-8 rounded-full object-cover border border-slate-700"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 flex-1"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "font-semibold text-xs text-slate-200 truncate"
-  }, k.name), /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-cyan-400 font-mono"
-  }, k.handle, " \u2022 ", k.serverName || k.role)))))) : /*#__PURE__*/React.createElement("div", {
-    className: "p-3 bg-slate-850 rounded-xl border border-slate-750 text-center space-y-1"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs font-bold text-slate-200"
-  }, "No Servers Joined"), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-400 leading-relaxed"
-  }, "You are in no servers at all. Type someone's @handle above to start chatting, or get invited to join a world.")))), isInviteModalOpen && /*#__PURE__*/React.createElement(InviteToWorldModal, {
-    worlds: worlds,
-    targetHandle: activeContact.handle,
-    targetName: activeContact.name,
+    className: "px-3.5 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl shadow active:scale-95"
+  }, "Chat"))))), isInviteModalOpen && /*#__PURE__*/React.createElement(SendWorldInviteModal, {
+    isOpen: isInviteModalOpen,
+    recipientHandle: activeContact.handle,
+    worlds: worlds.filter(w => (w.members || []).some(m => norm(m.handle) === myHandleNorm && (m.role === 'creator' || m.role === 'co-owner' || m.role === 'admin'))),
     onClose: () => setIsInviteModalOpen(false),
     onSendInvite: (worldId, worldName, role) => {
-      onSendDM(`Invited you to collaborate on ${worldName} as an ${role}!`, activeContact.handle, null, {
-        worldId,
-        worldName,
-        role
-      });
+      onSendDM(`Invited you to join ${worldName} as an ${role}!`, activeContact.handle, null, { worldId, worldName, role });
       setIsInviteModalOpen(false);
     }
-  }));
+  });
 }
 // Modal to Send a World Invite
 function InviteToWorldModal({
