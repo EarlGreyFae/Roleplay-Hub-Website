@@ -5796,7 +5796,7 @@ function SettingsScreen({
     className: "px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold text-xs shadow-lg transition flex items-center space-x-1.5"
   }, /*#__PURE__*/React.createElement(Icons.Trash, {
     className: "w-4 h-4"
-  }), /*#__PURE__*/React.createElement("span", null, "Permanently Delete My Account"))))), isPasskeyModalOpen && /*#__PURE__*/React.createElement(PasskeyModal, {
+  }), /*#__PURE__*/React.createElement("span", null, "Permanently Delete My Account")))))), isPasskeyModalOpen && /*#__PURE__*/React.createElement(PasskeyModal, {
     isOpen: isPasskeyModalOpen,
     onClose: () => setIsPasskeyModalOpen(false),
     userProfile: appState.userProfile,
@@ -5811,12 +5811,21 @@ function SettingsScreen({
     email: appState.userProfile?.email || 'celticheroesscreenshots@gmail.com',
     onClose: () => setIsVerifyModalOpen(false),
     onVerified: () => {
-      const updated = { ...appState.userProfile, emailVerified: true };
+      const email = appState.userProfile?.email || 'celticheroesscreenshots@gmail.com';
+      const updated = {
+        ...appState.userProfile,
+        emailVerified: true,
+        linkedGoogleAccount: {
+          email: email,
+          verified: true,
+          linkedAt: new Date().toISOString()
+        }
+      };
       onUpdateState({ userProfile: updated });
       AccountManager.saveAccount(updated);
       setIsVerifyModalOpen(false);
     }
-  })));
+  }));
 }
 
 // --- Sub-View: Wiki Screen (Factions, Articles & Cast Hub) ---
