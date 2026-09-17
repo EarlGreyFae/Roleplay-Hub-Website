@@ -4050,6 +4050,7 @@ function DMsScreen({
   userId,
   worlds = [],
   wikiEntries = [],
+  directory = [],
   onSendDM,
   onAcceptInvite,
   onDeclineInvite,
@@ -4126,11 +4127,16 @@ function DMsScreen({
     });
   }, [dmMessages, selectedHandle, myHandle]);
 
-  const activeContact = conversations.find(c => c.handle.toLowerCase() === (selectedHandle || '').toLowerCase()) || {
-    handle: selectedHandle,
-    name: selectedHandle ? selectedHandle.replace('@', '') : 'Select Player',
-    avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(selectedHandle || 'Player')}`
-  };
+  const activeContact = useMemo(() => {
+    const key = (selectedHandle || '').toLowerCase();
+    const conv = conversations.find(c => c.handle.toLowerCase() === key);
+    const dirUser = dirMap.get(key);
+    return {
+      handle: selectedHandle,
+      name: dirUser?.name || conv?.name || (selectedHandle ? selectedHandle.replace('@', '') : 'Select Player'),
+      avatarUrl: dirUser?.avatarUrl || conv?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(selectedHandle || 'Player')}`
+    };
+  }, [conversations, selectedHandle, dirMap]);
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current) {
@@ -4215,7 +4221,7 @@ function DMsScreen({
     }, /*#__PURE__*/React.createElement("div", {
       className: "relative flex-shrink-0"
     }, /*#__PURE__*/React.createElement("img", {
-      src: c.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(c.handle)}`,
+      src: (dirMap.get((c.handle || '').toLowerCase())?.avatarUrl) || c.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(c.handle)}`,
       alt: c.name,
       className: "w-10 h-10 rounded-full object-cover border border-slate-700"
     }), c.unreadCount > 0 && /*#__PURE__*/React.createElement("span", {
@@ -5749,6 +5755,7 @@ function App() {
   const [wikiEntries, setWikiEntries] = useState([]);
   const [invites, setInvites] = useState([]);
   const [customNpcs, setCustomNpcs] = useState([]);
+  const [directory, setDirectory] = useState([]);
   const [theme, setTheme] = useState('dark');
 
   // Active persona
@@ -5828,6 +5835,7 @@ function App() {
         setDmMessages(data.dmMessages || []);
         setWikiEntries(data.wikiEntries || []);
         setInvites(data.invites || []);
+        if (data.directory) setDirectory(data.directory);
       }
     } catch (e) {
       console.warn('[Bootstrap] Server unreachable, using local state');
@@ -5862,9 +5870,20 @@ function App() {
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'PROFILE_UPDATED') {
-              if (data.user && (data.user.handle || '').toLowerCase() === myHandle) {
-                setUserProfile(prev => ({ ...(prev || {}), ...data.user }));
-                AccountManager.saveAccount(data.user);
+              if (data.user) {
+                setDirectory(prev => {
+                  const idx = prev.findIndex(u => (u.handle || '').toLowerCase() === (data.user.handle || '').toLowerCase());
+                  if (idx >= 0) {
+                    const next = [...prev];
+                    next[idx] = { ...next[idx], ...data.user };
+                    return next;
+                  }
+                  return [...prev, data.user];
+                });
+                if ((data.user.handle || '').toLowerCase() === myHandle) {
+                  setUserProfile(prev => ({ ...(prev || {}), ...data.user }));
+                  AccountManager.saveAccount(data.user);
+                }
               }
             } else if (data.type === 'NEW_MESSAGE') {
               setMessages(prev => {
@@ -6421,6 +6440,7 @@ function App() {
     userId: userProfile?.userId,
     worlds: worlds,
     wikiEntries: wikiEntries,
+    directory: directory,
     onSendDM: handleSendDM,
     onAcceptInvite: handleAcceptInvite,
     onDeclineInvite: handleDeclineInvite,

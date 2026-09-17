@@ -664,11 +664,13 @@ const server = http.createServer(async (req, res) => {
       let rHandle = (payload.recipientHandle || '').trim();
       if (!rHandle.startsWith('@')) rHandle = '@' + rHandle;
 
+      const senderKey = (payload.senderHandle || '').trim().toLowerCase();
+      const senderUser = db.users[senderKey];
       const dm = {
         id: payload.clientMessageId || `dm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         senderHandle: payload.senderHandle,
-        senderName: payload.senderName || payload.senderHandle.replace('@', ''),
-        senderAvatarUrl: payload.senderAvatarUrl,
+        senderName: payload.senderName || senderUser?.name || payload.senderHandle.replace('@', ''),
+        senderAvatarUrl: payload.senderAvatarUrl || senderUser?.avatarUrl || null,
         recipientHandle: rHandle,
         content: payload.content || '',
         imageUrl: payload.imageUrl || null,
