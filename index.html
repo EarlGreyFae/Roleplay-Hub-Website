@@ -1521,37 +1521,37 @@ function PasskeyModal({ isOpen, onClose, userProfile, onPasskeyCreated }) {
 function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState(null);
-  const targetCode = '749215';
 
   if (!isOpen) return null;
 
   const handleVerify = (e) => {
-    e.preventDefault();
-    if (code.trim() === targetCode || code.trim().length === 6) {
-      onVerified();
-      onClose();
-    } else {
-      setErrorMsg('Invalid code. Please enter the 6-digit code dispatched from dispatcher.');
+    e && e.preventDefault();
+    if (code.trim() && code.trim().length > 0 && code.trim().length !== 6) {
+      setErrorMsg('Please enter a 6-digit code or click Verify below to activate immediately.');
+      return;
     }
+    onVerified();
+    onClose();
   };
 
   return /*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-900 border border-slate-750 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4"
+    className: "bg-slate-900 border border-slate-750 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 animate-in slide-in-from-bottom duration-200",
+    onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between pb-3 border-b border-slate-800"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400"
+    className: "w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400"
   }, /*#__PURE__*/React.createElement(Icons.Mail, {
     className: "w-4 h-4"
   })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
     className: "font-bold text-sm text-slate-100"
   }, "Verify Email Address"), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400"
-  }, "Unlock chat and direct messaging"))), /*#__PURE__*/React.createElement("button", {
+  }, "Unlock chat, DMs, and cross-device cloud sync"))), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: onClose,
     className: "p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
@@ -1559,41 +1559,40 @@ function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
     className: "w-5 h-5"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "p-3 rounded-2xl bg-slate-850 border border-slate-750 space-y-2 text-xs text-slate-300 leading-relaxed"
-  }, /*#__PURE__*/React.createElement("p", null, "A 6-digit confirmation code was generated from system dispatcher (", /*#__PURE__*/React.createElement("strong", {
-    className: "text-amber-400"
-  }, "celticheroesscreenshots@gmail.com"), ") and dispatched to:"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("p", null, "Verifying your linked email unlocks in-character chat and Direct Messages for this profile:"), /*#__PURE__*/React.createElement("div", {
     className: "font-mono font-bold text-cyan-300 bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-800 break-all"
-  }, email || 'Your Linked Email'), /*#__PURE__*/React.createElement("p", {
+  }, email || 'celticheroesscreenshots@gmail.com'), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 pt-1"
-  }, "Enter the 6-digit confirmation code below to verify your account:")), /*#__PURE__*/React.createElement("form", {
+  }, "Click \"Verify & Unlock Chat\" below to activate your account now, or enter a 6-digit confirmation code:")), /*#__PURE__*/React.createElement("form", {
     onSubmit: handleVerify,
     className: "space-y-3"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "space-y-1"
+    className: "flex flex-col items-center justify-center py-2 space-y-1"
   }, /*#__PURE__*/React.createElement("input", {
     type: "text",
+    inputMode: "numeric",
+    pattern: "[0-9]*",
     maxLength: 6,
     value: code,
-    onChange: e => { setCode(e.target.value); setErrorMsg(null); },
-    placeholder: "6-digit code (e.g. 749215)",
-    className: "w-full text-center text-lg tracking-[0.4em] font-mono font-bold bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none focus:border-cyan-400"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between text-[10px] text-slate-400 pt-1 px-1"
-  }, /*#__PURE__*/React.createElement("span", null, "Dispatched code: 749215"), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setCode('749215'),
-    className: "text-cyan-400 hover:underline"
-  }, "Quick fill code"))), errorMsg && /*#__PURE__*/React.createElement("div", {
-    className: "p-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold"
+    onChange: e => {
+      setCode(e.target.value.replace(/\D/g, ''));
+      setErrorMsg(null);
+    },
+    placeholder: "• • • • • •",
+    className: "w-44 text-center text-xl font-mono font-bold tracking-[0.35em] bg-slate-800 border border-slate-700 focus:border-cyan-400 rounded-xl py-2 px-3 text-cyan-300 focus:outline-none shadow-inner placeholder:text-slate-600 placeholder:tracking-widest"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-500"
+  }, "Optional 6-digit PIN / verification code")), errorMsg && /*#__PURE__*/React.createElement("div", {
+    className: "p-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold text-center"
   }, errorMsg), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-end space-x-2 pt-2 border-t border-slate-800"
+    className: "flex items-center justify-between pt-2 border-t border-slate-800 gap-2"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: onClose,
     className: "px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200"
-  }, "Later (Browse Only)"), /*#__PURE__*/React.createElement("button", {
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
     type: "submit",
-    className: "px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition flex items-center space-x-1.5"
+    className: "px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition flex items-center space-x-1.5 active:scale-98"
   }, /*#__PURE__*/React.createElement(Icons.Check, {
     className: "w-4 h-4"
   }), /*#__PURE__*/React.createElement("span", null, "Verify & Unlock Chat"))))));
@@ -1805,7 +1804,7 @@ function LandingPage({ onLoginSuccess }) {
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
   }), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400"
-  }, "Codes are dispatched from system dispatcher (celticheroesscreenshots@gmail.com).")), /*#__PURE__*/React.createElement("div", {
+  }, "Link your email address to enable cross-device cloud sync and profile recovery.")), /*#__PURE__*/React.createElement("div", {
     className: "space-y-1"
   }, /*#__PURE__*/React.createElement("label", {
     className: "block text-xs font-bold text-slate-300"
@@ -5377,9 +5376,7 @@ function SettingsScreen({
     className: "text-[10px] bg-amber-950 text-amber-300 border border-amber-600/50 px-2 py-0.5 rounded-full font-bold whitespace-nowrap"
   }, "Unverified (Chat Locked)")), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 leading-relaxed"
-  }, "Link any email (Gmail, iCloud, Outlook, Yahoo) to verify your account and unlock in-character chat and DMs. Verification codes are dispatched from system dispatcher (", /*#__PURE__*/React.createElement("strong", {
-    className: "text-slate-300"
-  }, "celticheroesscreenshots@gmail.com"), ")."), /*#__PURE__*/React.createElement("div", {
+  }, "Link your email (Gmail, iCloud, Outlook, Yahoo) to verify your player account and unlock in-character chat and DMs."), /*#__PURE__*/React.createElement("div", {
     className: "p-3 bg-slate-800/80 rounded-xl border border-slate-750 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "min-w-0 flex-1"
