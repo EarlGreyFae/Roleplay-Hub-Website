@@ -4,7 +4,7 @@ A responsive, mobile-first collaborative roleplay platform crafted for seamless 
 
 ---
 
-## 📱 Mobile App (PWA) Installation
+## Mobile App (PWA) Installation
 
 You and other players can add the website directly to your phone's home screen for a full-screen, native app experience without browser URL bars:
 - **iPhone (Chrome / Safari)**: Tap the **Share** icon -> select **"Add to Home Screen"** -> tap **"Add"**.
@@ -12,7 +12,7 @@ You and other players can add the website directly to your phone's home screen f
 
 ---
 
-## 🌟 Key Features & Capabilities
+## Key Features & Capabilities
 
 ### 1. Account Schema & Security
 - **Username / @handle Login**: Clean login with your permanent `@handle` and password.
@@ -69,7 +69,7 @@ You and other players can add the website directly to your phone's home screen f
 
 ---
 
-## 🛠️ Superadmin Dev Testing Suite
+## Superadmin Dev Testing Suite
 When logged in as the site administrator, tap the **"Dev Tools"** button in the top header to:
 - **Simulate Incoming DM**: Simulates sending a message to test delivered/read status and sound alerts.
 - **Simulate World Chat Dialogue**: Simulates in-character dialogue in the active channel.
