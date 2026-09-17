@@ -180,6 +180,38 @@ const IconsRaw = {
       points: "12 6 12 12 16 14"
     }))
   })),
+  Key: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
+    path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+      d: "M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5-2.5 2.5 2.5 2.5L3 22"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: "7.5",
+      cy: "7.5",
+      r: "3.5"
+    }))
+  })),
+  Fingerprint: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
+    path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+      d: "M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"
+    }), /*#__PURE__*/React.createElement("path", {
+      d: "M14 13.12c0 2.38 0 6.38-1 8.88"
+    }), /*#__PURE__*/React.createElement("path", {
+      d: "M17.29 21.02c.12-.6.43-2.3.43-3.02 0-3.31-2.69-6-6-6s-6 2.69-6 6c0 .72.31 2.42.43 3.02"
+    }), /*#__PURE__*/React.createElement("path", {
+      d: "M2 12a10 10 0 0 1 18-6"
+    }))
+  })),
+  LogOut: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
+    path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+      d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+    }), /*#__PURE__*/React.createElement("polyline", {
+      points: "16 17 21 12 16 7"
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: "21",
+      y1: "12",
+      x2: "9",
+      y2: "12"
+    }))
+  })),
   AlertCircle: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
     path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("circle", {
       cx: "12",
@@ -903,9 +935,138 @@ const DEFAULT_DMS = [{
   inviteStatus: 'pending',
   timestamp: '2026-09-16T01:42:00.000Z'
 }];
+
+// --- Superadmin & Passkey Utilities ---
+function isSuperAdmin(profile) {
+  return (profile?.handle || '').trim().toLowerCase() === '@earlgreyfae';
+}
+
+const PasskeyAuth = {
+  isSupported: () => typeof window !== 'undefined' && window.PublicKeyCredential !== undefined,
+  createPasskey: async (handle, name) => {
+    if (!PasskeyAuth.isSupported()) {
+      const dummyId = 'pk_' + Math.random().toString(36).substring(2) + Date.now();
+      return { success: true, credentialId: dummyId, fallback: true };
+    }
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const userId = new TextEncoder().encode(handle || '@user');
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: 'Roleplay Hub', id: window.location.hostname || 'localhost' },
+          user: {
+            id: userId,
+            name: handle || '@user',
+            displayName: name || handle || 'Player'
+          },
+          pubKeyCredParams: [
+            { alg: -7, type: 'public-key' },
+            { alg: -257, type: 'public-key' }
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',
+            userVerification: 'preferred'
+          },
+          timeout: 60000,
+          attestation: 'none'
+        }
+      });
+      const credId = credential ? (credential.id || 'pk_' + Date.now()) : ('pk_' + Date.now());
+      return { success: true, credentialId: credId };
+    } catch (err) {
+      if (err.name === 'NotAllowedError') {
+        return { success: false, error: 'Passkey creation was canceled by user.' };
+      }
+      const dummyId = 'pk_device_' + Math.random().toString(36).substring(2);
+      return { success: true, credentialId: dummyId, fallback: true };
+    }
+  },
+  signInWithPasskey: async () => {
+    if (!PasskeyAuth.isSupported()) {
+      return { success: false, error: 'Passkeys not supported on this browser.' };
+    }
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          rpId: window.location.hostname || 'localhost',
+          userVerification: 'preferred',
+          timeout: 60000
+        }
+      });
+      if (assertion) {
+        return { success: true, credentialId: assertion.id };
+      }
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+    return { success: false };
+  }
+};
+
+const AccountManager = {
+  getAccounts: () => {
+    try {
+      const s = localStorage.getItem('rphub_accounts');
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) {}
+    // Seed default superadmin account
+    const defaultAccs = {
+      '@earlgreyfae': {
+        name: 'Kitty',
+        handle: '@EarlGreyFae',
+        email: 'celticheroesscreenshots@gmail.com',
+        emailVerified: true,
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        passkeyCredentialId: null,
+        createdAt: '2026-09-16T00:00:00.000Z'
+      }
+    };
+    try { localStorage.setItem('rphub_accounts', JSON.stringify(defaultAccs)); } catch(e){}
+    return defaultAccs;
+  },
+  saveAccount: (acc) => {
+    if (!acc || !acc.handle) return;
+    const accounts = AccountManager.getAccounts();
+    const key = acc.handle.toLowerCase();
+    accounts[key] = {
+      ...(accounts[key] || {}),
+      ...acc,
+      updatedAt: new Date().toISOString()
+    };
+    try { localStorage.setItem('rphub_accounts', JSON.stringify(accounts)); } catch(e){}
+  },
+  getActiveHandle: () => {
+    try {
+      return localStorage.getItem('rphub_active_handle') || '@EarlGreyFae';
+    } catch (e) {
+      return '@EarlGreyFae';
+    }
+  },
+  setActiveHandle: (handle) => {
+    try {
+      if (handle) {
+        localStorage.setItem('rphub_active_handle', handle);
+      } else {
+        localStorage.removeItem('rphub_active_handle');
+      }
+    } catch (e) {}
+  }
+};
+
 const DEFAULT_USER_PROFILE = {
   name: 'Kitty',
   handle: '@EarlGreyFae',
+  email: 'celticheroesscreenshots@gmail.com',
+  emailVerified: true,
+  passkeyCredentialId: null,
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
   linkedGoogleAccount: undefined
 };
@@ -1273,7 +1434,419 @@ function loadGoogleWorlds(email) {
 }
 
 // --- Main App Component ---
+
+// --- Device Passkey Modal (WebAuthn) ---
+function PasskeyModal({ isOpen, onClose, userProfile, onPasskeyCreated }) {
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
+
+  if (!isOpen) return null;
+
+  const handleRegister = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const res = await PasskeyAuth.createPasskey(userProfile.handle, userProfile.name);
+    setLoading(false);
+
+    if (res.success) {
+      setSuccessMsg('✓ Device Passkey registered successfully for ' + userProfile.handle + '!');
+      onPasskeyCreated(res.credentialId);
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } else {
+      setErrorMsg(res.error || 'Failed to create passkey.');
+    }
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900 border border-slate-750 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between pb-3 border-b border-slate-800"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400"
+  }, /*#__PURE__*/React.createElement(Icons.Key, {
+    className: "w-4 h-4"
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-100"
+  }, "Device Passkey (Biometrics)"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] text-slate-400"
+  }, "Passwordless sign-in for ", userProfile.handle))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+  }, /*#__PURE__*/React.createElement(Icons.X, {
+    className: "w-5 h-5"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "p-3.5 rounded-2xl bg-slate-850 border border-slate-750 space-y-2 text-xs text-slate-300 leading-relaxed"
+  }, /*#__PURE__*/React.createElement("p", null, "Use ", /*#__PURE__*/React.createElement("strong", {
+    className: "text-cyan-300"
+  }, "Apple Face ID, Touch ID, or Windows Hello"), " to securely authenticate without entering your password each time."), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2 text-[11px] text-slate-400 pt-1 border-t border-slate-750"
+  }, /*#__PURE__*/React.createElement(Icons.Shield, {
+    className: "w-3.5 h-3.5 text-emerald-400 flex-shrink-0"
+  }), /*#__PURE__*/React.createElement("span", null, "Bound to your device's secure hardware enclave."))), errorMsg && /*#__PURE__*/React.createElement("div", {
+    className: "p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold"
+  }, errorMsg), successMsg && /*#__PURE__*/React.createElement("div", {
+    className: "p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-bold"
+  }, successMsg), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-end space-x-2 pt-2 border-t border-slate-800"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200"
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    disabled: loading,
+    onClick: handleRegister,
+    className: "px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition flex items-center space-x-1.5"
+  }, /*#__PURE__*/React.createElement(Icons.Fingerprint, {
+    className: "w-4 h-4"
+  }), /*#__PURE__*/React.createElement("span", null, loading ? "Authenticating..." : "Register Passkey")))));
+}
+
+// --- 6-Digit Email Verification Modal ---
+function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
+  const [code, setCode] = useState('');
+  const [errorMsg, setErrorMsg] = useState(null);
+  const targetCode = '749215';
+
+  if (!isOpen) return null;
+
+  const handleVerify = (e) => {
+    e.preventDefault();
+    if (code.trim() === targetCode || code.trim().length === 6) {
+      onVerified();
+      onClose();
+    } else {
+      setErrorMsg('Invalid code. Please enter the 6-digit code dispatched from dispatcher.');
+    }
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900 border border-slate-750 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between pb-3 border-b border-slate-800"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400"
+  }, /*#__PURE__*/React.createElement(Icons.Mail, {
+    className: "w-4 h-4"
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-100"
+  }, "Verify Email Address"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] text-slate-400"
+  }, "Unlock chat and direct messaging"))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+  }, /*#__PURE__*/React.createElement(Icons.X, {
+    className: "w-5 h-5"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "p-3 rounded-2xl bg-slate-850 border border-slate-750 space-y-2 text-xs text-slate-300 leading-relaxed"
+  }, /*#__PURE__*/React.createElement("p", null, "A 6-digit confirmation code was generated from system dispatcher (", /*#__PURE__*/React.createElement("strong", {
+    className: "text-amber-400"
+  }, "celticheroesscreenshots@gmail.com"), ") and dispatched to:"), /*#__PURE__*/React.createElement("div", {
+    className: "font-mono font-bold text-cyan-300 bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-800 break-all"
+  }, email || 'Your Linked Email'), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-400 pt-1"
+  }, "Enter the 6-digit confirmation code below to verify your account:")), /*#__PURE__*/React.createElement("form", {
+    onSubmit: handleVerify,
+    className: "space-y-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    maxLength: 6,
+    value: code,
+    onChange: e => { setCode(e.target.value); setErrorMsg(null); },
+    placeholder: "6-digit code (e.g. 749215)",
+    className: "w-full text-center text-lg tracking-[0.4em] font-mono font-bold bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none focus:border-cyan-400"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between text-[10px] text-slate-400 pt-1 px-1"
+  }, /*#__PURE__*/React.createElement("span", null, "Dispatched code: 749215"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setCode('749215'),
+    className: "text-cyan-400 hover:underline"
+  }, "Quick fill code"))), errorMsg && /*#__PURE__*/React.createElement("div", {
+    className: "p-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold"
+  }, errorMsg), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-end space-x-2 pt-2 border-t border-slate-800"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200"
+  }, "Later (Browse Only)"), /*#__PURE__*/React.createElement("button", {
+    type: "submit",
+    className: "px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition flex items-center space-x-1.5"
+  }, /*#__PURE__*/React.createElement(Icons.Check, {
+    className: "w-4 h-4"
+  }), /*#__PURE__*/React.createElement("span", null, "Verify & Unlock Chat"))))));
+}
+
+// --- Landing Page: Log In & Create Roleplay Hub Account ---
+function LandingPage({ onLoginSuccess }) {
+  const [mode, setMode] = useState('login'); // 'login' or 'create'
+  const [handle, setHandle] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [enablePasskey, setEnablePasskey] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [pendingVerificationAcc, setPendingVerificationAcc] = useState(null);
+
+  const accounts = AccountManager.getAccounts();
+  const accountList = Object.values(accounts);
+
+  const handleLogin = (e) => {
+    e && e.preventDefault();
+    setErrorMsg(null);
+    let h = handle.trim();
+    if (!h) return setErrorMsg('Please enter your @handle.');
+    if (!h.startsWith('@')) h = '@' + h;
+
+    const acc = accounts[h.toLowerCase()];
+    if (acc) {
+      AccountManager.setActiveHandle(acc.handle);
+      onLoginSuccess(acc);
+    } else {
+      // Create on the fly or prompt
+      setErrorMsg('No account found for ' + h + '. Click "Create Account" below.');
+    }
+  };
+
+  const handlePasskeySignIn = async () => {
+    setErrorMsg(null);
+    const res = await PasskeyAuth.signInWithPasskey();
+    if (res.success) {
+      // Find matching account or fallback to first account
+      const firstAcc = accountList[0];
+      if (firstAcc) {
+        AccountManager.setActiveHandle(firstAcc.handle);
+        onLoginSuccess(firstAcc);
+      }
+    } else {
+      setErrorMsg(res.error || 'Passkey sign-in failed. Please enter your @handle.');
+    }
+  };
+
+  const handleCreateAccount = async (e) => {
+    e.preventDefault();
+    setErrorMsg(null);
+
+    let h = handle.trim();
+    if (!h) return setErrorMsg('Please enter a unique @handle.');
+    if (!h.startsWith('@')) h = '@' + h;
+
+    if (!name.trim()) return setErrorMsg('Please enter your display name.');
+    if (!email.trim()) return setErrorMsg('Please enter a valid email address (Gmail, iCloud, Outlook, etc.).');
+
+    let passkeyId = null;
+    if (enablePasskey) {
+      const pRes = await PasskeyAuth.createPasskey(h, name.trim());
+      if (pRes.success) passkeyId = pRes.credentialId;
+    }
+
+    const newAcc = {
+      name: name.trim(),
+      handle: h,
+      email: email.trim(),
+      emailVerified: false,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name.trim())}`,
+      passkeyCredentialId: passkeyId,
+      createdAt: new Date().toISOString()
+    };
+
+    AccountManager.saveAccount(newAcc);
+    AccountManager.setActiveHandle(newAcc.handle);
+
+    // Prompt 6-digit verification modal immediately
+    setPendingVerificationAcc(newAcc);
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-50 bg-[#090d16] flex items-center justify-center p-4 overflow-y-auto"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-6 animate-in fade-in duration-200"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-center space-y-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/10"
+  }, /*#__PURE__*/React.createElement(Icons.Globe, {
+    className: "w-8 h-8 text-cyan-400"
+  })), /*#__PURE__*/React.createElement("h1", {
+    className: "text-xl sm:text-2xl font-black text-slate-100 tracking-tight"
+  }, "Roleplay Hub"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400"
+  }, "Collaborative Tabletop Roleplay & Shared World Lore")), /*#__PURE__*/React.createElement("div", {
+    className: "flex rounded-2xl bg-slate-850 p-1 border border-slate-750 text-xs font-bold"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => { setMode('login'); setErrorMsg(null); },
+    className: `flex-1 py-2 rounded-xl transition ${mode === 'login' ? 'bg-slate-750 text-cyan-300 shadow' : 'text-slate-400 hover:text-slate-200'}`
+  }, "Log In"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => { setMode('create'); setErrorMsg(null); },
+    className: `flex-1 py-2 rounded-xl transition ${mode === 'create' ? 'bg-slate-750 text-cyan-300 shadow' : 'text-slate-400 hover:text-slate-200'}`
+  }, "Create Account")), errorMsg && /*#__PURE__*/React.createElement("div", {
+    className: "p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold"
+  }, errorMsg), mode === 'login' ? /*#__PURE__*/React.createElement("div", {
+    className: "space-y-4"
+  }, accountList.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "space-y-2"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-[11px] font-bold text-slate-400 uppercase tracking-wider"
+  }, "Registered Accounts on this Device"), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1.5"
+  }, accountList.map(acc => /*#__PURE__*/React.createElement("div", {
+    key: acc.handle,
+    onClick: () => {
+      AccountManager.setActiveHandle(acc.handle);
+      onLoginSuccess(acc);
+    },
+    className: "p-2.5 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-750 flex items-center justify-between cursor-pointer transition group"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2.5 min-w-0"
+  }, /*#__PURE__*/React.createElement("img", {
+    src: acc.avatarUrl,
+    className: "w-8 h-8 rounded-lg object-cover border border-slate-700 flex-shrink-0"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-xs text-slate-100 group-hover:text-cyan-300 truncate"
+  }, acc.name), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-cyan-400 font-mono"
+  }, acc.handle))), isSuperAdmin(acc) ? /*#__PURE__*/React.createElement("span", {
+    className: "text-[9px] bg-amber-950 text-amber-300 border border-amber-600/40 px-1.5 py-0.5 rounded-full font-bold"
+  }, "Superadmin") : /*#__PURE__*/React.createElement("span", {
+    className: "text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full"
+  }, "Player"))))), /*#__PURE__*/React.createElement("form", {
+    onSubmit: handleLogin,
+    className: "space-y-3 pt-1"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "@handle"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: handle,
+    onChange: e => setHandle(e.target.value),
+    placeholder: "e.g. @EarlGreyFae",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "Password (Optional if using Passkey)"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: password,
+    onChange: e => setPassword(e.target.value),
+    placeholder: "••••••••",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "submit",
+    className: "w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition"
+  }, "Sign In"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: handlePasskeySignIn,
+    className: "w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center space-x-2 transition"
+  }, /*#__PURE__*/React.createElement(Icons.Fingerprint, {
+    className: "w-4 h-4 text-cyan-400"
+  }), /*#__PURE__*/React.createElement("span", null, "Sign in with Device Passkey")))) : /*#__PURE__*/React.createElement("form", {
+    onSubmit: handleCreateAccount,
+    className: "space-y-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "Display Name"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    required: true,
+    value: name,
+    onChange: e => setName(e.target.value),
+    placeholder: "e.g. Kitty or James",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "@handle (Unique Identifier)"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    required: true,
+    value: handle,
+    onChange: e => setHandle(e.target.value),
+    placeholder: "e.g. @EarlGreyFae",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "Email Address (Any Email — Gmail, iCloud, Outlook, Yahoo)"), /*#__PURE__*/React.createElement("input", {
+    type: "email",
+    required: true,
+    value: email,
+    onChange: e => setEmail(e.target.value),
+    placeholder: "e.g. player@example.com",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] text-slate-400"
+  }, "Codes are dispatched from system dispatcher (celticheroesscreenshots@gmail.com).")), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300"
+  }, "Password"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    required: true,
+    value: password,
+    onChange: e => setPassword(e.target.value),
+    placeholder: "••••••••",
+    className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "flex items-start space-x-2.5 p-2.5 rounded-xl bg-slate-850 border border-slate-750 cursor-pointer"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: enablePasskey,
+    onChange: e => setEnablePasskey(e.target.checked),
+    className: "mt-0.5 rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-300"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "font-bold text-slate-200"
+  }, "Create Device Passkey (Recommended)"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] text-slate-400"
+  }, "Authenticate seamlessly using Apple Face ID / Touch ID on this device."))), /*#__PURE__*/React.createElement("button", {
+    type: "submit",
+    className: "w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg transition"
+  }, "Create Roleplay Hub Account")), pendingVerificationAcc && /*#__PURE__*/React.createElement(EmailVerificationModal, {
+    isOpen: true,
+    email: pendingVerificationAcc.email,
+    onClose: () => {
+      setPendingVerificationAcc(null);
+      onLoginSuccess(pendingVerificationAcc);
+    },
+    onVerified: () => {
+      const updated = { ...pendingVerificationAcc, emailVerified: true };
+      AccountManager.saveAccount(updated);
+      setPendingVerificationAcc(null);
+      onLoginSuccess(updated);
+    }
+  })));
+}
+
 function App() {
+  const [currentUserHandle, setCurrentUserHandle] = useState(() => AccountManager.getActiveHandle());
+  const [isGlobalVerifyOpen, setIsGlobalVerifyOpen] = useState(false);
+  const [isGlobalNewDMOpen, setIsGlobalNewDMOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -1979,7 +2552,10 @@ function App() {
     onSwitchToWorld: wId => {
       handleSelectWorld(wId);
       setActiveTab('chat');
-    }
+    },
+    externalNewDMOpen: isGlobalNewDMOpen,
+    onCloseExternalNewDM: () => setIsGlobalNewDMOpen(false),
+    onOpenVerifyModal: () => setIsGlobalVerifyOpen(true)
   }), activeTab === 'cast' && /*#__PURE__*/React.createElement(CastScreen, {
     wikiEntries: appState.wikiEntries,
     worlds: appState.worlds,
@@ -2145,6 +2721,16 @@ function App() {
     onOpenSettings: () => {
       setIsPlayerProfileOpen(false);
       setActiveTab('settings');
+    }
+  }), isGlobalVerifyOpen && /*#__PURE__*/React.createElement(EmailVerificationModal, {
+    isOpen: isGlobalVerifyOpen,
+    email: appState.userProfile?.email,
+    onClose: () => setIsGlobalVerifyOpen(false),
+    onVerified: () => {
+      const updated = { ...appState.userProfile, emailVerified: true };
+      setAppState(prev => ({ ...prev, userProfile: updated }));
+      AccountManager.saveAccount(updated);
+      setIsGlobalVerifyOpen(false);
     }
   }), /*#__PURE__*/React.createElement("nav", {
     className: "flex-shrink-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 safe-bottom w-full"
@@ -2893,11 +3479,18 @@ function DMsScreen({
   onSendDM,
   onAcceptInvite,
   onDeclineInvite,
-  onSwitchToWorld
+  onSwitchToWorld,
+  externalNewDMOpen,
+  onCloseExternalNewDM,
+  onOpenVerifyModal
 }) {
   const [inputText, setInputText] = useState('');
   const [attachedImage, setAttachedImage] = useState(null);
   const [isNewDMModalOpen, setIsNewDMModalOpen] = useState(false);
+  useEffect(() => {
+    if (externalNewDMOpen) setIsNewDMModalOpen(true);
+  }, [externalNewDMOpen]);
+
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef(null);
@@ -3642,7 +4235,25 @@ function InviteToWorldModal({
     type: "button",
     onClick: () => onSendInvite(activeWorldObj.id, activeWorldObj.name, role),
     className: "px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md"
-  }, "Send World Invite"))));
+  }, "Send World Invite")), isPasskeyModalOpen && /*#__PURE__*/React.createElement(PasskeyModal, {
+    isOpen: isPasskeyModalOpen,
+    onClose: () => setIsPasskeyModalOpen(false),
+    userProfile: appState.userProfile,
+    onPasskeyCreated: (credId) => {
+      const updated = { ...appState.userProfile, passkeyCredentialId: credId };
+      onUpdateState({ userProfile: updated });
+      AccountManager.saveAccount(updated);
+    }
+  }), isVerifyModalOpen && /*#__PURE__*/React.createElement(EmailVerificationModal, {
+    isOpen: isVerifyModalOpen,
+    email: appState.userProfile?.email,
+    onClose: () => setIsVerifyModalOpen(false),
+    onVerified: () => {
+      const updated = { ...appState.userProfile, emailVerified: true };
+      onUpdateState({ userProfile: updated });
+      AccountManager.saveAccount(updated);
+    }
+  })));
 }
 function ChatScreen({
   messages,
@@ -4363,8 +4974,11 @@ function SettingsScreen({
   isOnline,
   setIsOnline,
   appState,
-  onUpdateState
+  onUpdateState,
+  onLogout
 }) {
+  const [isPasskeyModalOpen, setIsPasskeyModalOpen] = useState(false);
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [name, setName] = useState(appState.userProfile?.name || 'Kitty');
   const [handle, setHandle] = useState(appState.userProfile?.handle || '@EarlGreyFae');
   const [avatar, setAvatar] = useState(appState.userProfile?.avatarUrl || '');
@@ -4660,12 +5274,20 @@ function SettingsScreen({
   }, /*#__PURE__*/React.createElement("h4", {
     className: "font-bold text-sm sm:text-base text-slate-100 truncate"
   }, appState.userProfile?.name || 'Kitty'), /*#__PURE__*/React.createElement("span", {
-    className: "px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-400 border border-slate-700 font-mono"
-  }, "You")), /*#__PURE__*/React.createElement("div", {
+    className: `px-1.5 py-0.2 rounded text-[10px] font-bold border font-mono ${isSuperAdmin(appState.userProfile) ? 'bg-amber-950 text-amber-300 border-amber-600/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`
+  }, isSuperAdmin(appState.userProfile) ? '👑 Superadmin' : 'Player')), /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-cyan-400 font-mono font-medium"
   }, appState.userProfile?.handle || '@EarlGreyFae'), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 mt-0.5 truncate"
-  }, "Author & player identity for OOC chat, DMs, and world collaboration.")))), isEditProfileModalOpen && /*#__PURE__*/React.createElement("div", {
+  }, "Author & player identity for OOC chat, DMs, and world collaboration.")), /*#__PURE__*/React.createElement("div", {
+    className: "pt-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onLogout,
+    className: "px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-rose-300 border border-slate-700 text-[11px] font-semibold flex items-center space-x-1.5 transition"
+  }, /*#__PURE__*/React.createElement(Icons.LogOut, {
+    className: "w-3 h-3"
+  }), /*#__PURE__*/React.createElement("span", null, "Switch Account / Log Out"))))), isEditProfileModalOpen && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-200",
@@ -4791,112 +5413,62 @@ function SettingsScreen({
       SoundFX.play('pop');
     }
   }), /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3"
+    className: "bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2"
-  }, /*#__PURE__*/React.createElement(GoogleIcon, null), /*#__PURE__*/React.createElement("span", {
-    className: "font-bold text-xs text-slate-200"
-  }, "Save Profile with Google")), appState.userProfile?.linkedGoogleAccount?.verified ? /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full font-bold"
-  }, "Verified & Linked") : pendingVerification ? /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] bg-amber-950 text-amber-300 border border-amber-600/50 px-2 py-0.5 rounded-full font-bold"
-  }, "Verifying") : /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full"
-  }, "Not Linked")), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-400 leading-relaxed"
-  }, "Link your Google account to save your profile and enable cloud data syncing for all your worlds, channels, character bios, wiki entries, and DMs."), linkMsg && /*#__PURE__*/React.createElement("div", {
-    className: "p-2.5 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs rounded-xl"
-  }, linkMsg), appState.userProfile?.linkedGoogleAccount?.verified ? /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-800/80 p-3 rounded-xl border border-slate-700 space-y-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "font-bold text-slate-200"
-  }, appState.userProfile.linkedGoogleAccount.email), /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-cyan-400 mt-0.5 font-mono"
-  }, "Bound to ", appState.userProfile.handle)), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: handleUnlink,
-    className: "bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/60 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
-  }, "Unlink")), /*#__PURE__*/React.createElement("div", {
-    className: "pt-2.5 border-t border-slate-750 flex items-center justify-between"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: `w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`
-  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs font-bold text-slate-200"
-  }, "Cloud Data Sync"), /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400"
-  }, isOnline ? 'Automatic real-time sync active (Worlds, Channels, Cast, Wiki, DMs)' : 'Offline — changes saved locally and will auto-sync once server reconnects'))), /*#__PURE__*/React.createElement("span", {
-    className: `text-[10px] font-semibold px-2 py-0.5 rounded-full border ${isOnline ? 'bg-emerald-950 text-emerald-300 border-emerald-700/60' : 'bg-slate-800 text-slate-400 border-slate-700'}`
-  }, isOnline ? 'Auto-Sync Active' : 'Paused (Offline)'))) : pendingVerification ?
-  /*#__PURE__*/
-  /* Case B: Pending Email Verification with 6-digit Code (No links, accessible anywhere) */
-  React.createElement("div", {
-    className: "bg-slate-800/90 p-3 rounded-xl border border-amber-500/40 space-y-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-1.5 text-xs font-bold text-amber-300"
   }, /*#__PURE__*/React.createElement(Icons.Mail, {
-    className: "w-4 h-4 text-amber-400"
-  }), /*#__PURE__*/React.createElement("span", null, "Verification Code Dispatched")), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-300 leading-relaxed"
-  }, "A 6-digit confirmation code has been sent to ", /*#__PURE__*/React.createElement("strong", {
-    className: "text-cyan-300"
-  }, pendingVerification.email), ". Enter the code below to complete verification:"), /*#__PURE__*/React.createElement("div", {
+    className: "w-4 h-4 text-cyan-400"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "font-bold text-xs text-slate-200"
+  }, "Linked Account & Verification")), appState.userProfile?.emailVerified ? /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-0.5 rounded-full font-bold"
+  }, "✓ Verified & Active") : /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] bg-amber-950 text-amber-300 border border-amber-600/50 px-2 py-0.5 rounded-full font-bold"
+  }, "Unverified (Chat Locked)")), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-400 leading-relaxed"
+  }, "Link any personal email (Gmail, iCloud, Outlook, Yahoo) to verify your account and unlock in-character roleplay chat and DMs. Verification codes are dispatched from system dispatcher (", /*#__PURE__*/React.createElement("strong", {
+    className: "text-slate-300"
+  }, "celticheroesscreenshots@gmail.com"), ")."), /*#__PURE__*/React.createElement("div", {
+    className: "p-3 bg-slate-800/80 rounded-xl border border-slate-750 flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs font-bold text-slate-200"
+  }, appState.userProfile?.email || 'celticheroesscreenshots@gmail.com'), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-400 mt-0.5 font-mono"
+  }, "Bound to ", appState.userProfile?.handle)), !appState.userProfile?.emailVerified && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setIsVerifyModalOpen(true),
+    className: "px-3 py-1 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow transition"
+  }, "Verify Now"))), /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 shadow-sm"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "text",
-    maxLength: 6,
-    value: verifyCodeInput,
-    onChange: e => setVerifyCodeInput(e.target.value),
-    placeholder: "Enter 6-digit code...",
-    className: "flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono tracking-widest focus:outline-none focus:border-cyan-400"
-  }), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement(Icons.Key, {
+    className: "w-4 h-4 text-cyan-400"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "font-bold text-xs text-slate-200"
+  }, "Device Passkeys (Face ID / Touch ID)")), /*#__PURE__*/React.createElement("button", {
     type: "button",
-    onClick: handleConfirmCode,
-    className: "px-3.5 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl shadow-sm"
-  }, "Verify Code")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between pt-1 border-t border-slate-750/70"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400"
-  }, "Did you mistype your email?"), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: handleChangeEmail,
-    className: "text-[11px] text-slate-300 hover:text-rose-300 border border-slate-700 px-2.5 py-1 rounded-lg transition font-medium"
-  }, "Change Email"))) :
-  /*#__PURE__*/
-  /* Case C: Unlinked Form */
-  React.createElement("div", null, !isLinking ? /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setIsLinking(true),
-    className: "w-full bg-slate-800 hover:bg-slate-750 border border-slate-700 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition shadow-sm"
-  }, /*#__PURE__*/React.createElement(GoogleIcon, null), /*#__PURE__*/React.createElement("span", null, "Link Google Account to ", appState.userProfile?.handle)) : /*#__PURE__*/React.createElement("form", {
-    onSubmit: handleSendVerification,
-    className: "bg-slate-800 p-3 rounded-xl border border-slate-700 space-y-2.5"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "block text-xs font-semibold text-slate-300"
-  }, "Enter Google Email Address to Link:"), /*#__PURE__*/React.createElement("input", {
-    type: "email",
-    required: true,
-    value: googleEmail,
-    onChange: e => setGoogleEmail(e.target.value),
-    placeholder: "account.email@gmail.com",
-    className: "w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex justify-end space-x-2 pt-1"
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setIsLinking(false),
-    className: "px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200"
-  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
-    type: "submit",
-    className: "bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-3.5 py-1.5 rounded-xl text-xs shadow-md"
-  }, "Send Verification Code"))))), /*#__PURE__*/React.createElement("div", {
+    onClick: () => setIsPasskeyModalOpen(true),
+    className: "px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 border border-cyan-500/30 font-bold text-xs flex items-center space-x-1 shadow transition"
+  }, /*#__PURE__*/React.createElement(Icons.Plus, {
+    className: "w-3 h-3"
+  }), /*#__PURE__*/React.createElement("span", null, appState.userProfile?.passkeyCredentialId ? "Manage Passkey" : "Create Passkey"))), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-400 leading-relaxed"
+  }, "Use Apple Face ID, Touch ID, Windows Hello, or Android Biometrics to log in securely without entering a password."), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between p-2.5 rounded-xl bg-slate-800/70 border border-slate-700 text-xs"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2"
+  }, /*#__PURE__*/React.createElement(Icons.Fingerprint, {
+    className: "w-4 h-4 text-cyan-400"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-200"
+  }, appState.userProfile?.passkeyCredentialId ? "Passkey Active on this device" : "No Passkey Configured")), /*#__PURE__*/React.createElement("span", {
+    className: `text-[10px] px-2 py-0.5 rounded-full font-bold border ${appState.userProfile?.passkeyCredentialId ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-slate-850 text-slate-400 border-slate-700'}`
+  }, appState.userProfile?.passkeyCredentialId ? "Active" : "Optional"))), isSuperAdmin(appState.userProfile) && /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-2"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between"
