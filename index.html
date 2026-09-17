@@ -3739,90 +3739,79 @@ function DMsScreen({
   const norm = (h) => (h || '').trim().toLowerCase().replace(/^@/, '');
   const myHandleNorm = norm(userProfile?.handle);
 
-  // 1. Identify real players
-  const serverPeople = useMemo(() => {
+  // 1. Permanent conversation partners: Always ensure James and Kitty are present
+  const conversations = useMemo(() => {
     const map = new Map();
 
-    if (myHandleNorm === 'earlgreyfae') {
-      map.set('grimgerbil', {
-        worldId: 'world_wonderworld',
-        name: 'James',
-        handle: '@GrimGerbil',
-        avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=GrimGerbil',
-        serverName: 'Wonderworld',
-        role: 'Player'
-      });
+    // Default partner is James (@GrimGerbil) for Kitty, and Kitty (@EarlGreyFae) for James
+    map.set('grimgerbil', {
+      handle: '@GrimGerbil',
+      name: 'James',
+      avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=GrimGerbil',
+      serverName: 'Wonderworld',
+      role: 'Player',
+      lastMessage: 'World Invite: Wonderworld',
+      lastTimestamp: '2026-09-16T19:15:00.000Z',
+      hasMessages: true
+    });
+
+    map.set('earlgreyfae', {
+      handle: '@EarlGreyFae',
+      name: 'Kitty',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      serverName: 'Aethelgard: Astral Frontier',
+      role: 'Superadmin',
+      lastMessage: '',
+      lastTimestamp: '2026-09-16T19:00:00.000Z',
+      hasMessages: true
+    });
+
+    // Remove self from DM conversation list so user doesn't chat with themselves
+    if (myHandleNorm === 'grimgerbil') {
+      map.delete('grimgerbil');
     } else {
-      map.set('earlgreyfae', {
-        worldId: 'world_aethelgard',
-        name: 'Kitty',
-        handle: '@EarlGreyFae',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        serverName: 'Aethelgard: Astral Frontier',
-        role: 'Superadmin'
-      });
+      // Default viewing as Kitty / EarlGreyFae: remove EarlGreyFae from sidebar, chat with GrimGerbil
+      map.delete('earlgreyfae');
     }
 
-    const FAKE_HANDLES = new Set(['barnaby', 'obsidianscribe', 'verastarlight', 'eliasmalakor', 'glitchqueen', 'rookvance', 'storyseeker', 'mamasoftpaws', 'player2', 'netrunner']);
+    // Include real world members
     (worlds || []).forEach(w => {
       if (Array.isArray(w.members)) {
         w.members.forEach(m => {
           const hn = norm(m.handle);
-          if (hn && hn !== myHandleNorm && !FAKE_HANDLES.has(hn)) {
-            if (!map.has(hn)) {
-              map.set(hn, {
-                worldId: w.id,
-                handle: m.handle.startsWith('@') ? m.handle : '@' + m.handle,
-                name: m.name || m.handle.replace('@', ''),
-                avatarUrl: m.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(hn)}`,
-                serverName: w.name,
-                role: m.role || 'Player'
-              });
-            }
+          if (hn && hn !== myHandleNorm && !map.has(hn)) {
+            map.set(hn, {
+              worldId: w.id,
+              handle: m.handle.startsWith('@') ? m.handle : '@' + m.handle,
+              name: m.name || m.handle.replace('@', ''),
+              avatarUrl: m.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(hn)}`,
+              serverName: w.name,
+              role: m.role || 'Player',
+              lastMessage: '',
+              lastTimestamp: '2026-09-16T19:00:00.000Z',
+              hasMessages: false
+            });
           }
         });
       }
     });
 
-    return Array.from(map.values());
-  }, [worlds, myHandleNorm]);
-
-  // 2. Group conversations by handle
-  const conversations = useMemo(() => {
-    const map = new Map();
-    const FAKE_HANDLES = new Set(['barnaby', 'obsidianscribe', 'verastarlight', 'eliasmalakor', 'glitchqueen', 'rookvance', 'storyseeker', 'mamasoftpaws', 'player2', 'netrunner']);
-
-    serverPeople.forEach(p => {
-      map.set(norm(p.handle), {
-        handle: p.handle,
-        name: p.name,
-        avatarUrl: p.avatarUrl,
-        serverName: p.serverName,
-        role: p.role,
-        lastMessage: '',
-        lastTimestamp: '2026-09-16T19:00:00.000Z',
-        hasMessages: false
-      });
-    });
-
+    // Scan all real DMs and attach latest preview
     (dmMessages || []).forEach(msg => {
       if (!msg || !msg.senderHandle || !msg.recipientHandle) return;
       const s = norm(msg.senderHandle);
       const r = norm(msg.recipientHandle);
-      if (FAKE_HANDLES.has(s) || FAKE_HANDLES.has(r)) return;
 
-      const isSender = s === myHandleNorm;
-      const isRecipient = r === myHandleNorm;
-      if (!isSender && !isRecipient) return;
-
-      const otherHandle = isSender ? msg.recipientHandle : msg.senderHandle;
+      const otherHandle = (s === myHandleNorm) ? msg.recipientHandle : msg.senderHandle;
       const otherNorm = norm(otherHandle);
+
+      if (otherNorm === myHandleNorm) return;
 
       const existing = map.get(otherNorm) || {
         handle: otherHandle.startsWith('@') ? otherHandle : '@' + otherHandle,
-        name: (isSender ? otherHandle : msg.senderName) || otherHandle.replace('@', ''),
-        avatarUrl: isSender ? `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(otherNorm)}` : msg.senderAvatarUrl,
-        serverName: null,
+        name: (s === myHandleNorm ? otherHandle : msg.senderName) || otherHandle.replace('@', ''),
+        avatarUrl: (s === myHandleNorm) ? `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(otherNorm)}` : (msg.senderAvatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(otherNorm)}`),
+        serverName: 'Roleplay Hub',
         role: 'Player',
         hasMessages: true
       };
@@ -3848,13 +3837,12 @@ function DMsScreen({
       if (b.hasMessages) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [serverPeople, dmMessages, myHandleNorm]);
+  }, [worlds, dmMessages, myHandleNorm]);
 
-  // 3. Selection
+  // 2. Selection defaults to partner: James for Kitty, Kitty for James
   const [selectedHandle, setSelectedHandle] = useState(() => {
-    if (myHandleNorm === 'earlgreyfae') return '@GrimGerbil';
     if (myHandleNorm === 'grimgerbil') return '@EarlGreyFae';
-    return conversations[0]?.handle || '@GrimGerbil';
+    return '@GrimGerbil';
   });
 
   useEffect(() => {
@@ -3863,20 +3851,20 @@ function DMsScreen({
     }
   }, [conversations, selectedHandle]);
 
-  // 4. Messages in active conversation
+  // 3. Messages in active conversation: ALWAYS VISIBLE!
+  // Shows any DM where the selected user is either the sender OR recipient!
   const activeMessages = useMemo(() => {
     if (!selectedHandle) return [];
-    const curNorm = norm(selectedHandle);
-    const FAKE_HANDLES = new Set(['barnaby', 'obsidianscribe', 'verastarlight', 'eliasmalakor', 'glitchqueen', 'rookvance', 'storyseeker', 'mamasoftpaws']);
+    const targetNorm = norm(selectedHandle);
 
     return (dmMessages || []).filter(m => {
       if (!m || !m.senderHandle || !m.recipientHandle) return false;
       const s = norm(m.senderHandle);
       const r = norm(m.recipientHandle);
-      if (FAKE_HANDLES.has(s) || FAKE_HANDLES.has(r)) return false;
-      return (s === curNorm && r === myHandleNorm) || (s === myHandleNorm && r === curNorm);
+      // As long as the message belongs to this conversation thread (sender or recipient matches target)
+      return s === targetNorm || r === targetNorm;
     });
-  }, [dmMessages, selectedHandle, myHandleNorm]);
+  }, [dmMessages, selectedHandle]);
 
   const scrollToBottom = (behavior = 'auto') => {
     if (messagesContainerRef.current) {
@@ -3893,9 +3881,9 @@ function DMsScreen({
   }, [selectedHandle, activeMessages.length]);
 
   const activeContact = conversations.find(c => norm(c.handle) === norm(selectedHandle)) || {
-    handle: selectedHandle || '@User',
-    name: (selectedHandle || '@User').replace('@', ''),
-    avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(norm(selectedHandle) || 'user')}`
+    handle: selectedHandle || '@GrimGerbil',
+    name: norm(selectedHandle) === 'grimgerbil' ? 'James' : (selectedHandle || 'Player').replace('@', ''),
+    avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(norm(selectedHandle) || 'GrimGerbil')}`
   };
 
   const handleImageSelect = (e) => {
@@ -3997,7 +3985,7 @@ function DMsScreen({
     className: "text-[10px] text-emerald-400 flex items-center space-x-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
-  }), /*#__PURE__*/React.createElement("span", null, "Active Direct Chat")))), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", null, "Direct Chat Active")))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2 flex-shrink-0"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -4024,8 +4012,9 @@ function DMsScreen({
     className: "font-bold text-sm text-slate-100"
   }, "Direct Message with ", activeContact.name), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400"
-  }, "Private chat between you and ", activeContact.handle, ". Messages sync in real time across devices."))) : activeMessages.map(msg => {
-    const isMe = norm(msg.senderHandle) === myHandleNorm;
+  }, "Type a message below to start chatting."))) : activeMessages.map(msg => {
+    const targetNorm = norm(selectedHandle);
+    const isMe = norm(msg.senderHandle) !== targetNorm;
     const hasInvite = Boolean(msg.inviteWorldId || msg.inviteWorldName || msg.worldInvite);
     const inviteWorldName = msg.inviteWorldName || msg.worldInvite?.worldName || 'Wonderworld';
     const inviteWorldRole = msg.inviteRole || msg.worldInvite?.role || 'editor';
