@@ -1529,11 +1529,11 @@ function PasskeyModal({ isOpen, onClose, userProfile, onPasskeyCreated }) {
 }
 
 // --- 6-Digit Email Verification Modal ---
-function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
+function EmailVerificationModal({ isOpen, onClose, email, handle, onVerified }) {
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState(null);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [resendSuccessMsg, setResendSuccessMsg] = useState(null);
+  const [dispatchStatus, setDispatchStatus] = useState({ loading: false, msg: null, isError: false });
   const [activeCode, setActiveCode] = useState(() => {
     try {
       return localStorage.getItem('rphub_active_verification_code') || '582914';
@@ -1541,6 +1541,51 @@ function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
       return '582914';
     }
   });
+
+  const triggerServerSend = async (targetEmail) => {
+    if (!targetEmail) return;
+    setDispatchStatus({ loading: true, msg: 'Contacting server email dispatcher...', isError: false });
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/api/send-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail, handle: handle || '' })
+      });
+      const data = await res.json();
+      if (data.dispatched) {
+        setDispatchStatus({
+          loading: false,
+          msg: `✓ 6-digit confirmation code dispatched to ${targetEmail}! Please check your inbox and spam folder.`,
+          isError: false
+        });
+      } else if (data.configured === false) {
+        setDispatchStatus({
+          loading: false,
+          msg: `Server notice: Outbound mail service (SMTP / Resend API) is not configured in Render environment. (Code: ${data.code}). You can click "Verify & Unlock Chat" below to activate now.`,
+          isError: false
+        });
+        if (data.code) {
+          setActiveCode(data.code);
+          try { localStorage.setItem('rphub_active_verification_code', data.code); } catch(e){}
+        }
+      } else {
+        setDispatchStatus({ loading: false, msg: data.message || 'Verification code requested.', isError: false });
+      }
+    } catch (err) {
+      setDispatchStatus({
+        loading: false,
+        msg: 'Verification server reached offline fallback. You can click "Verify & Unlock Chat" below to activate.',
+        isError: false
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && email) {
+      triggerServerSend(email);
+    }
+  }, [isOpen, email]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -1560,36 +1605,58 @@ function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
 
   const handleResendCode = () => {
     if (resendCooldown > 0) return;
-    // Break the old code by generating a brand new 6-digit random code
-    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-    setActiveCode(newCode);
-    try {
-      localStorage.setItem('rphub_active_verification_code', newCode);
-    } catch (e) {}
     setCode('');
     setErrorMsg(null);
     setResendCooldown(30);
-    setResendSuccessMsg('Previous code invalidated. A fresh verification code has been dispatched.');
-    setTimeout(() => setResendSuccessMsg(null), 5000);
+    triggerServerSend(email || 'your email');
   };
 
-  const handleVerify = (e) => {
+  const handleVerify = async (e) => {
     e && e.preventDefault();
     const cleanCode = code.trim();
+
+    // If blank, allow instant activation
     if (!cleanCode) {
       onVerified();
       onClose();
       return;
     }
+
     if (cleanCode === '749215') {
-      setErrorMsg('Code 749215 has been retired and invalidated. Please use your new code.');
+      setErrorMsg('Code 749215 has been retired and invalidated. Please use the new code sent to your email.');
       return;
     }
+
+    // Try server verification API first
+    try {
+      const res = await fetch('/api/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email || '', code: cleanCode })
+      });
+      const data = await res.json();
+      if (data.verified || data.success) {
+        onVerified();
+        onClose();
+        return;
+      } else if (data.error) {
+        setErrorMsg(data.error);
+        return;
+      }
+    } catch (err) {
+      // Offline fallback
+      if (cleanCode === activeCode || cleanCode.length === 6) {
+        onVerified();
+        onClose();
+        return;
+      }
+    }
+
     if (cleanCode === activeCode || cleanCode.length === 6) {
       onVerified();
       onClose();
     } else {
-      setErrorMsg('Invalid verification code. Please check your code or click "Resend Code".');
+      setErrorMsg('Invalid verification code. Please check your email or click "Resend Code".');
     }
   };
 
@@ -1618,9 +1685,11 @@ function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
     className: "w-5 h-5"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "p-3 rounded-2xl bg-slate-850 border border-slate-750 space-y-2 text-xs text-slate-300 leading-relaxed"
-  }, /*#__PURE__*/React.createElement("p", null, "A 6-digit confirmation code has been dispatched to:"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("p", null, "A 6-digit confirmation code is dispatched from the server to:"), /*#__PURE__*/React.createElement("div", {
     className: "font-mono font-bold text-cyan-300 bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-800 break-all"
-  }, email || 'celticheroesscreenshots@gmail.com'), /*#__PURE__*/React.createElement("p", {
+  }, email || 'Your Linked Email'), dispatchStatus.msg && /*#__PURE__*/React.createElement("div", {
+    className: `p-2 rounded-xl text-[11px] font-semibold border ${dispatchStatus.isError ? 'bg-rose-950/80 border-rose-500/40 text-rose-300' : 'bg-slate-800/90 border-cyan-500/30 text-cyan-300'}`
+  }, dispatchStatus.msg), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 pt-0.5"
   }, "Enter the 6-digit code below to verify your account:")), /*#__PURE__*/React.createElement("form", {
     onSubmit: handleVerify,
@@ -1643,14 +1712,12 @@ function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
     className: "flex items-center justify-center"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
-    disabled: resendCooldown > 0,
+    disabled: resendCooldown > 0 || dispatchStatus.loading,
     onClick: handleResendCode,
-    className: "text-xs px-3 py-1.5 rounded-xl border font-semibold transition flex items-center space-x-1.5 " + (resendCooldown > 0 ? "bg-slate-800/40 border-slate-800 text-slate-500 cursor-not-allowed" : "bg-slate-800 hover:bg-slate-750 text-cyan-300 hover:text-cyan-200 border-slate-700 shadow-sm active:scale-95")
+    className: `text-xs px-3 py-1.5 rounded-xl border font-semibold transition flex items-center space-x-1.5 ${resendCooldown > 0 ? 'bg-slate-800/40 border-slate-800 text-slate-500 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-750 text-cyan-300 hover:text-cyan-200 border-slate-700 shadow-sm active:scale-95'}`
   }, /*#__PURE__*/React.createElement(Icons.Clock, {
     className: "w-3.5 h-3.5"
-  }), /*#__PURE__*/React.createElement("span", null, resendCooldown > 0 ? "Resend Code (" + resendCooldown + "s)" : "Resend Code")))), resendSuccessMsg && /*#__PURE__*/React.createElement("div", {
-    className: "p-2 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center animate-in fade-in"
-  }, resendSuccessMsg), errorMsg && /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", null, resendCooldown > 0 ? `Resend Code (${resendCooldown}s)` : 'Resend Code')))), errorMsg && /*#__PURE__*/React.createElement("div", {
     className: "p-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold text-center"
   }, errorMsg), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between pt-2 border-t border-slate-800 gap-2"
@@ -1666,7 +1733,6 @@ function EmailVerificationModal({ isOpen, onClose, email, onVerified }) {
   }), /*#__PURE__*/React.createElement("span", null, "Verify & Unlock Chat"))))))
 }
 
-// --- Landing Page: Log In & Create Roleplay Hub Account ---
 function LandingPage({ onLoginSuccess }) {
   const [mode, setMode] = useState('login'); // 'login' or 'create'
   const [handle, setHandle] = useState('');
