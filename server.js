@@ -359,7 +359,17 @@ const server = http.createServer(async (req, res) => {
       avatarUrl: u.avatarUrl
     }));
 
+    const userObj = db.users[normKey] ? {
+      handle: db.users[normKey].handle,
+      name: db.users[normKey].name,
+      role: db.users[normKey].role,
+      avatarUrl: db.users[normKey].avatarUrl,
+      passkeys: db.users[normKey].passkeys || [],
+      createdAt: db.users[normKey].createdAt
+    } : null;
+
     return sendJson(res, 200, {
+      user: userObj,
       worlds: userWorlds,
       channels: userChannels,
       messages: userMessages,
@@ -619,7 +629,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const payload = await parseJsonBody(req);
       const msg = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        id: payload.clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         worldId: payload.worldId,
         channelId: payload.channelId,
         speakerName: payload.persona?.name || 'Storyteller',
@@ -655,7 +665,7 @@ const server = http.createServer(async (req, res) => {
       if (!rHandle.startsWith('@')) rHandle = '@' + rHandle;
 
       const dm = {
-        id: `dm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        id: payload.clientMessageId || `dm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         senderHandle: payload.senderHandle,
         senderName: payload.senderName || payload.senderHandle.replace('@', ''),
         senderAvatarUrl: payload.senderAvatarUrl,
@@ -772,8 +782,9 @@ const server = http.createServer(async (req, res) => {
   if (reqPath === '/api/dev/simulate' && req.method === 'POST') {
     try {
       const { action, callerHandle, payload } = await parseJsonBody(req);
-      if ((callerHandle || '').toLowerCase() !== '@earlgreyfae') {
-        return sendJson(res, 403, { error: 'Dev options are restricted to Superadmin (@EarlGreyFae).' });
+      const callerUser = db.users[(callerHandle || '').toLowerCase()];
+      if (!callerUser || callerUser.role !== 'superadmin') {
+        return sendJson(res, 403, { error: 'Dev options are restricted to Superadmin.' });
       }
 
       if (action === 'simulate_dm') {
@@ -782,8 +793,8 @@ const server = http.createServer(async (req, res) => {
           senderHandle: payload?.senderHandle || '@RoleplayPartner',
           senderName: payload?.senderName || 'Rowan (Partner)',
           senderAvatarUrl: payload?.senderAvatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-          recipientHandle: '@EarlGreyFae',
-          content: payload?.content || 'Hey Kitty! Just hopped onto the hub. Ready to continue our chapter?',
+          recipientHandle: callerHandle,
+          content: payload?.content || 'Hey! Just hopped onto the hub. Ready to continue our chapter?',
           imageUrl: payload?.imageUrl || null,
           timestamp: new Date().toISOString(),
           status: 'delivered'

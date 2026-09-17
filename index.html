@@ -832,7 +832,7 @@ const Icons = new Proxy(IconsRaw, {
 
 function isSuperAdmin(user) {
   if (!user) return false;
-  return user.role === 'superadmin' || (user.handle || '').toLowerCase() === '@earlgreyfae';
+  return user.role === 'superadmin';
 }
 
 function getUserWorldRole(world, userProfile, userId) {
@@ -1187,10 +1187,10 @@ function ImageCropperModal({
     onClose();
   };
   if (!isOpen) return null;
-  return /*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn overflow-y-auto"
+  const modalContent = /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-md animate-fadeIn overflow-y-auto pb-24 sm:pb-6 safe-bottom"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-900 border border-slate-750 rounded-2xl sm:rounded-3xl w-full max-w-md my-auto shadow-2xl flex flex-col max-h-[92dvh] overflow-hidden"
+    className: "bg-slate-900 border border-slate-750 rounded-2xl sm:rounded-3xl w-full max-w-md my-auto shadow-2xl flex flex-col max-h-[82dvh] sm:max-h-[88dvh] overflow-hidden mb-6 sm:mb-0"
   }, /*#__PURE__*/React.createElement("div", {
     className: "p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850 flex-shrink-0"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1295,6 +1295,11 @@ function ImageCropperModal({
   }, /*#__PURE__*/React.createElement(Icons.Check, {
     className: "w-4 h-4 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("span", null, "Accept & Save Icon")))));
+
+  if (typeof document !== 'undefined' && document.body && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+    return ReactDOM.createPortal(modalContent, document.body);
+  }
+  return modalContent;
 }
 
 // ==========================================
@@ -1680,8 +1685,8 @@ function SlideUpQuickSheet({
   if (!entry) return null;
   const isProfile = entry.category === 'profile' || entry.category === 'ooc' || entry.id === 'ooc_player' || entry.id === 'ooc_persona' || entry.title.toLowerCase().includes('kitty') || entry.title.includes('@');
   if (isProfile) {
-    const cleanName = entry.title.split('(')[0].trim() || 'Kitty';
-    const cleanHandle = entry.title.includes('(') ? entry.title.match(/\((.*?)\)/)?.[1] || '@EarlGreyFae' : '@EarlGreyFae';
+    const cleanName = entry.title.split('(')[0].trim() || 'Player';
+    const cleanHandle = entry.title.includes('(') ? entry.title.match(/\((.*?)\)/)?.[1] || '@Player' : '@EarlGreyFae';
     return /*#__PURE__*/React.createElement("div", {
       className: "fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end justify-center animate-in fade-in duration-200"
     }, /*#__PURE__*/React.createElement("div", {
@@ -2068,7 +2073,7 @@ function WikiEditorModal({
     className: "text-[10px] text-slate-400 mt-1 flex items-center space-x-1"
   }, /*#__PURE__*/React.createElement("span", null, "Created by: ", /*#__PURE__*/React.createElement("strong", {
     className: "text-slate-300"
-  }, form.authorHandle || '@EarlGreyFae'))))), /*#__PURE__*/React.createElement("div", {
+  }, form.authorHandle || '@Player'))))), /*#__PURE__*/React.createElement("div", {
     className: "space-y-3 text-xs"
   }, form.characterDetails?.appearance && /*#__PURE__*/React.createElement("div", {
     className: "space-y-0.5"
@@ -3454,9 +3459,7 @@ function LandingPage({ onLoginSuccess }) {
     key: acc.handle,
     onClick: () => {
       setHandle(acc.handle);
-      if (acc.handle.toLowerCase() === '@earlgreyfae') {
-        setPassword('TacticalPugActivated');
-      }
+      
     },
     className: "p-2.5 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-750 flex items-center justify-between cursor-pointer transition group"
   }, /*#__PURE__*/React.createElement("div", {
@@ -3485,7 +3488,7 @@ function LandingPage({ onLoginSuccess }) {
     type: "text",
     value: handle,
     onChange: e => setHandle(e.target.value),
-    placeholder: "e.g. @EarlGreyFae",
+    placeholder: "e.g. @StorySeeker",
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400"
   })), /*#__PURE__*/React.createElement("div", {
     className: "space-y-1"
@@ -3530,7 +3533,7 @@ function LandingPage({ onLoginSuccess }) {
     required: true,
     value: handle,
     onChange: e => setHandle(e.target.value),
-    placeholder: "e.g. @EarlGreyFae",
+    placeholder: "e.g. @StorySeeker",
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400"
   })), /*#__PURE__*/React.createElement("div", {
     className: "space-y-1"
@@ -3935,50 +3938,15 @@ function ChatScreen({
     title: "Send Message"
   }, /*#__PURE__*/React.createElement(Icons.Send, {
     className: "w-4 h-4"
-  })))), isSpawnModalOpen && /*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-900 border border-slate-750 rounded-2xl p-4 max-w-sm w-full space-y-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between pb-2 border-b border-slate-800"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-bold text-sm text-slate-100"
-  }, "Spawn Temporary Character"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setIsSpawnModalOpen(false),
-    className: "text-slate-400 hover:text-white"
-  }, "✕")), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-2 text-xs"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    className: "block font-bold text-slate-300 mb-1"
-  }, "Character Name"), /*#__PURE__*/React.createElement("input", {
-    type: "text",
-    value: tempSpawnName,
-    onChange: e => setTempSpawnName(e.target.value),
-    placeholder: "e.g. Mysterious Stranger, Town Guard",
-    className: "w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-100"
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    className: "block font-bold text-slate-300 mb-1"
-  }, "Role / Description (Optional)"), /*#__PURE__*/React.createElement("input", {
-    type: "text",
-    value: tempSpawnRole,
-    onChange: e => setTempSpawnRole(e.target.value),
-    placeholder: "e.g. Harbor Master",
-    className: "w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-100"
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "flex justify-end space-x-2 pt-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setIsSpawnModalOpen(false),
-    className: "px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs"
-  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => {
-      if (!tempSpawnName.trim()) return;
-      const tName = tempSpawnName.trim();
+  })))), isSpawnModalOpen && /*#__PURE__*/React.createElement(SpawnCharacterModal, {
+    isOpen: isSpawnModalOpen,
+    onClose: () => setIsSpawnModalOpen(false),
+    onSpawn: (tName, tRole) => {
       const newTemp = {
         id: `temp_${Date.now()}`,
         name: tName,
-        role: tempSpawnRole.trim() || 'Temporary Character',
+        role: tRole || 'Temporary Character',
+        type: 'NPC',
         avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(tName)}`
       };
       onAddQuickNpc && onAddQuickNpc(newTemp);
@@ -3990,11 +3958,86 @@ function ChatScreen({
         handle: userProfile?.handle
       });
       setIsSpawnModalOpen(false);
-      setTempSpawnName('');
-      setTempSpawnRole('');
+    }
+  }
+  )));
+}
+
+// --- Spawn Temporary Character Modal (Portaled) ---
+function SpawnCharacterModal({
+  isOpen,
+  onClose,
+  onSpawn
+}) {
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+
+  if (!isOpen) return null;
+
+  const modalJSX = /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 pb-28 sm:pb-6 safe-bottom",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "bg-slate-900 border border-slate-750 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl my-auto"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between pb-2.5 border-b border-slate-800"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2"
+  }, /*#__PURE__*/React.createElement(Icons.UserCheck || Icons.Users, {
+    className: "w-5 h-5 text-purple-400"
+  }), /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-100"
+  }, "Spawn Temporary Character")), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+  }, /*#__PURE__*/React.createElement(Icons.X, {
+    className: "w-4 h-4"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3 text-xs"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "block font-bold text-slate-300 mb-1"
+  }, "Character Name"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    autoFocus: true,
+    value: name,
+    onChange: e => setName(e.target.value),
+    placeholder: "e.g. Mysterious Stranger, Town Guard",
+    className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-slate-100 text-xs focus:outline-none focus:border-cyan-400"
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "block font-bold text-slate-300 mb-1"
+  }, "Role / Description (Optional)"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: role,
+    onChange: e => setRole(e.target.value),
+    placeholder: "e.g. Harbor Master",
+    className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-slate-100 text-xs focus:outline-none focus:border-cyan-400"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-end space-x-2.5 pt-2 border-t border-slate-800"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold transition"
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    disabled: !name.trim(),
+    onClick: () => {
+      if (!name.trim()) return;
+      onSpawn(name.trim(), role.trim());
+      setName('');
+      setRole('');
+      onClose();
     },
-    className: "px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
-  }, "Spawn Character"))))));
+    className: "px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg transition flex items-center space-x-1.5"
+  }, /*#__PURE__*/React.createElement(Icons.Plus, {
+    className: "w-4 h-4"
+  }), /*#__PURE__*/React.createElement("span", null, "Spawn Character")))));
+
+  if (typeof document !== 'undefined' && document.body && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+    return ReactDOM.createPortal(modalJSX, document.body);
+  }
+  return modalJSX;
 }
 
 // ===== p5_dms.js =====
@@ -4782,7 +4825,7 @@ function SettingsScreen({
   onLogout,
   onOpenDevCenter
 }) {
-  const [name, setName] = useState(appState.userProfile?.name || 'Kitty');
+  const [name, setName] = useState(appState.userProfile?.name || 'Player');
   const [avatar, setAvatar] = useState(appState.userProfile?.avatarUrl || '');
   const [profileSaved, setProfileSaved] = useState(false);
 
@@ -5032,18 +5075,26 @@ function SettingsScreen({
           /*#__PURE__*/React.createElement("input", {
             type: "text",
             readOnly: true,
-            value: appState.userProfile?.handle || '@EarlGreyFae',
+            value: appState.userProfile?.handle || '',
             className: "w-full bg-slate-850 border border-slate-800 rounded-xl p-2.5 text-xs text-cyan-400 font-mono select-none"
           })
         )
       ),
       /*#__PURE__*/React.createElement("div", {
-        className: "flex justify-end"
+        className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-800/80"
       },
         /*#__PURE__*/React.createElement("button", {
           type: "button",
+          onClick: onLogout,
+          className: "px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-rose-300 hover:text-rose-200 border border-slate-700/80 text-xs font-bold flex items-center justify-center space-x-2 transition shadow-sm"
+        },
+          /*#__PURE__*/React.createElement(Icons.LogOut, { className: "w-4 h-4 text-rose-400" }),
+          /*#__PURE__*/React.createElement("span", null, "Log Out")
+        ),
+        /*#__PURE__*/React.createElement("button", {
+          type: "button",
           onClick: handleSaveProfile,
-          className: "px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition shadow-sm"
+          className: "px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition shadow-sm text-center"
         }, "Save Identity")
       )
     ),
@@ -5750,6 +5801,10 @@ function App() {
       const res = await fetch(`/api/bootstrap?handle=${encodeURIComponent(handle)}`);
       const data = await res.json();
       if (res.ok) {
+        if (data.user) {
+          setUserProfile(prev => ({ ...(prev || {}), ...data.user }));
+          AccountManager.saveAccount(data.user);
+        }
         const uniqueWorlds = (data.worlds || []).filter((w, i, arr) => arr.findIndex(x => x.id === w.id) === i);
         setWorlds(uniqueWorlds);
         if (data.worlds && data.worlds.length > 0) {
@@ -5806,7 +5861,12 @@ function App() {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.type === 'NEW_MESSAGE') {
+            if (data.type === 'PROFILE_UPDATED') {
+              if (data.user && (data.user.handle || '').toLowerCase() === myHandle) {
+                setUserProfile(prev => ({ ...(prev || {}), ...data.user }));
+                AccountManager.saveAccount(data.user);
+              }
+            } else if (data.type === 'NEW_MESSAGE') {
               setMessages(prev => {
                 if (prev.some(m => m.id === data.message.id)) return prev;
                 return [...prev, data.message];
@@ -5931,22 +5991,30 @@ function App() {
     }
   }, [activeWorldId, channels]);
 
-  // Keep active persona default to player OOC
+  // Keep active persona synced with player OOC profile
   useEffect(() => {
-    if (userProfile && activePersona.id === 'ooc_player') {
-      setActivePersona(prev => ({
-        ...prev,
-        name: userProfile.name,
-        handle: userProfile.handle,
-        avatarUrl: userProfile.avatarUrl || prev.avatarUrl
-      }));
+    if (userProfile) {
+      setActivePersona(prev => {
+        if (!prev || prev.type === 'OOC' || prev.id === 'ooc_player') {
+          return {
+            id: `ooc_${(userProfile.handle || 'player').replace('@', '')}`,
+            name: userProfile.name,
+            type: 'OOC',
+            handle: userProfile.handle,
+            avatarUrl: userProfile.avatarUrl || prev?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userProfile.name)}`
+          };
+        }
+        return prev;
+      });
     }
-  }, [userProfile]);
+  }, [userProfile?.avatarUrl, userProfile?.name, userProfile?.handle]);
 
   // Handlers for mutations
   const handleSendMessage = async (content, persona, imageUrl) => {
     if (!activeWorld || !activeChannel) return;
+    const clientMsgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const payload = {
+      clientMessageId: clientMsgId,
       worldId: activeWorld.id,
       channelId: activeChannel.id,
       content,
@@ -5956,9 +6024,9 @@ function App() {
       narratorHandle: userProfile.handle
     };
 
-    // Optimistic UI update
+    // Optimistic UI update with identical ID to prevent duplicate on PC/WebSocket
     const tempMsg = {
-      id: `msg_${Date.now()}`,
+      id: clientMsgId,
       ...payload,
       speakerName: persona.name,
       speakerType: persona.type,
@@ -5966,7 +6034,10 @@ function App() {
       avatarUrl: persona.avatarUrl,
       timestamp: new Date().toISOString()
     };
-    setMessages(prev => [...prev, tempMsg]);
+    setMessages(prev => {
+      if (prev.some(m => m.id === clientMsgId)) return prev;
+      return [...prev, tempMsg];
+    });
 
     try {
       await fetch('/api/messages', {
@@ -5978,19 +6049,23 @@ function App() {
   };
 
   const handleSendDM = async (dmData) => {
+    const clientDmId = `dm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const tempDM = {
-      id: `dm_${Date.now()}`,
+      id: clientDmId,
       ...dmData,
       timestamp: new Date().toISOString(),
       status: 'delivered'
     };
-    setDmMessages(prev => [...prev, tempDM]);
+    setDmMessages(prev => {
+      if (prev.some(d => d.id === clientDmId)) return prev;
+      return [...prev, tempDM];
+    });
 
     try {
       await fetch('/api/dms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dmData)
+        body: JSON.stringify({ ...dmData, clientMessageId: clientDmId })
       });
     } catch (e) {}
   };
@@ -6536,7 +6611,7 @@ function App() {
     },
     onUpdateEntry: handleUpdateWiki
   }), /*#__PURE__*/React.createElement("nav", {
-    className: "flex-shrink-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 safe-bottom w-full"
+    className: "flex-shrink-0 z-20 bg-slate-900/95 backdrop-blur border-t border-slate-800 safe-bottom w-full"
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-md mx-auto flex items-center justify-around px-2 py-1"
   }, [{
