@@ -1163,13 +1163,13 @@ function ImageCropperModal({
   const handleSave = () => {
     if (!imgRef.current) return;
     const outCanvas = document.createElement('canvas');
-    outCanvas.width = 512;
-    outCanvas.height = 512;
+    outCanvas.width = 256;
+    outCanvas.height = 256;
     const outCtx = outCanvas.getContext('2d');
     outCtx.save();
-    outCtx.translate(256 + pan.x * (512 / 240), 256 + pan.y * (512 / 240));
+    outCtx.translate(128 + pan.x * (256 / 240), 128 + pan.y * (256 / 240));
     outCtx.rotate(rotation * Math.PI / 180);
-    outCtx.scale(zoom * (512 / 240), zoom * (512 / 240));
+    outCtx.scale(zoom * (256 / 240), zoom * (256 / 240));
     const img = imgRef.current;
     const aspect = img.width / img.height;
     let drawW, drawH;
@@ -1182,7 +1182,7 @@ function ImageCropperModal({
     }
     outCtx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
     outCtx.restore();
-    const dataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
+    const dataUrl = outCanvas.toDataURL('image/jpeg', 0.85);
     onCropComplete(dataUrl);
     onClose();
   };
@@ -4885,24 +4885,36 @@ function SettingsScreen({
     e.target.value = '';
   };
 
-  const handleSaveProfile = async () => {
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState(null);
+
+  const handleSaveProfile = async (overrideAvatar) => {
+    const targetAvatar = typeof overrideAvatar === 'string' ? overrideAvatar : avatar;
+    setIsSavingProfile(true);
+    setProfileError(null);
     try {
       const res = await fetch('/api/auth/update-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handle: appState.userProfile.handle, name: name.trim(), avatarUrl: avatar })
+        body: JSON.stringify({
+          handle: appState.userProfile.handle,
+          name: name.trim(),
+          avatarUrl: targetAvatar
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        onUpdateState({ userProfile: { ...appState.userProfile, name: name.trim(), avatarUrl: avatar } });
-        AccountManager.saveAccount({ ...appState.userProfile, name: name.trim(), avatarUrl: avatar });
+        onUpdateState({ userProfile: { ...appState.userProfile, name: name.trim(), avatarUrl: targetAvatar } });
+        AccountManager.saveAccount({ ...appState.userProfile, name: name.trim(), avatarUrl: targetAvatar });
         setProfileSaved(true);
         setTimeout(() => setProfileSaved(false), 2500);
+      } else {
+        setProfileError(data.error || 'Failed to update profile.');
       }
     } catch (e) {
-      onUpdateState({ userProfile: { ...appState.userProfile, name: name.trim(), avatarUrl: avatar } });
-      setProfileSaved(true);
-      setTimeout(() => setProfileSaved(false), 2500);
+      setProfileError('Could not reach server to save profile.');
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -5048,7 +5060,11 @@ function SettingsScreen({
           /*#__PURE__*/React.createElement("h3", { className: "font-bold text-sm text-slate-100" }, "OOC Player Identity"),
           /*#__PURE__*/React.createElement("p", { className: "text-xs text-slate-400" }, "Your out-of-character display name and avatar icon.")
         ),
-        profileSaved && /*#__PURE__*/React.createElement("span", { className: "text-xs text-emerald-400 font-bold" }, "✓ Saved!")
+        /*#__PURE__*/React.createElement("div", { className: "flex items-center space-x-2" },
+          isSavingProfile && /*#__PURE__*/React.createElement("span", { className: "text-xs text-cyan-400 font-bold animate-pulse" }, "Saving to Cloud..."),
+          profileSaved && /*#__PURE__*/React.createElement("span", { className: "text-xs text-emerald-400 font-bold" }, "✓ Cloud Synced!"),
+          profileError && /*#__PURE__*/React.createElement("span", { className: "text-xs text-rose-400 font-bold" }, profileError)
+        )
       ),
       /*#__PURE__*/React.createElement("div", {
         className: "flex items-center space-x-4"
@@ -5326,10 +5342,11 @@ function SettingsScreen({
         setIsCropperOpen(false);
         setRawImageSrc(null);
       },
-      onCropComplete: croppedUrl => {
+      onCropComplete: async croppedUrl => {
         setAvatar(croppedUrl);
         setIsCropperOpen(false);
         setRawImageSrc(null);
+        await handleSaveProfile(croppedUrl);
       }
     })
   );
