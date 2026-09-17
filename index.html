@@ -899,32 +899,9 @@ const DEFAULT_DMS = [
     inviteRole: 'editor',
     inviteStatus: 'pending',
     timestamp: '2026-09-16T19:15:00.000Z'
-  },
-  {
-    id: 'dm_1',
-    senderUserId: 'user_player2',
-    senderName: 'Barnaby Quick-Paws',
-    senderHandle: '@Barnaby',
-    senderAvatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-    recipientHandle: '@EarlGreyFae',
-    content: 'Welcome to the frontier! If you ever need shelter or news on astral rifts, my hearth at the Gilded Gryphon is always open.',
-    timestamp: '2026-09-15T20:30:00.000Z'
-  },
-  {
-    id: 'dm_2',
-    senderUserId: 'user_player2',
-    senderName: 'Barnaby Quick-Paws',
-    senderHandle: '@Barnaby',
-    senderAvatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-    recipientHandle: '@EarlGreyFae',
-    content: 'I sent you a world invite to collaborate on Aethelgard as an Editor!',
-    inviteWorldId: 'world_aethelgard',
-    inviteWorldName: 'Aethelgard: The Astral Frontier',
-    inviteRole: 'editor',
-    inviteStatus: 'accepted',
-    timestamp: '2026-09-15T20:32:00.000Z'
   }
 ];
+
 // --- Superadmin & Passkey Utilities ---
 function isSuperAdmin(profile) {
   return (profile?.handle || '').trim().toLowerCase() === '@earlgreyfae';
@@ -1096,11 +1073,6 @@ const DEFAULT_WORLDS = [{
     email: 'celticheroesscreenshots@gmail.com',
     role: 'creator',
     joinedAt: '2026-09-01T00:00:00.000Z'
-  }, {
-    userId: 'user_player2',
-    handle: '@StorySeeker',
-    role: 'editor',
-    joinedAt: '2026-09-05T12:00:00.000Z'
   }]
 }, {
   id: 'world_neoveridia',
@@ -1118,11 +1090,6 @@ const DEFAULT_WORLDS = [{
     email: 'celticheroesscreenshots@gmail.com',
     role: 'creator',
     joinedAt: '2026-09-01T00:00:00.000Z'
-  }, {
-    userId: 'user_player2',
-    handle: '@StorySeeker',
-    role: 'editor',
-    joinedAt: '2026-09-05T12:00:00.000Z'
   }]
 }];
 const DEFAULT_CHANNELS = [
@@ -1325,50 +1292,7 @@ const DEFAULT_WIKI = [{
   authorHandle: '@EarlGreyFae',
   updatedAt: new Date().toISOString()
 }];
-const DEFAULT_MESSAGES = [{
-  id: 'msg_1',
-  worldId: 'world_aethelgard',
-  channelId: 'ch_tavern',
-  senderUserId: 'user_player1',
-  speakerName: 'The Storyteller',
-  speakerType: 'DM',
-  narratorName: 'Kitty',
-  narratorHandle: '@EarlGreyFae',
-  content: 'Rain lashes against the stained-glass windows of [[The Gilded Gryphon]]. The hearth crackles warmly as patrons huddle together, murmuring about eerie lights shifting through the forest.',
-  timestamp: '2026-09-15T19:30:00.000Z'
-}, {
-  id: 'msg_2',
-  worldId: 'world_aethelgard',
-  channelId: 'ch_tavern',
-  senderUserId: 'user_player1',
-  speakerName: 'Vera Starlight',
-  speakerType: 'IC',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-  characterId: 'char_vera',
-  content: 'Vera gently tunes her lute strings, glancing across the heavy oak table with an enigmatic smile. "A storm like this always shakes loose the most curious rumors. What do you reckon, [[Elias Malakor]]?"',
-  timestamp: '2026-09-15T19:32:15.000Z'
-}, {
-  id: 'msg_3',
-  worldId: 'world_aethelgard',
-  channelId: 'ch_tavern',
-  senderUserId: 'user_player2',
-  speakerName: 'Elias Malakor',
-  speakerType: 'IC',
-  avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-  characterId: 'char_elias',
-  content: 'Elias sets his tea down softly, his gloved thumb tracing the casing of his compass. "Curiosity has cost many travelers dearly in these valleys, Vera. But if the rumors bring us closer to the rift, I am listening."',
-  timestamp: '2026-09-15T19:34:40.000Z'
-}, {
-  id: 'msg_4',
-  worldId: 'world_aethelgard',
-  channelId: 'ch_tavern',
-  senderUserId: 'user_player1',
-  speakerName: 'Kitty (@EarlGreyFae)',
-  speakerType: 'OOC',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  content: '(( I love the atmospheric tension! Should Vera ask Barnaby about the old bridge keeper next, or slip out into the rain? ))',
-  timestamp: '2026-09-15T19:39:20.000Z'
-}];
+const DEFAULT_MESSAGES = [];
 
 // --- Search Engine ---
 class SearchEngine {
@@ -1931,12 +1855,40 @@ function App() {
       const s = localStorage.getItem('rphub_v3_state');
       if (s) {
         const parsed = JSON.parse(s);
+        const FAKE_HANDLES = new Set(['@barnaby', '@obsidianscribe', '@verastarlight', '@eliasmalakor', '@glitchqueen', '@rookvance', '@storyseeker', '@mamasoftpaws', '@player2', '@netrunner']);
+        
+        // Purge fake DMs from local storage
+        if (Array.isArray(parsed.dmMessages)) {
+          parsed.dmMessages = parsed.dmMessages.filter(d => {
+            if (!d) return false;
+            const s = (d.senderHandle || '').toLowerCase();
+            const r = (d.recipientHandle || '').toLowerCase();
+            return !FAKE_HANDLES.has(s) && !FAKE_HANDLES.has(r);
+          });
+          if (parsed.dmMessages.length === 0) {
+            parsed.dmMessages = DEFAULT_DMS;
+          }
+        } else {
+          parsed.dmMessages = DEFAULT_DMS;
+        }
+
+        // Purge fake members from worlds
+        if (Array.isArray(parsed.worlds)) {
+          parsed.worlds = parsed.worlds.map(w => ({
+            ...w,
+            members: (w.members || []).filter(m => !FAKE_HANDLES.has((m.handle || '').toLowerCase()))
+          }));
+        }
+
         if (parsed.userProfile) {
           const h = (parsed.userProfile.handle || '').toLowerCase();
           const em = (parsed.userProfile.email || '').toLowerCase();
           if (h === '@mamasoftpaws') {
             parsed.userProfile.handle = '@EarlGreyFae';
           }
+          // Set distinct userId based on actual handle
+          parsed.userId = 'user_' + (parsed.userProfile.handle || 'user').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          
           if (h === '@earlgreyfae' || em === 'celticheroesscreenshots@gmail.com' || isSuperAdmin(parsed.userProfile)) {
             parsed.userProfile.emailVerified = true;
             parsed.userProfile.linkedGoogleAccount = {
@@ -2009,7 +1961,7 @@ function App() {
   const wsRef = useRef(null);
 
   const handleIncomingNetworkEvent = (eventData) => {
-    if (!eventData || eventData.senderId === appState.userId) return;
+    if (!eventData || !eventData.type) return;
     const { type, data } = eventData;
     if (type === 'NEW_MESSAGE' && data) {
       setAppState(prev => {
@@ -3678,7 +3630,6 @@ function DMsScreen({
 
   // Known lore figures & cast affiliated with specific worlds
   const KNOWN_SERVER_PEOPLE = [
-  // Wonderworld & Aethelgard Key Figures
   {
     worldId: 'world_wonderworld',
     name: 'James',
@@ -3694,53 +3645,8 @@ function DMsScreen({
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     role: 'Superadmin & World Creator',
     serverName: 'Aethelgard: Astral Frontier'
-  },
-  // Aethelgard: Astral Frontier (world_aethelgard)
-  {
-    worldId: 'world_aethelgard',
-    name: 'Barnaby Quick-Paws',
-    handle: '@Barnaby',
-    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
-    role: 'Aethelgard Innkeeper',
-    serverName: 'Aethelgard: Astral Frontier'
-  }, {
-    worldId: 'world_aethelgard',
-    name: 'Archivist Maren',
-    handle: '@ObsidianScribe',
-    avatarUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=200&auto=format&fit=crop&q=80',
-    role: 'Obsidian Archivist',
-    serverName: 'Aethelgard: Astral Frontier'
-  }, {
-    worldId: 'world_aethelgard',
-    name: 'Vera Starlight',
-    handle: '@VeraStarlight',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    role: 'Celestial Bard',
-    serverName: 'Aethelgard: Astral Frontier'
-  }, {
-    worldId: 'world_aethelgard',
-    name: 'Elias Malakor',
-    handle: '@EliasMalakor',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    role: 'Occult Scholar',
-    serverName: 'Aethelgard: Astral Frontier'
-  },
-  // Neo-Veridia 2099 (world_neoveridia)
-  {
-    worldId: 'world_neoveridia',
-    name: 'Galaxy "Glitch" Chen',
-    handle: '@GlitchQueen',
-    avatarUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=200&auto=format&fit=crop&q=80',
-    role: 'Neo-Veridia Netrunner',
-    serverName: 'Neo-Veridia 2099'
-  }, {
-    worldId: 'world_neoveridia',
-    name: 'Detective Rook Vance',
-    handle: '@RookVance',
-    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
-    role: 'Cyber-Noir Investigator',
-    serverName: 'Neo-Veridia 2099'
-  }];
+  }
+];
 
   // 1. Identify which servers/worlds the user is ACTUALLY in
   const myWorlds = useMemo(() => {
@@ -3758,113 +3664,109 @@ function DMsScreen({
   }, [worlds, userId, userProfile?.handle]);
   const isUserInAnyServer = myWorlds.length > 0;
 
-  // 2. Gather everyone in the servers you are in
+  // 2. Gather real players only (Purged of all fake personas, NPCs, and wiki characters)
   const serverPeople = useMemo(() => {
-    if (!isUserInAnyServer) return [];
     const myHandle = (userProfile?.handle || '').toLowerCase();
     const map = new Map();
-    myWorlds.forEach(w => {
-      // A. Members of this world
+
+    // Ensure the partner player is always available to chat with
+    if (myHandle === '@earlgreyfae') {
+      map.set('@grimgerbil', {
+        worldId: 'world_wonderworld',
+        name: 'James',
+        handle: '@GrimGerbil',
+        avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=GrimGerbil',
+        serverName: 'Wonderworld',
+        role: 'Player'
+      });
+    } else {
+      map.set('@earlgreyfae', {
+        worldId: 'world_aethelgard',
+        name: 'Kitty',
+        handle: '@EarlGreyFae',
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        serverName: 'Aethelgard: Astral Frontier',
+        role: 'Superadmin'
+      });
+    }
+
+    // Include other real players who joined worlds
+    const FAKE_HANDLES = new Set(['@barnaby', '@obsidianscribe', '@verastarlight', '@eliasmalakor', '@glitchqueen', '@rookvance', '@storyseeker', '@mamasoftpaws', '@player2', '@netrunner']);
+    (worlds || []).forEach(w => {
       if (Array.isArray(w.members)) {
         w.members.forEach(m => {
-          if (m.handle && m.handle.toLowerCase() !== myHandle) {
-            const key = m.handle.toLowerCase();
-            if (!map.has(key)) {
-              map.set(key, {
+          const h = (m.handle || '').toLowerCase();
+          if (h && h !== myHandle && !FAKE_HANDLES.has(h)) {
+            if (!map.has(h)) {
+              map.set(h, {
                 worldId: w.id,
                 handle: m.handle,
                 name: m.name || m.handle.replace('@', ''),
                 avatarUrl: m.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(m.handle)}`,
                 serverName: w.name,
-                role: m.role || 'World Member'
+                role: m.role || 'Player'
               });
             }
           }
         });
       }
-
-      // B. Known lore cast & NPCs affiliated with this world
-      KNOWN_SERVER_PEOPLE.filter(k => k.worldId === w.id).forEach(k => {
-        if (k.handle.toLowerCase() !== myHandle) {
-          const key = k.handle.toLowerCase();
-          if (!map.has(key)) {
-            map.set(key, k);
-          }
-        }
-      });
-
-      // C. Custom characters & NPCs created in this world from wikiEntries
-      (wikiEntries || []).forEach(e => {
-        if (e.worldId === w.id && (e.category === 'character' || e.category === 'npc')) {
-          const charHandle = e.handle || '@' + e.title.replace(/[^a-zA-Z0-9]/g, '');
-          if (charHandle.toLowerCase() !== myHandle) {
-            const key = charHandle.toLowerCase();
-            if (!map.has(key)) {
-              map.set(key, {
-                worldId: w.id,
-                name: e.title,
-                handle: charHandle,
-                avatarUrl: e.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(charHandle)}`,
-                serverName: w.name,
-                role: e.characterDetails?.archetype || (e.category === 'npc' ? 'World NPC' : 'Character')
-              });
-            }
-          }
-        }
-      });
     });
-    return Array.from(map.values());
-  }, [myWorlds, isUserInAnyServer, userProfile?.handle, wikiEntries]);
 
-  // 3. Group conversations by handle
+    return Array.from(map.values());
+  }, [worlds, userProfile?.handle]);
+  // 3. Group conversations by handle (Real players only)
   const conversations = useMemo(() => {
     const map = new Map();
-
-    // ONLY preview everyone in the servers you are in if you are in at least one server!
-    // "If you're in no servers at all, no preview profiles will be shown in the sidebar."
-    if (isUserInAnyServer) {
-      serverPeople.forEach(p => {
-        map.set(p.handle.toLowerCase(), {
-          handle: p.handle,
-          name: p.name,
-          avatarUrl: p.avatarUrl,
-          serverName: p.serverName,
-          role: p.role,
-          lastMessage: '',
-          lastTimestamp: '2026-09-15T00:00:00.000Z',
-          hasMessages: false
-        });
-      });
-    }
-
-    // Now scan all actual DM messages involving this user
     const myHandle = (userProfile?.handle || '').toLowerCase();
+    const FAKE_HANDLES = new Set(['@barnaby', '@obsidianscribe', '@verastarlight', '@eliasmalakor', '@glitchqueen', '@rookvance', '@storyseeker', '@mamasoftpaws', '@player2', '@netrunner']);
+
+    // Seed real contacts
+    serverPeople.forEach(p => {
+      map.set(p.handle.toLowerCase(), {
+        handle: p.handle,
+        name: p.name,
+        avatarUrl: p.avatarUrl,
+        serverName: p.serverName,
+        role: p.role,
+        lastMessage: '',
+        lastTimestamp: '2026-09-16T19:00:00.000Z',
+        hasMessages: false
+      });
+    });
+
+    // Scan all actual DM messages involving this user (purging fake handles)
     (dmMessages || []).forEach(msg => {
-      if (!msg.senderHandle || !msg.recipientHandle) return;
-      const isSender = msg.senderHandle.toLowerCase() === myHandle;
-      const isRecipient = msg.recipientHandle.toLowerCase() === myHandle;
+      if (!msg || !msg.senderHandle || !msg.recipientHandle) return;
+      const s = msg.senderHandle.toLowerCase();
+      const r = msg.recipientHandle.toLowerCase();
+      if (FAKE_HANDLES.has(s) || FAKE_HANDLES.has(r)) return;
+
+      const isSender = s === myHandle;
+      const isRecipient = r === myHandle;
       if (!isSender && !isRecipient) return;
+
       const otherHandle = isSender ? msg.recipientHandle : msg.senderHandle;
       const low = otherHandle.toLowerCase();
       const existing = map.get(low) || {
         handle: otherHandle,
         name: (isSender ? otherHandle : msg.senderName) || otherHandle.replace('@', ''),
-        avatarUrl: isSender ? undefined : msg.senderAvatarUrl,
+        avatarUrl: isSender ? `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(otherHandle)}` : msg.senderAvatarUrl,
         serverName: null,
-        role: null,
+        role: 'Player',
         hasMessages: true
       };
-      const textPreview = msg.inviteWorldName ? `World Invite: ${msg.inviteWorldName}` : msg.content || (msg.imageUrl ? '[Image Attached]' : '');
+
+      const textPreview = msg.inviteWorldName ? `World Invite: ${msg.inviteWorldName}` : (msg.content || (msg.imageUrl ? '[Image Attached]' : ''));
       map.set(low, {
         ...existing,
         lastMessage: textPreview,
-        lastTimestamp: msg.timestamp,
+        lastTimestamp: msg.timestamp || existing.lastTimestamp,
         hasMessages: true
       });
     });
+
     const list = Array.from(map.values());
 
-    // Sort: Active conversations with messages first (by timestamp descending), then preview profiles
     return list.sort((a, b) => {
       if (a.hasMessages && b.hasMessages) {
         return new Date(b.lastTimestamp || 0) - new Date(a.lastTimestamp || 0);
@@ -3873,8 +3775,7 @@ function DMsScreen({
       if (b.hasMessages) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [isUserInAnyServer, serverPeople, dmMessages, userProfile?.handle]);
-
+  }, [serverPeople, dmMessages, userProfile?.handle]);
   // Active selection defaults to @GrimGerbil if viewing as Kitty, or first active conversation
   const [selectedHandle, setSelectedHandle] = useState(() => {
     const myH = (userProfile?.handle || '').toLowerCase();
@@ -3893,14 +3794,18 @@ function DMsScreen({
   // Messages in active conversation
   const activeMessages = useMemo(() => {
     if (!selectedHandle) return [];
-    const cur = selectedHandle.toLowerCase();
-    const myHandle = userProfile.handle.toLowerCase();
-    return dmMessages.filter(m => {
-      const s = (m.senderHandle || '').toLowerCase();
-      const r = (m.recipientHandle || '').toLowerCase();
-      return s === cur && r === myHandle || s === myHandle && r === cur;
+    const cur = selectedHandle.trim().toLowerCase();
+    const myHandle = (userProfile?.handle || '').trim().toLowerCase();
+    const FAKE_HANDLES = new Set(['@barnaby', '@obsidianscribe', '@verastarlight', '@eliasmalakor', '@glitchqueen', '@rookvance', '@storyseeker', '@mamasoftpaws']);
+
+    return (dmMessages || []).filter(m => {
+      if (!m || !m.senderHandle || !m.recipientHandle) return false;
+      const s = m.senderHandle.trim().toLowerCase();
+      const r = m.recipientHandle.trim().toLowerCase();
+      if (FAKE_HANDLES.has(s) || FAKE_HANDLES.has(r)) return false;
+      return (s === cur && r === myHandle) || (s === myHandle && r === cur);
     });
-  }, [dmMessages, selectedHandle, userProfile.handle]);
+  }, [dmMessages, selectedHandle, userProfile?.handle]);
   const messagesContainerRef = useRef(null);
   const scrollToBottom = (behavior = 'auto') => {
     if (messagesContainerRef.current) {
@@ -4245,7 +4150,7 @@ function DMsScreen({
         setSearchQuery('');
       }
     },
-    placeholder: "@Barnaby, @StorySeeker, @handle...",
+    placeholder: "e.g. @GrimGerbil or @EarlGreyFae",
     className: "flex-1 bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400 font-mono"
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -5799,13 +5704,13 @@ function SettingsScreen({
       if (val && !val.startsWith('@')) val = '@' + val;
       setTransferRecipient(val);
     },
-    placeholder: "e.g. @Barnaby or @GlitchQueen",
+    placeholder: "e.g. @GrimGerbil",
     className: "w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono focus:outline-none focus:border-amber-400"
   }), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400"
   }, "Suggested cast members:"), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-1.5"
-  }, ['@Barnaby', '@ObsidianScribe', '@VeraStarlight', '@GlitchQueen', '@RookVance'].filter(h => h.toLowerCase() !== myHandle).map(h => /*#__PURE__*/React.createElement("button", {
+  }, ['@GrimGerbil', '@EarlGreyFae'].filter(h => h.toLowerCase() !== myHandle).map(h => /*#__PURE__*/React.createElement("button", {
     key: h,
     type: "button",
     onClick: () => setTransferRecipient(h),
