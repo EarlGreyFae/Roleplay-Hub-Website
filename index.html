@@ -3231,11 +3231,16 @@ function WorldPermissionsModal({
     setTimeout(() => setMsg(''), 3000);
   };
 
-  const handleRoleChange = (mUserId, newRole) => {
+  // Members are keyed by @handle everywhere they're actually created (the /join
+  // endpoint never sets a userId), so role changes and removal must match on
+  // handle too - matching on userId here would match every real member at once
+  // (they'd all share userId === undefined) and change/remove all of them.
+  const handleRoleChange = (mHandle, newRole) => {
     if (!isCreator) return;
+    const key = (mHandle || '').toLowerCase();
     const updated = {
       ...world,
-      members: (world.members || []).map(m => m.userId === mUserId ? {
+      members: (world.members || []).map(m => (m.handle || '').toLowerCase() === key ? {
         ...m,
         role: newRole
       } : m)
@@ -3243,11 +3248,13 @@ function WorldPermissionsModal({
     onUpdateWorld(updated);
   };
 
-  const handleRemoveMember = mUserId => {
+  const handleRemoveMember = mHandle => {
     if (!isCreator) return;
+    if (!confirm(`Kick ${mHandle} from this world? They will lose access immediately.`)) return;
+    const key = (mHandle || '').toLowerCase();
     const updated = {
       ...world,
-      members: (world.members || []).filter(m => m.userId !== mUserId)
+      members: (world.members || []).filter(m => (m.handle || '').toLowerCase() !== key)
     };
     onUpdateWorld(updated);
   };
@@ -3322,7 +3329,7 @@ function WorldPermissionsModal({
     className: "flex items-center space-x-1.5 flex-shrink-0"
   }, isCreator && m.role !== 'creator' ? React.createElement("select", {
     value: m.role,
-    onChange: e => handleRoleChange(m.userId, e.target.value),
+    onChange: e => handleRoleChange(m.handle, e.target.value),
     className: "bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200"
   }, React.createElement("option", {
     value: "editor"
@@ -3332,7 +3339,7 @@ function WorldPermissionsModal({
     className: "text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded"
   }, m.role === 'creator' ? 'Creator' : m.role === 'editor' ? 'World Editor' : 'Viewer'), isCreator && m.role !== 'creator' && React.createElement("button", {
     type: "button",
-    onClick: () => handleRemoveMember(m.userId),
+    onClick: () => handleRemoveMember(m.handle),
     className: "p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition",
     title: "Remove Member"
   }, "✕")))))), React.createElement("div", {
@@ -5987,6 +5994,7 @@ function WorldSwitcherModal({
   onCreateWorld,
   onOpenPermissions,
   onDeleteWorld,
+  onLeaveWorld,
   onUpdateWorldProfile
 }) {
   const myHandle = (userProfile?.handle || '').toLowerCase();
@@ -6069,6 +6077,12 @@ function WorldSwitcherModal({
     setWorldToDelete(w);
     setDeleteStep(1);
     setTypedConfirmName('');
+  };
+
+  const handleLeaveClick = (w) => {
+    if (confirm(`Leave "${w.name}"? You'll need a new invite to rejoin.`)) {
+      onLeaveWorld(w.id);
+    }
   };
 
   const confirmDeleteWorld = () => {
@@ -6165,7 +6179,14 @@ function WorldSwitcherModal({
       className: "px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px] font-semibold border border-slate-700 flex items-center space-x-1 transition shadow-sm"
     }, React.createElement(Icons.Users, {
       className: "w-3 h-3 text-cyan-400"
-    }), React.createElement("span", null, "Permissions")), isCreator && React.createElement("button", {
+    }), React.createElement("span", null, "Permissions")), !isCreator && React.createElement("button", {
+      type: "button",
+      onClick: () => handleLeaveClick(w),
+      className: "p-1.5 text-slate-500 hover:text-rose-400 rounded-xl hover:bg-slate-800 transition",
+      title: "Leave World"
+    }, React.createElement(Icons.LogOut, {
+      className: "w-3.5 h-3.5"
+    })), isCreator && React.createElement("button", {
       type: "button",
       onClick: () => startDeleteWorld(w),
       className: "p-1.5 text-slate-500 hover:text-rose-400 rounded-xl hover:bg-slate-800 transition",
@@ -7352,6 +7373,28 @@ function App() {
     } catch (e) {}
   };
 
+  const handleLeaveWorld = async worldId => {
+    try {
+      const res = await fetch(`/api/worlds/${worldId}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle: userProfile.handle })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setWorlds(prev => prev.filter(w => w.id !== worldId));
+        setChannels(prev => prev.filter(c => c.worldId !== worldId));
+        setMessages(prev => prev.filter(m => m.worldId !== worldId));
+        setWikiEntries(prev => prev.filter(w => w.worldId !== worldId));
+        setActiveWorldId(prev => prev === worldId ? (worlds.find(w => w.id !== worldId)?.id || null) : prev);
+      } else {
+        alert(data.error || 'Could not leave this world.');
+      }
+    } catch (e) {
+      alert('Could not reach the server to leave this world.');
+    }
+  };
+
   const handleCreateChannel = async (name, description, category = 'General') => {
     if (!activeWorld) return;
     try {
@@ -7838,6 +7881,7 @@ function App() {
       setIsPermissionsModalOpen(true);
     },
     onDeleteWorld: handleDeleteWorld,
+    onLeaveWorld: handleLeaveWorld,
     onUpdateWorldProfile: handleUpdateWorldProfile
   }), isPermissionsModalOpen && activePermissionsWorld && /*#__PURE__*/React.createElement(WorldPermissionsModal, {
     world: worlds.find(w => w.id === activePermissionsWorld.id) || activePermissionsWorld,

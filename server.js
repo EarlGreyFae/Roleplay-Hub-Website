@@ -748,7 +748,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Update World Profile (Name, Tagline, Description, Genre, Theme, Members)
-  if (reqPath.startsWith('/api/worlds/') && !reqPath.includes('/transfer') && !reqPath.includes('/members') && !reqPath.includes('/join') && (req.method === 'PUT' || req.method === 'PATCH' || (req.method === 'POST' && !reqPath.endsWith('/worlds')))) {
+  if (reqPath.startsWith('/api/worlds/') && !reqPath.includes('/transfer') && !reqPath.includes('/members') && !reqPath.includes('/join') && !reqPath.includes('/leave') && (req.method === 'PUT' || req.method === 'PATCH' || (req.method === 'POST' && !reqPath.endsWith('/worlds')))) {
     try {
       const worldId = reqPath.replace('/api/worlds/', '').split('/')[0];
       const w = db.worlds[worldId];
@@ -982,6 +982,32 @@ const server = http.createServer(async (req, res) => {
 
       broadcast({ type: 'WORLD_MEMBERS_UPDATED', world: w, channels: worldChannels, member: { handle, role: assignedRole } });
       return sendJson(res, 200, { success: true, world: w, channels: worldChannels, role: assignedRole });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath.startsWith('/api/worlds/') && reqPath.endsWith('/leave') && req.method === 'POST') {
+    try {
+      const worldId = reqPath.split('/api/worlds/')[1].split('/leave')[0];
+      const { handle } = await parseJsonBody(req);
+      const w = db.worlds[worldId];
+      if (!w) return sendJson(res, 404, { error: 'World not found' });
+
+      const hKey = (handle || '').toLowerCase();
+      if ((w.creatorHandle || '').toLowerCase() === hKey) {
+        return sendJson(res, 400, { error: 'The Creator cannot leave their own world. Transfer ownership or delete the world instead.' });
+      }
+
+      const wasMember = (w.members || []).some(m => (m.handle || '').toLowerCase() === hKey);
+      if (!wasMember) return sendJson(res, 404, { error: 'You are not a member of this world.' });
+
+      w.members = (w.members || []).filter(m => (m.handle || '').toLowerCase() !== hKey);
+      saveDatabase();
+
+      const worldChannels = Object.values(db.channels).filter(c => c.worldId === w.id);
+      broadcast({ type: 'WORLD_MEMBERS_UPDATED', world: w, channels: worldChannels });
+      return sendJson(res, 200, { success: true, world: w });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
