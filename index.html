@@ -972,6 +972,23 @@ const AccountManager = {
         localStorage.removeItem('rphub_active_handle');
       }
     } catch (e) {}
+  },
+  getTempNpcs: (handle) => {
+    if (!handle) return [];
+    try {
+      const s = localStorage.getItem(`rphub_temp_npcs_${handle.toLowerCase()}`);
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  },
+  saveTempNpcs: (handle, list) => {
+    if (!handle) return;
+    try {
+      localStorage.setItem(`rphub_temp_npcs_${handle.toLowerCase()}`, JSON.stringify(list || []));
+    } catch (e) {}
   }
 };
 if (typeof window !== "undefined") window.AccountManager = AccountManager;
@@ -5624,9 +5641,11 @@ function WorldSwitcherModal({
     const isCreator = role === 'creator';
     const isEditor = role === 'editor';
     const memberCount = (w.members && Array.isArray(w.members)) ? w.members.length : 1;
+    const worldAccent = w.themeAccent || '#38bdf8';
 
     return React.createElement("div", {
       key: w.id,
+      style: { borderLeftColor: worldAccent, borderLeftWidth: '4px' },
       className: `p-4 rounded-2xl border transition flex flex-col justify-between space-y-3 ${isSelected ? 'bg-slate-850 border-cyan-500/60 ring-1 ring-cyan-500/20' : 'bg-slate-900 border-slate-800 hover:border-slate-700'}`
     }, React.createElement("div", {
       className: "flex items-start justify-between gap-2"
@@ -5634,7 +5653,11 @@ function WorldSwitcherModal({
       className: "min-w-0 flex-1"
     }, React.createElement("div", {
       className: "flex items-center space-x-2"
-    }, React.createElement("h4", {
+    }, React.createElement("span", {
+      style: { backgroundColor: worldAccent },
+      className: "w-2.5 h-2.5 rounded-full flex-shrink-0",
+      title: "World Color"
+    }), React.createElement("h4", {
       className: "font-bold text-sm text-slate-100 truncate"
     }, w.name), isCreator ? React.createElement("span", {
       className: "text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-600/40 uppercase"
@@ -5658,7 +5681,8 @@ function WorldSwitcherModal({
         onSelectWorld(w.id);
         onClose();
       },
-      className: `px-3.5 py-1.5 rounded-xl font-bold transition flex items-center space-x-1.5 ${isSelected ? 'bg-cyan-600 text-white shadow-sm' : 'bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700'}`
+      style: isSelected ? { backgroundColor: worldAccent, color: '#020617' } : {},
+      className: `px-3.5 py-1.5 rounded-xl font-bold transition flex items-center space-x-1.5 ${isSelected ? 'shadow-sm' : 'bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700'}`
     }, React.createElement("span", null, isSelected ? "Active Realm" : "Enter Realm")), React.createElement("div", {
       className: "flex items-center space-x-1.5 flex-wrap gap-y-1"
     }, (isCreator || isEditor) && React.createElement("button", {
@@ -6019,10 +6043,22 @@ function WikiScreen({
       className: "text-xs text-slate-300 line-clamp-2 mt-1 leading-relaxed"
     }, item.summary))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-800/80"
-    }, /*#__PURE__*/React.createElement("span", null, item.authorHandle ? `by ${item.authorHandle}` : "World Lore"), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, item.authorHandle ? `by ${item.authorHandle}` : "World Lore"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center space-x-2 flex-shrink-0"
+    }, /*#__PURE__*/React.createElement("span", {
       style: canEdit ? { color: accentColor } : {},
       className: canEdit ? "font-semibold" : "text-slate-500"
-    }, canEdit ? "Click to Edit" : "Click to View")));
+    }, canEdit ? "Click to Edit" : "Click to View"), canEdit && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: e => {
+        e.stopPropagation();
+        if (confirm(`Delete "${item.title}"? This cannot be undone.`)) onDeleteEntry(item.id);
+      },
+      className: "p-1 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition",
+      title: "Delete Entry"
+    }, /*#__PURE__*/React.createElement(Icons.Trash, {
+      className: "w-3 h-3"
+    })))));
   }))));
 }
 
@@ -6050,9 +6086,10 @@ function App() {
   const [dmMessages, setDmMessages] = useState([]);
   const [wikiEntries, setWikiEntries] = useState([]);
   const [invites, setInvites] = useState([]);
-  const [customNpcs, setCustomNpcs] = useState([]);
+  const [customNpcs, setCustomNpcs] = useState(() => AccountManager.getTempNpcs(AccountManager.getActiveHandle()));
   const [directory, setDirectory] = useState([]);
   const [theme, setTheme] = useState('dark');
+  const [unreadChannelIds, setUnreadChannelIds] = useState(() => new Set());
 
   // Active persona
   const [activePersona, setActivePersona] = useState(() => {
@@ -6179,6 +6216,25 @@ function App() {
     }
   }, [userProfile?.handle]);
 
+  // Temporary Spawned Characters: persist locally per-account until explicitly deleted
+  useEffect(() => {
+    setCustomNpcs(AccountManager.getTempNpcs(userProfile?.handle));
+  }, [userProfile?.handle]);
+
+  useEffect(() => {
+    if (userProfile?.handle) {
+      AccountManager.saveTempNpcs(userProfile.handle, customNpcs);
+    }
+  }, [customNpcs, userProfile?.handle]);
+
+  // Live refs so the long-lived WebSocket handler always sees current values
+  const worldsRef = useRef(worlds);
+  useEffect(() => { worldsRef.current = worlds; }, [worlds]);
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  const activeChannelIdRef = useRef(activeChannelId);
+  useEffect(() => { activeChannelIdRef.current = activeChannelId; }, [activeChannelId]);
+
   // 3. WebSocket Connection for live real-time sync
   useEffect(() => {
     if (!userProfile?.handle) return;
@@ -6217,10 +6273,25 @@ function App() {
                 }
               }
             } else if (data.type === 'NEW_MESSAGE') {
-              setMessages(prev => {
-                if (prev.some(m => m.id === data.message.id)) return prev;
-                return [...prev, data.message];
-              });
+              const msg = data.message;
+              const isMyWorld = worldsRef.current.some(w => w.id === msg.worldId);
+              if (isMyWorld) {
+                setMessages(prev => {
+                  if (prev.some(m => m.id === msg.id)) return prev;
+                  return [...prev, msg];
+                });
+                const isFromMe = (msg.speakerHandle || msg.narratorHandle || '').toLowerCase() === myHandle;
+                const isViewingChannel = activeTabRef.current === 'chat' && activeChannelIdRef.current === msg.channelId;
+                if (!isFromMe && !isViewingChannel) {
+                  setUnreadChannelIds(prev => {
+                    if (prev.has(msg.channelId)) return prev;
+                    const next = new Set(prev);
+                    next.add(msg.channelId);
+                    return next;
+                  });
+                  SoundFX.play('pop');
+                }
+              }
             } else if (data.type === 'NEW_DM') {
               setDmMessages(prev => {
                 if (prev.some(m => m.id === data.message.id)) return prev;
@@ -6628,7 +6699,7 @@ function App() {
       const res = await fetch(`/api/worlds/${updatedWorld.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedWorld)
+        body: JSON.stringify({ ...updatedWorld, callerHandle: userProfile.handle })
       });
       const data = await res.json();
       if (res.ok && data.world) {
@@ -6673,7 +6744,7 @@ function App() {
     setWikiEntries(prev => prev.filter(w => w.worldId !== worldId));
 
     try {
-      await fetch(`/api/worlds/${worldId}`, { method: 'DELETE' });
+      await fetch(`/api/worlds/${worldId}?callerHandle=${encodeURIComponent(userProfile.handle)}`, { method: 'DELETE' });
     } catch (e) {}
   };
 
@@ -6683,7 +6754,7 @@ function App() {
       const res = await fetch('/api/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ worldId: activeWorld.id, name, description, category })
+        body: JSON.stringify({ worldId: activeWorld.id, name, description, category, callerHandle: userProfile.handle })
       });
       const data = await res.json();
       if (res.ok && data.channel) {
@@ -6721,7 +6792,7 @@ function App() {
       await fetch('/api/wiki', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entry: updated })
+        body: JSON.stringify({ entry: updated, callerHandle: userProfile.handle })
       });
     } catch (e) {}
   };
@@ -6729,7 +6800,7 @@ function App() {
   const handleDeleteWiki = async (entryId) => {
     setWikiEntries(prev => prev.filter(w => w.id !== entryId));
     try {
-      await fetch(`/api/wiki/${entryId}`, { method: 'DELETE' });
+      await fetch(`/api/wiki/${entryId}?callerHandle=${encodeURIComponent(userProfile.handle)}`, { method: 'DELETE' });
     } catch (e) {}
   };
 
@@ -6738,6 +6809,20 @@ function App() {
     if (!myHandle) return 0;
     return (dmMessages || []).filter(m => (m.recipientHandle || '').toLowerCase() === myHandle && m.status !== 'read').length;
   }, [dmMessages, myHandle]);
+
+  const hasUnreadChat = unreadChannelIds.size > 0;
+
+  // Clear the unread marker for whichever channel is currently being viewed
+  useEffect(() => {
+    if (activeTab === 'chat' && activeChannelId && unreadChannelIds.has(activeChannelId)) {
+      setUnreadChannelIds(prev => {
+        if (!prev.has(activeChannelId)) return prev;
+        const next = new Set(prev);
+        next.delete(activeChannelId);
+        return next;
+      });
+    }
+  }, [activeTab, activeChannelId, unreadChannelIds]);
 
   // If user opens DMs tab, mark active contact messages as read
   useEffect(() => {
@@ -6848,16 +6933,7 @@ function App() {
     className: "w-3.5 h-3.5 text-amber-400"
   }), /*#__PURE__*/React.createElement("span", {
     className: "hidden md:inline"
-  }, "Dev")), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setActiveTab('dms'),
-    className: "relative p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-cyan-300 transition focus:outline-none flex-shrink-0",
-    title: unreadDmCount > 0 ? `${unreadDmCount} Unread DM(s)` : "Direct Messages"
-  }, /*#__PURE__*/React.createElement(Icons.Bell, {
-    className: "w-4 h-4"
-  }), unreadDmCount > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-slate-900 animate-pulse"
-  })), activeTab === 'chat' && /*#__PURE__*/React.createElement("button", {
+  }, "Dev")), activeTab === 'chat' && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsSearchOpen(true),
     className: "p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-cyan-300 transition flex-shrink-0",
@@ -6904,7 +6980,7 @@ function App() {
     onOpenPlayerProfile: () => setActiveTab('settings'),
     userProfile: userProfile,
     customNpcs: customNpcs,
-    onAddQuickNpc: newTemp => setCustomNpcs(prev => [newTemp, ...prev.slice(0, 8)]),
+    onAddQuickNpc: newTemp => setCustomNpcs(prev => [newTemp, ...prev]),
     onDeleteQuickNpc: tempId => setCustomNpcs(prev => prev.filter(t => (t.id || t.name) !== tempId)),
     highlightedMessageId: highlightedMessageId
   })), activeTab === 'wiki' && (worlds.length === 0 ? /*#__PURE__*/React.createElement("div", {
@@ -7029,7 +7105,7 @@ function App() {
       fetchBootstrap(userProfile.handle);
     }
   }), isPermissionsModalOpen && activePermissionsWorld && /*#__PURE__*/React.createElement(WorldPermissionsModal, {
-    world: activePermissionsWorld,
+    world: worlds.find(w => w.id === activePermissionsWorld.id) || activePermissionsWorld,
     userProfile: userProfile,
     userId: userProfile?.userId,
     onClose: () => {
@@ -7179,7 +7255,9 @@ function App() {
       className: "w-5 h-5"
     }), t.id === 'dms' && unreadDmCount > 0 && /*#__PURE__*/React.createElement("span", {
       className: "absolute -top-1 -right-1.5 bg-rose-500 text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center shadow"
-    }, unreadDmCount)), /*#__PURE__*/React.createElement("span", {
+    }, unreadDmCount), t.id === 'chat' && hasUnreadChat && /*#__PURE__*/React.createElement("span", {
+      className: "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-slate-900 animate-pulse"
+    })), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] mt-0.5 tracking-tight"
     }, t.label), active && /*#__PURE__*/React.createElement("div", {
       className: "w-5 h-0.5 bg-cyan-400 rounded-full mt-0.5"
