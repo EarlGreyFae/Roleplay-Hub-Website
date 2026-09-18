@@ -10,6 +10,9 @@ You and other players can add the website directly to your phone's home screen f
 - **iPhone (Chrome / Safari)**: Tap the **Share** icon -> select **"Add to Home Screen"** -> tap **"Add"**.
 - **Android (Chrome)**: Tap the **three dots (⋮)** menu in the top right -> tap **"Install App"** or **"Add to Home screen"**.
 
+### 🔔 Push Notifications
+From **Settings -> Push Notifications**, tap **"Enable on This Device"** to get native OS notifications for new DMs, world invites, and chat messages even when the app is closed. No setup required on your end — the server generates and stores its own notification keys automatically the first time it starts. On iPhone, install the PWA to your Home Screen first (see above), then enable notifications from inside the installed app (Safari's browser tab can't receive push on iOS).
+
 ---
 
 ## 🌟 Key Features & Capabilities
@@ -23,10 +26,9 @@ You and other players can add the website directly to your phone's home screen f
 
 ### 2. Worlds & Permissions
 - **World Creation**: Founders give worlds a title, quote/one-liner hook, and short description.
-- **Starter Channels**: Every new world automatically seeds with three core channels:
+- **Starter Channels**: Every new world automatically seeds with two core channels:
   1. `#main-roleplay` (Primary in-character storytelling)
-  2. `#related-images` (Visual references, character art, and maps)
-  3. `#ooc-lounge` (Out-of-character player discussion & plotting)
+  2. `#ooc-lounge` (Out-of-character player discussion & plotting)
 - **3-Tier Permissions**:
   - **Creator**: World founder with full administrative control, channel creation, transfer ownership, and deletion.
   - **World Editor**: Permission granted by Creator to create chat channels/categories and edit wiki articles.
