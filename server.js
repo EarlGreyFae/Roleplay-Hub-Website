@@ -349,7 +349,15 @@ const server = http.createServer(async (req, res) => {
     const userWorldIds = userWorlds.map(w => w.id);
     const userChannels = Object.values(db.channels).filter(ch => userWorldIds.includes(ch.worldId));
     const userMessages = db.messages.filter(m => userWorldIds.includes(m.worldId));
-    const userWiki = db.wikiEntries.filter(w => userWorldIds.includes(w.worldId));
+    const userWiki = db.wikiEntries.filter(w => userWorldIds.includes(w.worldId)).map(w => {
+      const img = w.avatarUrl || w.coverUrl || w.imageUrl || '';
+      return {
+        ...w,
+        avatarUrl: img,
+        coverUrl: img,
+        imageUrl: img
+      };
+    });
     const userDMs = db.dmMessages.filter(d => (d.senderHandle || '').toLowerCase() === normKey || (d.recipientHandle || '').toLowerCase() === normKey);
     const userInvites = db.invites.filter(inv => (inv.toHandle || '').toLowerCase() === normKey && inv.status === 'pending');
 
@@ -745,8 +753,12 @@ const server = http.createServer(async (req, res) => {
       }
 
       const existingIndex = db.wikiEntries.findIndex(w => w.id === entry.id);
+      const img = entry.avatarUrl || entry.coverUrl || entry.imageUrl || '';
       const updatedEntry = {
         ...entry,
+        avatarUrl: img,
+        coverUrl: img,
+        imageUrl: img,
         id: entry.id || `wiki_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         updatedAt: new Date().toISOString()
       };

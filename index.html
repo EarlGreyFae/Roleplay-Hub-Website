@@ -2190,7 +2190,9 @@ function WikiEditorModal({
     onCropComplete: croppedUrl => {
       setForm({
         ...form,
-        avatarUrl: croppedUrl
+        avatarUrl: croppedUrl,
+        coverUrl: croppedUrl,
+        imageUrl: croppedUrl
       });
       setIsCropperOpen(false);
       SoundFX.play('pop');
@@ -2267,7 +2269,16 @@ function WikiArticleModal({
   onSave,
   onNavigateToEntry
 }) {
-  const [form, setForm] = useState(entry);
+  const [form, setForm] = useState(() => {
+    if (!entry) return null;
+    const img = entry.avatarUrl || entry.coverUrl || entry.imageUrl || '';
+    return {
+      ...entry,
+      avatarUrl: img,
+      coverUrl: img,
+      imageUrl: img
+    };
+  });
   const currentWorld = worlds.find(w => w.id === form?.worldId) || worlds[0];
   const canEdit = canEditWikiArticle(currentWorld, userProfile, userId) || !form?.authorHandle || form?.authorHandle === userProfile.handle || form?.authorUserId === userId;
   const [isEditing, setIsEditing] = useState(() => {
@@ -2295,8 +2306,14 @@ function WikiArticleModal({
     e.target.value = '';
   };
   useEffect(() => {
-    setForm(entry);
     if (entry) {
+      const img = entry.avatarUrl || entry.coverUrl || entry.imageUrl || '';
+      setForm({
+        ...entry,
+        avatarUrl: img,
+        coverUrl: img,
+        imageUrl: img
+      });
       const isNew = !entry.summary || entry.id?.startsWith('article_');
       if (isNew) setIsEditing(true);
     }
@@ -2322,8 +2339,12 @@ function WikiArticleModal({
   };
   const handleSave = () => {
     if (!canEdit) return;
+    const finalImg = form.avatarUrl || form.coverUrl || form.imageUrl || '';
     onSave({
       ...form,
+      avatarUrl: finalImg,
+      coverUrl: finalImg,
+      imageUrl: finalImg,
       authorHandle: form.authorHandle || userProfile.handle,
       authorUserId: form.authorUserId || userId,
       updatedAt: new Date().toISOString()
@@ -2555,7 +2576,7 @@ function WikiArticleModal({
   }, "Entry Icon / Emblem"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-3"
   }, /*#__PURE__*/React.createElement("img", {
-    src: form.avatarUrl || `https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=200&auto=format&fit=crop&q=80`,
+    src: form.avatarUrl || form.coverUrl || form.imageUrl || `https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=200&auto=format&fit=crop&q=80`,
     alt: "Emblem",
     className: "w-14 h-14 rounded-2xl object-cover border border-slate-700 bg-slate-900 flex-shrink-0 shadow"
   }), /*#__PURE__*/React.createElement("div", {
@@ -2737,14 +2758,14 @@ function WikiArticleModal({
     className: "flex flex-col-reverse md:flex-row gap-6 items-start"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-w-0 w-full"
-  }, renderArticleProse(form.contentMarkdown)), (form.avatarUrl || form.attributes && Object.keys(form.attributes).length > 0) && /*#__PURE__*/React.createElement("div", {
+  }, renderArticleProse(form.contentMarkdown)), ((form.avatarUrl || form.coverUrl || form.imageUrl) || form.attributes && Object.keys(form.attributes).length > 0) && /*#__PURE__*/React.createElement("div", {
     className: "w-full md:w-64 bg-slate-850 border border-slate-750 rounded-2xl overflow-hidden shadow-md flex-shrink-0"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-800 p-2 border-b border-slate-700 text-center font-bold font-serif text-slate-200 text-xs"
-  }, form.title), form.avatarUrl && /*#__PURE__*/React.createElement("div", {
+  }, form.title), (form.avatarUrl || form.coverUrl || form.imageUrl) && /*#__PURE__*/React.createElement("div", {
     className: "p-2.5 bg-slate-900 flex justify-center border-b border-slate-800"
   }, /*#__PURE__*/React.createElement("img", {
-    src: form.avatarUrl,
+    src: form.avatarUrl || form.coverUrl || form.imageUrl,
     alt: form.title,
     className: "max-h-36 rounded-xl object-cover"
   })), form.attributes && Object.keys(form.attributes).length > 0 && /*#__PURE__*/React.createElement("div", {
@@ -2818,9 +2839,12 @@ function WikiArticleModal({
     type: "button",
     onClick: () => {
       if (tempArticleImageUrl.trim()) {
+        const val = tempArticleImageUrl.trim();
         setForm({
           ...form,
-          avatarUrl: tempArticleImageUrl.trim()
+          avatarUrl: val,
+          coverUrl: val,
+          imageUrl: val
         });
       }
       setIsArticleImagePickerOpen(false);
@@ -5717,6 +5741,8 @@ function WikiScreen({
     const isNpc = item.category === 'npc';
     const canEdit = isChar ? canEditCharacter(item, userProfile, userId) : canEditWikiArticle(activeWorld, userProfile, userId);
 
+    const itemImg = item.avatarUrl || item.coverUrl || item.imageUrl;
+
     return /*#__PURE__*/React.createElement("div", {
       key: item.id,
       onClick: () => {
@@ -5727,13 +5753,13 @@ function WikiScreen({
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-start space-x-3"
     }, isChar ? /*#__PURE__*/React.createElement("img", {
-      src: item.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(item.title)}`,
+      src: itemImg || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(item.title)}`,
       alt: item.title,
       className: `w-12 h-12 rounded-xl object-cover border flex-shrink-0 ${isNpc ? 'border-purple-400' : 'border-sky-400'}`
-    }) : item.coverUrl ? /*#__PURE__*/React.createElement("img", {
-      src: item.coverUrl,
+    }) : itemImg ? /*#__PURE__*/React.createElement("img", {
+      src: itemImg,
       alt: item.title,
-      className: "w-12 h-12 rounded-xl object-cover border border-slate-700 flex-shrink-0"
+      className: "w-12 h-12 rounded-xl object-cover border border-slate-700 bg-slate-800 flex-shrink-0"
     }) : /*#__PURE__*/React.createElement("div", {
       className: "w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-cyan-400"
     }, item.category === 'location' ? /*#__PURE__*/React.createElement(Icons.MapPin, {
@@ -6226,8 +6252,12 @@ function App() {
   };
 
   const handleUpdateWiki = async (entry) => {
+    const img = entry.avatarUrl || entry.coverUrl || entry.imageUrl || '';
     const updated = {
       ...entry,
+      avatarUrl: img,
+      coverUrl: img,
+      imageUrl: img,
       worldId: entry.worldId || activeWorld?.id,
       authorHandle: entry.authorHandle || userProfile.handle,
       updatedAt: new Date().toISOString()
@@ -6600,6 +6630,9 @@ function App() {
         title: '',
         summary: '',
         contentMarkdown: '',
+        avatarUrl: '',
+        coverUrl: '',
+        imageUrl: '',
         authorHandle: userProfile.handle,
         authorUserId: userProfile.userId
       });
