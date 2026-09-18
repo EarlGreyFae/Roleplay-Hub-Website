@@ -3362,9 +3362,7 @@ function ChannelArchiveModal({ channels, onClose, onToggleArchive, onSelectChann
     onClick: () => onOpenNotes(c),
     className: "relative p-1.5 rounded-lg text-amber-400 hover:bg-slate-800 transition",
     title: "Channel Notes (private to you)"
-  }, React.createElement(Icons.Edit3, { className: "w-3.5 h-3.5" }), scratchpadNotes[c.id] && React.createElement("span", {
-    className: "absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full"
-  })), React.createElement("button", {
+  }, React.createElement(Icons.Edit3, { className: "w-3.5 h-3.5" })), React.createElement("button", {
     type: "button",
     onClick: () => onToggleArchive(c.id, !isArchived),
     className: `px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition ${isArchived ? 'bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300' : 'bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300'}`
@@ -5090,7 +5088,7 @@ function CastScreen({
     className: "w-5 h-5 text-cyan-400 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("h2", {
     className: "text-sm font-bold text-slate-100 truncate"
-  }, "My Cast & Personas (", allCast.length, ")")), /*#__PURE__*/React.createElement("button", {
+  }, "My Cast (", allCast.length, ")")), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => onCreateCastMember(false, worldFilter === 'all' ? (activeWorldId || worlds[0]?.id) : worldFilter),
     className: "bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm flex-shrink-0"
@@ -6767,9 +6765,15 @@ function App() {
               setChannels(prev => prev.filter(c => c.id !== data.channelId));
               setMessages(prev => prev.filter(m => m.channelId !== data.channelId));
             } else if (data.type === 'NEW_INVITE') {
-              setInvites(prev => [...prev, data.invite]);
+              setInvites(prev => {
+                if (prev.some(i => i.id === data.invite.id)) return prev;
+                return [...prev, data.invite];
+              });
               if (data.dm) {
-                setDmMessages(prev => [...prev, data.dm]);
+                setDmMessages(prev => {
+                  if (prev.some(m => m.id === data.dm.id)) return prev;
+                  return [...prev, data.dm];
+                });
               }
               if ((data.invite.toHandle || '').toLowerCase() === myHandle) {
                 SoundFX.play('join');
@@ -7337,8 +7341,6 @@ function App() {
     title: "Channel Notes (private to you)"
   }, /*#__PURE__*/React.createElement(Icons.Edit3, {
     className: "w-3.5 h-3.5 sm:w-4 sm:h-4"
-  }), scratchpadNotes[activeChannel.id] && /*#__PURE__*/React.createElement("span", {
-    className: "absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full ring-2 ring-slate-900"
   })), canManageChannels(activeWorld, userProfile, userProfile?.userId) && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsChannelArchiveOpen(true),
