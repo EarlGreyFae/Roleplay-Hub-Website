@@ -1129,6 +1129,30 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (reqPath.startsWith('/api/messages/') && req.method === 'DELETE') {
+    try {
+      const messageId = reqPath.replace('/api/messages/', '').split('?')[0];
+      const callerHandle = query.get('callerHandle') || '';
+      const msg = db.messages.find(m => m.id === messageId);
+      if (!msg) return sendJson(res, 404, { error: 'Message not found' });
+
+      // Only the message's own sender, or the world's Creator, may delete it.
+      const isAuthor = (msg.narratorHandle || '').toLowerCase() === callerHandle.toLowerCase();
+      const world = db.worlds[msg.worldId];
+      const isWorldCreator = (world?.creatorHandle || '').toLowerCase() === callerHandle.toLowerCase();
+      if (!isAuthor && !isWorldCreator) {
+        return sendJson(res, 403, { error: 'You can only delete your own messages, unless you are the Creator of this world.' });
+      }
+
+      db.messages = db.messages.filter(m => m.id !== messageId);
+      saveDatabase();
+      broadcast({ type: 'MESSAGE_DELETED', messageId, channelId: msg.channelId, worldId: msg.worldId });
+      return sendJson(res, 200, { success: true, messageId });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // 8. Direct Messages (DMs)
   if (reqPath === '/api/dms' && req.method === 'POST') {
     try {
@@ -1187,6 +1211,28 @@ const server = http.createServer(async (req, res) => {
         broadcast({ type: 'DMS_READ', readerHandle, contactHandle });
       }
       return sendJson(res, 200, { success: true, updatedCount });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Single-message delete - checked before the thread-delete route below since both
+  // start with /api/dms/ and this one needs the more specific match to win.
+  if (reqPath.startsWith('/api/dms/message/') && req.method === 'DELETE') {
+    try {
+      const messageId = reqPath.replace('/api/dms/message/', '').split('?')[0];
+      const callerHandle = query.get('callerHandle') || '';
+      const dm = db.dmMessages.find(d => d.id === messageId);
+      if (!dm) return sendJson(res, 404, { error: 'Message not found' });
+
+      // Only the original sender may delete their own DM.
+      const isAuthor = (dm.senderHandle || '').toLowerCase() === callerHandle.toLowerCase();
+      if (!isAuthor) return sendJson(res, 403, { error: 'You can only delete your own messages.' });
+
+      db.dmMessages = db.dmMessages.filter(d => d.id !== messageId);
+      saveDatabase();
+      broadcast({ type: 'DM_DELETED', messageId, senderHandle: dm.senderHandle, recipientHandle: dm.recipientHandle });
+      return sendJson(res, 200, { success: true, messageId });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
