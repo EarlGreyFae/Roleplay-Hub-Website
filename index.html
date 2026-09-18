@@ -2291,8 +2291,10 @@ function WikiArticleModal({
   const [tempArticleImageUrl, setTempArticleImageUrl] = useState('');
   const [isCropperOpen, setIsCropperOpen] = useState(false);
   const [rawImageSrc, setRawImageSrc] = useState(null);
+  const [saveStatus, setSaveStatus] = useState('');
   const articlePhotoRef = useRef(null);
   const textareaRef = useRef(null);
+
   const handlePhotoSelect = e => {
     const file = e.target.files?.[0];
     if (file) {
@@ -2305,6 +2307,7 @@ function WikiArticleModal({
     }
     e.target.value = '';
   };
+
   useEffect(() => {
     if (entry) {
       const img = entry.avatarUrl || entry.coverUrl || entry.imageUrl || '';
@@ -2318,7 +2321,9 @@ function WikiArticleModal({
       if (isNew) setIsEditing(true);
     }
   }, [entry]);
+
   if (isOpen === false || !form) return null;
+
   const insertTag = (prefix, suffix = '', def = 'text') => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -2328,15 +2333,35 @@ function WikiArticleModal({
     const sel = cur.substring(start, end) || def;
     const rep = prefix + sel + suffix;
     const next = cur.substring(0, start) + rep + cur.substring(end);
-    setForm({
-      ...form,
+    setForm(prev => ({
+      ...prev,
       contentMarkdown: next
-    });
+    }));
     setTimeout(() => {
       ta.focus();
       ta.setSelectionRange(start + prefix.length, start + prefix.length + sel.length);
     }, 0);
   };
+
+  // Immediate save on picking/cropping an image
+  const handleSaveWithImg = (newImg) => {
+    if (!canEdit) return;
+    const finalImg = newImg !== undefined ? newImg : (form.avatarUrl || form.coverUrl || form.imageUrl || '');
+    const updated = {
+      ...form,
+      avatarUrl: finalImg,
+      coverUrl: finalImg,
+      imageUrl: finalImg,
+      authorHandle: form.authorHandle || userProfile.handle,
+      authorUserId: form.authorUserId || userId,
+      updatedAt: new Date().toISOString()
+    };
+    setForm(updated);
+    onSave(updated);
+    setSaveStatus('✓ Icon Saved & Synced!');
+    setTimeout(() => setSaveStatus(''), 2500);
+  };
+
   const handleSave = () => {
     if (!canEdit) return;
     const finalImg = form.avatarUrl || form.coverUrl || form.imageUrl || '';
@@ -2350,15 +2375,9 @@ function WikiArticleModal({
       updatedAt: new Date().toISOString()
     });
   };
+
   const renderInline = str => {
     if (!str) return str;
-    // Regex matches:
-    // 1. '''''bold-italic''''' or ***bold-italic***
-    // 2. '''bold''' or **bold**
-    // 3. ''italic'' or *italic*
-    // 4. [[Target|Label]] or [[Target]]
-    // 5. [https://... label]
-    // 6. `code`
     const regex = /('''''[\s\S]+?'''''|\*\*\*[\s\S]+?\*\*\*|'''[\s\S]+?'''|\*\*[\s\S]+?\*\*|''[\s\S]+?''|\*[^\s\*][^\*]*?\*|\[\[[^\]]+\]\]|\[https?:\/\/[^\s\]]+(?:\s+[^\]]+)?\]|`[^`]+`)/g;
     const parts = [];
     let lastIndex = 0;
@@ -2371,19 +2390,19 @@ function WikiArticleModal({
       const token = match[0];
       if (token.startsWith("'''''") && token.endsWith("'''''") || token.startsWith('***') && token.endsWith('***')) {
         const inner = token.startsWith("'''''") ? token.slice(5, -5) : token.slice(3, -3);
-        parts.push( /*#__PURE__*/React.createElement("strong", {
+        parts.push(React.createElement("strong", {
           key: k++,
           className: "font-bold text-slate-100 italic"
         }, inner));
       } else if (token.startsWith("'''") && token.endsWith("'''") || token.startsWith('**') && token.endsWith('**')) {
         const inner = token.startsWith("'''") ? token.slice(3, -3) : token.slice(2, -2);
-        parts.push( /*#__PURE__*/React.createElement("strong", {
+        parts.push(React.createElement("strong", {
           key: k++,
           className: "font-bold text-slate-100"
         }, inner));
       } else if (token.startsWith("''") && token.endsWith("''") || token.startsWith('*') && token.endsWith('*') && token.length > 2) {
         const inner = token.startsWith("''") ? token.slice(2, -2) : token.slice(1, -1);
-        parts.push( /*#__PURE__*/React.createElement("em", {
+        parts.push(React.createElement("em", {
           key: k++,
           className: "italic text-slate-200"
         }, inner));
@@ -2392,7 +2411,7 @@ function WikiArticleModal({
         const pipeIdx = inner.indexOf('|');
         const target = pipeIdx !== -1 ? inner.slice(0, pipeIdx).trim() : inner.trim();
         const label = pipeIdx !== -1 ? inner.slice(pipeIdx + 1).trim() : target;
-        parts.push( /*#__PURE__*/React.createElement("button", {
+        parts.push(React.createElement("button", {
           key: k++,
           type: "button",
           onClick: () => onNavigateToEntry && onNavigateToEntry(target),
@@ -2403,18 +2422,18 @@ function WikiArticleModal({
         const spaceIdx = inner.indexOf(' ');
         const url = spaceIdx !== -1 ? inner.slice(0, spaceIdx).trim() : inner.trim();
         const label = spaceIdx !== -1 ? inner.slice(spaceIdx + 1).trim() : url;
-        parts.push( /*#__PURE__*/React.createElement("a", {
+        parts.push(React.createElement("a", {
           key: k++,
           href: url,
           target: "_blank",
           rel: "noopener noreferrer",
           className: "text-cyan-400 hover:text-cyan-300 font-medium underline inline-flex items-center space-x-0.5"
-        }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement(Icons.ExternalLink, {
+        }, React.createElement("span", null, label), React.createElement(Icons.ExternalLink, {
           className: "w-2.5 h-2.5 inline ml-0.5"
         })));
       } else if (token.startsWith('`') && token.endsWith('`')) {
         const inner = token.slice(1, -1);
-        parts.push( /*#__PURE__*/React.createElement("code", {
+        parts.push(React.createElement("code", {
           key: k++,
           className: "px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono text-xs border border-slate-700"
         }, inner));
@@ -2428,226 +2447,215 @@ function WikiArticleModal({
     }
     return parts.length > 0 ? parts : str;
   };
+
   const renderArticleProse = raw => {
-    if (!raw) return /*#__PURE__*/React.createElement("p", {
+    if (!raw) return React.createElement("p", {
       className: "text-slate-400"
     }, "No article content written yet.");
     const lines = raw.split('\n');
-    return /*#__PURE__*/React.createElement("div", {
+    return React.createElement("div", {
       className: "space-y-3 text-slate-200 leading-relaxed text-sm"
     }, lines.map((l, idx) => {
       const tr = l.trim();
       if (tr.startsWith('==') && tr.endsWith('==') || tr.startsWith('## ')) {
         const title = tr.replace(/^==+\s*|\s*==+$/g, '').replace(/^##\s*/, '');
-        return /*#__PURE__*/React.createElement("h2", {
+        return React.createElement("h2", {
           key: idx,
           className: "text-lg font-serif font-bold text-cyan-200 border-b border-slate-750 pb-1 pt-3"
         }, renderInline(title));
       }
       if (tr.startsWith('===') && tr.endsWith('===') || tr.startsWith('### ')) {
-        const title = tr.replace(/^===+\s*|\s*===+$/g, '').replace(/^###\s*/, '');
-        return /*#__PURE__*/React.createElement("h3", {
+        const title = tr.replace(/^===+\s*|\s*==+$/g, '').replace(/^###\s*/, '');
+        return React.createElement("h3", {
           key: idx,
           className: "text-base font-serif font-semibold text-cyan-300 pt-2"
         }, renderInline(title));
       }
       if (tr === '----' || tr === '---') {
-        return /*#__PURE__*/React.createElement("hr", {
+        return React.createElement("hr", {
           key: idx,
           className: "border-slate-800 my-3"
         });
       }
       if (tr.startsWith('>')) {
-        return /*#__PURE__*/React.createElement("blockquote", {
+        return React.createElement("blockquote", {
           key: idx,
           className: "border-l-4 border-cyan-500/60 bg-slate-850 px-3.5 py-2 my-2 text-slate-300 font-serif rounded-r-xl"
         }, renderInline(tr.slice(1).trim()));
       }
       if (tr.startsWith('* ') || tr.startsWith('- ')) {
-        return /*#__PURE__*/React.createElement("li", {
+        return React.createElement("li", {
           key: idx,
           className: "ml-5 list-disc text-slate-300"
         }, renderInline(tr.slice(2)));
       }
       if (tr.startsWith('# ') || /^\d+\.\s/.test(tr)) {
-        return /*#__PURE__*/React.createElement("li", {
+        return React.createElement("li", {
           key: idx,
           className: "ml-5 list-decimal text-slate-300"
         }, renderInline(tr.replace(/^[#\d\.]+\s*/, '')));
       }
-      if (!tr) return /*#__PURE__*/React.createElement("div", {
+      if (!tr) return React.createElement("div", {
         key: idx,
         className: "h-1.5"
       });
-      return /*#__PURE__*/React.createElement("p", {
+      return React.createElement("p", {
         key: idx
       }, renderInline(tr));
     }));
   };
+
   const getCatBadge = category => {
     switch (category) {
-      case 'character':
-        return 'Characters';
-      case 'npc':
-        return 'NPCs';
-      case 'location':
-        return 'Locations';
-      case 'faction':
-        return 'Factions';
-      case 'lore':
-        return 'Lore';
-      case 'item':
-        return 'Items';
-      default:
-        return category.toUpperCase();
+      case 'character': return 'Characters';
+      case 'npc': return 'NPCs';
+      case 'location': return 'Locations';
+      case 'faction': return 'Factions';
+      case 'lore': return 'Lore';
+      case 'item': return 'Items';
+      default: return (category || '').toUpperCase();
     }
   };
-  return /*#__PURE__*/React.createElement("div", {
+
+  const renderCategoryIcon = (cat, sizeClass = "w-7 h-7") => {
+    if (cat === 'location') return React.createElement(Icons.MapPin, { className: sizeClass });
+    if (cat === 'faction') return React.createElement(Icons.Flag, { className: sizeClass });
+    if (cat === 'item') return React.createElement(Icons.Sword, { className: sizeClass });
+    return React.createElement(Icons.Scroll, { className: sizeClass });
+  };
+
+  const currentImg = form.avatarUrl || form.coverUrl || form.imageUrl;
+
+  return React.createElement("div", {
     className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full max-w-4xl rounded-3xl shadow-2xl h-full max-h-[92vh] flex flex-col overflow-hidden"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "flex items-center space-x-2 truncate"
-  }, /*#__PURE__*/React.createElement("span", {
+  }, React.createElement("span", {
     className: "text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700/50"
-  }, getCatBadge(form.category)), /*#__PURE__*/React.createElement("span", {
+  }, getCatBadge(form.category)), React.createElement("span", {
     className: "text-xs text-slate-400 truncate"
-  }, "in ", currentWorld?.name.split(':')[0]), form.authorHandle && /*#__PURE__*/React.createElement("span", {
+  }, "in ", currentWorld?.name ? currentWorld.name.split(':')[0] : 'World'), form.authorHandle && React.createElement("span", {
     className: "text-[10px] text-slate-400 hidden sm:inline"
-  }, "\u2022 by ", /*#__PURE__*/React.createElement("strong", {
+  }, "• by ", React.createElement("strong", {
     className: "text-slate-300"
-  }, form.authorHandle))), /*#__PURE__*/React.createElement("div", {
+  }, form.authorHandle)), saveStatus && React.createElement("span", {
+    className: "text-[11px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg animate-pulse"
+  }, saveStatus)), React.createElement("div", {
     className: "flex items-center space-x-2"
-  }, canEdit ? /*#__PURE__*/React.createElement("button", {
+  }, canEdit ? React.createElement("button", {
     onClick: () => setIsEditing(!isEditing),
     className: "px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs border border-slate-700 flex items-center space-x-1"
-  }, /*#__PURE__*/React.createElement("span", null, isEditing ? 'Read Article' : 'Edit Source')) : /*#__PURE__*/React.createElement("span", {
+  }, React.createElement("span", null, isEditing ? 'Read Article' : 'Edit Source')) : React.createElement("span", {
     className: "text-[10px] text-slate-400 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700"
-  }, "Read-Only (Editor rank required)"), /*#__PURE__*/React.createElement("button", {
+  }, "Read-Only (Editor rank required)"), React.createElement("button", {
     onClick: onClose,
     className: "p-1 text-slate-400 hover:text-white"
-  }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
+  }, "✕"))), React.createElement("div", {
     className: "flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs sm:text-sm"
   }, isEditing && canEdit ?
-  /*#__PURE__*/
   /* Lore Article Editor */
   React.createElement("div", {
     className: "space-y-3.5"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "bg-slate-850 p-3 rounded-2xl border border-slate-800 space-y-3"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "grid grid-cols-1 sm:grid-cols-3 gap-2"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "sm:col-span-2"
-  }, /*#__PURE__*/React.createElement("label", {
+  }, React.createElement("label", {
     className: "block text-xs font-bold text-slate-300 mb-1.5"
-  }, "Article Title"), /*#__PURE__*/React.createElement("input", {
+  }, "Article Title"), React.createElement("input", {
     type: "text",
     value: form.title,
-    onChange: e => setForm({
-      ...form,
-      title: e.target.value
-    }),
+    onChange: e => setForm({ ...form, title: e.target.value }),
     placeholder: "Article title (e.g. Astral Spire, Silver Compact)...",
     className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-slate-100 font-serif font-bold text-sm"
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  })), React.createElement("div", null, React.createElement("label", {
     className: "block text-xs font-bold text-slate-300 mb-1.5"
-  }, "Category"), /*#__PURE__*/React.createElement("select", {
+  }, "Category"), React.createElement("select", {
     value: form.category,
-    onChange: e => setForm({
-      ...form,
-      category: e.target.value
-    }),
+    onChange: e => setForm({ ...form, category: e.target.value }),
     className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-slate-100"
-  }, /*#__PURE__*/React.createElement("option", {
-    value: "location"
-  }, "Locations"), /*#__PURE__*/React.createElement("option", {
-    value: "faction"
-  }, "Factions"), /*#__PURE__*/React.createElement("option", {
-    value: "lore"
-  }, "Lore"), /*#__PURE__*/React.createElement("option", {
-    value: "item"
-  }, "Items")))), /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("option", { value: "location" }, "Locations"),
+    React.createElement("option", { value: "faction" }, "Factions"),
+    React.createElement("option", { value: "lore" }, "Lore"),
+    React.createElement("option", { value: "item" }, "Items")))), React.createElement("div", {
     className: "grid grid-cols-1 sm:grid-cols-2 gap-2"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }, React.createElement("div", null, React.createElement("label", {
     className: "block text-xs font-bold text-slate-300 mb-1.5"
-  }, "Entry Icon / Emblem"), /*#__PURE__*/React.createElement("div", {
+  }, "Entry Icon / Emblem"), React.createElement("div", {
     className: "flex items-center space-x-3"
-  }, /*#__PURE__*/React.createElement("img", {
-    src: form.avatarUrl || form.coverUrl || form.imageUrl || `https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=200&auto=format&fit=crop&q=80`,
+  }, currentImg ? React.createElement("img", {
+    src: currentImg,
     alt: "Emblem",
     className: "w-14 h-14 rounded-2xl object-cover border border-slate-700 bg-slate-900 flex-shrink-0 shadow"
-  }), /*#__PURE__*/React.createElement("div", {
+  }) : React.createElement("div", {
+    className: "w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-cyan-400"
+  }, renderCategoryIcon(form.category, "w-7 h-7")), React.createElement("div", {
     className: "flex-1"
-  }, /*#__PURE__*/React.createElement("input", {
+  }, React.createElement("input", {
     type: "file",
     ref: articlePhotoRef,
     accept: "image/*",
     className: "hidden",
     onChange: handlePhotoSelect
-  }), /*#__PURE__*/React.createElement("button", {
+  }), React.createElement("button", {
     type: "button",
     onClick: () => {
-      setTempArticleImageUrl(form.avatarUrl || '');
+      setTempArticleImageUrl(currentImg || '');
       setIsArticleImagePickerOpen(true);
     },
     className: "w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-xs font-semibold text-slate-200 hover:text-cyan-400 flex items-center justify-center space-x-2 transition shadow-sm"
-  }, /*#__PURE__*/React.createElement(Icons.Camera, {
+  }, React.createElement(Icons.Camera, {
     className: "w-4 h-4 text-cyan-400"
-  }), /*#__PURE__*/React.createElement("span", null, "Change Entry Icon")), /*#__PURE__*/React.createElement("p", {
+  }), React.createElement("span", null, currentImg ? "Change Entry Icon" : "Upload Entry Icon")), React.createElement("p", {
     className: "text-[10px] text-slate-400 mt-1 text-center"
-  }, "Upload & crop photo or link an image URL")))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }, "Upload & crop photo or link an image URL")))), React.createElement("div", null, React.createElement("label", {
     className: "block text-xs font-bold text-slate-300 mb-1.5"
-  }, "Lead / Summary"), /*#__PURE__*/React.createElement("input", {
+  }, "Lead / Summary"), React.createElement("input", {
     type: "text",
     value: form.summary || '',
-    onChange: e => setForm({
-      ...form,
-      summary: e.target.value
-    }),
+    onChange: e => setForm({ ...form, summary: e.target.value }),
     placeholder: "Brief overview of this article...",
     className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-slate-100"
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), React.createElement("div", {
     className: "pt-2 border-t border-slate-800"
-  }, /*#__PURE__*/React.createElement("label", {
+  }, React.createElement("label", {
     className: "block text-xs font-bold text-slate-300 mb-1.5"
-  }, "Lore Infobox & Key Attributes"), /*#__PURE__*/React.createElement("div", {
+  }, "Lore Infobox & Key Attributes"), React.createElement("div", {
     className: "flex flex-wrap gap-1.5 mb-2"
-  }, form.attributes && Object.entries(form.attributes).map(([k, v]) => /*#__PURE__*/React.createElement("span", {
+  }, form.attributes && Object.entries(form.attributes).map(([k, v]) => React.createElement("span", {
     key: k,
     className: "bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-lg text-xs flex items-center space-x-1"
-  }, /*#__PURE__*/React.createElement("span", {
+  }, React.createElement("span", {
     className: "text-slate-400 font-medium"
-  }, k, ":"), /*#__PURE__*/React.createElement("span", null, v), /*#__PURE__*/React.createElement("button", {
+  }, k, ":"), React.createElement("span", null, v), React.createElement("button", {
     type: "button",
     onClick: () => {
-      const next = {
-        ...form.attributes
-      };
+      const next = { ...form.attributes };
       delete next[k];
-      setForm({
-        ...form,
-        attributes: next
-      });
+      setForm({ ...form, attributes: next });
     },
     className: "text-slate-400 hover:text-rose-400 ml-1"
-  }, "\u2715")))), /*#__PURE__*/React.createElement("div", {
+  }, "✕")))), React.createElement("div", {
     className: "flex flex-col sm:flex-row gap-2"
-  }, /*#__PURE__*/React.createElement("input", {
+  }, React.createElement("input", {
     type: "text",
     value: attrKey,
     onChange: e => setAttrKey(e.target.value),
     placeholder: "Property (e.g. Leader, Status)",
     className: "w-full sm:flex-1 bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-100 min-w-0"
-  }), /*#__PURE__*/React.createElement("input", {
+  }), React.createElement("input", {
     type: "text",
     value: attrVal,
     onChange: e => setAttrVal(e.target.value),
     placeholder: "Value (e.g. Active)",
     className: "w-full sm:flex-1 bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-100 min-w-0"
-  }), /*#__PURE__*/React.createElement("button", {
+  }), React.createElement("button", {
     type: "button",
     onClick: () => {
       if (!attrKey.trim() || !attrVal.trim()) return;
@@ -2662,212 +2670,209 @@ function WikiArticleModal({
       setAttrVal('');
     },
     className: "w-full sm:w-auto bg-slate-800 hover:bg-slate-750 text-cyan-300 font-semibold px-4 py-2 rounded-xl text-xs border border-slate-700 text-center flex-shrink-0"
-  }, "Add Fact")))), /*#__PURE__*/React.createElement("div", {
+  }, "Add Fact")))), React.createElement("div", {
     className: "space-y-1"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "flex items-center justify-between text-xs text-slate-300"
-  }, /*#__PURE__*/React.createElement("span", {
+  }, React.createElement("span", {
     className: "text-xs font-bold text-slate-300"
-  }, "Formatting Toolbar"), /*#__PURE__*/React.createElement("span", {
+  }, "Formatting Toolbar"), React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "Spellcheck & Autocorrect enabled")), /*#__PURE__*/React.createElement("div", {
+  }, "Spellcheck & Autocorrect enabled")), React.createElement("div", {
     className: "bg-slate-800 border border-slate-750 rounded-xl p-1.5 flex items-center space-x-1 flex-wrap gap-y-1 text-xs"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, React.createElement("button", {
     type: "button",
     onClick: () => insertTag('== ', ' ==', 'Heading 2'),
     className: "px-2 py-1 bg-slate-750 text-slate-200 rounded font-bold"
-  }, "H2"), /*#__PURE__*/React.createElement("button", {
+  }, "H2"), React.createElement("button", {
     type: "button",
     onClick: () => insertTag('=== ', ' ===', 'Subsection 3'),
     className: "px-2 py-1 bg-slate-750 text-slate-200 rounded font-semibold"
-  }, "H3"), /*#__PURE__*/React.createElement("span", {
+  }, "H3"), React.createElement("span", {
     className: "text-slate-600"
-  }, "|"), /*#__PURE__*/React.createElement("button", {
+  }, "|"), React.createElement("button", {
     type: "button",
     onClick: () => insertTag("'''", "'''", 'bold text'),
     className: "p-1 bg-slate-750 text-slate-200 rounded"
-  }, /*#__PURE__*/React.createElement(Icons.Bold, {
+  }, React.createElement(Icons.Bold, {
     className: "w-3.5 h-3.5"
-  })), /*#__PURE__*/React.createElement("button", {
+  })), React.createElement("button", {
     type: "button",
     onClick: () => insertTag("''", "''", 'italic text'),
     className: "p-1 bg-slate-750 text-slate-200 rounded"
-  }, /*#__PURE__*/React.createElement(Icons.Italic, {
+  }, React.createElement(Icons.Italic, {
     className: "w-3.5 h-3.5"
-  })), /*#__PURE__*/React.createElement("button", {
+  })), React.createElement("button", {
     type: "button",
     onClick: () => insertTag('[[', ']]', 'Page Title'),
     className: "p-1 bg-slate-750 text-cyan-300 rounded flex items-center space-x-1"
-  }, /*#__PURE__*/React.createElement(Icons.Link2, {
+  }, React.createElement(Icons.Link2, {
     className: "w-3.5 h-3.5"
-  }), /*#__PURE__*/React.createElement("span", {
+  }), React.createElement("span", {
     className: "text-[10px]"
-  }, "Link")), /*#__PURE__*/React.createElement("span", {
+  }, "Link")), React.createElement("span", {
     className: "text-slate-600"
-  }, "|"), /*#__PURE__*/React.createElement("button", {
+  }, "|"), React.createElement("button", {
     type: "button",
     onClick: () => insertTag('* ', '', 'Bullet item'),
     className: "p-1 bg-slate-750 text-slate-200 rounded"
-  }, /*#__PURE__*/React.createElement(Icons.List, {
+  }, React.createElement(Icons.List, {
     className: "w-3.5 h-3.5"
-  })), /*#__PURE__*/React.createElement("button", {
+  })), React.createElement("button", {
     type: "button",
     onClick: () => insertTag('# ', '', 'Numbered item'),
     className: "p-1 bg-slate-750 text-slate-200 rounded"
-  }, /*#__PURE__*/React.createElement(Icons.ListOrdered, {
+  }, React.createElement(Icons.ListOrdered, {
     className: "w-3.5 h-3.5"
-  })), /*#__PURE__*/React.createElement("button", {
+  })), React.createElement("button", {
     type: "button",
     onClick: () => insertTag('> ', '', 'Quote text'),
     className: "p-1 bg-slate-750 text-slate-200 rounded"
-  }, /*#__PURE__*/React.createElement(Icons.Quote, {
+  }, React.createElement(Icons.Quote, {
     className: "w-3.5 h-3.5"
-  })), /*#__PURE__*/React.createElement("button", {
+  })), React.createElement("button", {
     type: "button",
     onClick: () => insertTag('\n----\n', '', ''),
     className: "p-1 bg-slate-750 text-slate-200 rounded"
-  }, /*#__PURE__*/React.createElement(Icons.Minus, {
+  }, React.createElement(Icons.Minus, {
     className: "w-3.5 h-3.5"
-  }))), /*#__PURE__*/React.createElement("textarea", {
+  }))), React.createElement("textarea", {
     ref: textareaRef,
     rows: 12,
     spellCheck: true,
     autoCorrect: "on",
     autoCapitalize: "sentences",
     value: form.contentMarkdown,
-    onChange: e => setForm({
-      ...form,
-      contentMarkdown: e.target.value
-    }),
+    onChange: e => setForm({ ...form, contentMarkdown: e.target.value }),
     placeholder: "Write article content here...",
     className: "w-full bg-slate-850 border border-slate-700 rounded-2xl p-4 font-mono text-xs text-slate-100 leading-relaxed focus:outline-none focus:border-cyan-400"
   }))) :
-  /*#__PURE__*/
   /* Read Article Mode */
   React.createElement("div", {
     className: "space-y-4"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "border-b border-slate-750 pb-3"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "text-xs text-cyan-400 font-semibold uppercase tracking-wider mb-1"
-  }, getCatBadge(form.category), " \u2022 ", currentWorld?.name.split(':')[0]), /*#__PURE__*/React.createElement("h1", {
+  }, getCatBadge(form.category), " • ", currentWorld?.name ? currentWorld.name.split(':')[0] : 'World'), React.createElement("h1", {
     className: "text-2xl sm:text-3xl font-serif font-bold text-slate-100"
-  }, form.title), form.summary && /*#__PURE__*/React.createElement("p", {
+  }, form.title), form.summary && React.createElement("p", {
     className: "text-sm text-slate-300 mt-1.5 leading-relaxed font-sans"
-  }, form.summary)), /*#__PURE__*/React.createElement("div", {
+  }, form.summary)), React.createElement("div", {
     className: "flex flex-col-reverse md:flex-row gap-6 items-start"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "flex-1 min-w-0 w-full"
-  }, renderArticleProse(form.contentMarkdown)), ((form.avatarUrl || form.coverUrl || form.imageUrl) || form.attributes && Object.keys(form.attributes).length > 0) && /*#__PURE__*/React.createElement("div", {
+  }, renderArticleProse(form.contentMarkdown)), React.createElement("div", {
     className: "w-full md:w-64 bg-slate-850 border border-slate-750 rounded-2xl overflow-hidden shadow-md flex-shrink-0"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "bg-slate-800 p-2 border-b border-slate-700 text-center font-bold font-serif text-slate-200 text-xs"
-  }, form.title), (form.avatarUrl || form.coverUrl || form.imageUrl) && /*#__PURE__*/React.createElement("div", {
-    className: "p-2.5 bg-slate-900 flex justify-center border-b border-slate-800"
-  }, /*#__PURE__*/React.createElement("img", {
-    src: form.avatarUrl || form.coverUrl || form.imageUrl,
+  }, form.title), React.createElement("div", {
+    className: "p-3 bg-slate-900 flex flex-col items-center justify-center border-b border-slate-800 gap-2.5"
+  }, currentImg ? React.createElement("img", {
+    src: currentImg,
     alt: form.title,
-    className: "max-h-36 rounded-xl object-cover"
-  })), form.attributes && Object.keys(form.attributes).length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "max-h-40 rounded-xl object-cover border border-slate-700 shadow"
+  }) : React.createElement("div", {
+    className: "w-20 h-20 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400 my-1 shadow-inner"
+  }, renderCategoryIcon(form.category, "w-10 h-10")), canEdit && React.createElement("button", {
+    type: "button",
+    onClick: () => {
+      setTempArticleImageUrl(currentImg || '');
+      setIsArticleImagePickerOpen(true);
+    },
+    className: "text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 flex items-center space-x-1.5 py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 transition shadow-sm"
+  }, React.createElement(Icons.Camera, {
+    className: "w-3.5 h-3.5"
+  }), React.createElement("span", null, currentImg ? "Change Icon / Photo" : "Upload Icon / Photo"))), form.attributes && Object.keys(form.attributes).length > 0 && React.createElement("div", {
     className: "p-2.5 divide-y divide-slate-800 text-[11px]"
-  }, Object.entries(form.attributes).map(([k, v]) => /*#__PURE__*/React.createElement("div", {
+  }, Object.entries(form.attributes).map(([k, v]) => React.createElement("div", {
     key: k,
     className: "py-1 flex justify-between gap-1"
-  }, /*#__PURE__*/React.createElement("span", {
+  }, React.createElement("span", {
     className: "font-semibold text-slate-400"
-  }, k), /*#__PURE__*/React.createElement("span", {
+  }, k), React.createElement("span", {
     className: "text-slate-200 text-right"
-  }, v)))))))), /*#__PURE__*/React.createElement("div", {
+  }, v))))))), React.createElement("div", {
     className: "p-3 border-t border-slate-800 bg-slate-850 flex justify-end space-x-2"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, React.createElement("button", {
     onClick: onClose,
     className: "px-3.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs"
-  }, "Close"), isEditing && canEdit && /*#__PURE__*/React.createElement("button", {
+  }, "Close"), isEditing && canEdit && React.createElement("button", {
     onClick: handleSave,
     className: "px-4 py-1.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs shadow-md shadow-cyan-500/20"
-  }, "Save Article"))), isArticleImagePickerOpen && /*#__PURE__*/React.createElement("div", {
+  }, "Save Article"))), isArticleImagePickerOpen && React.createElement("div", {
     className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 animate-in slide-in-from-bottom duration-200",
     onClick: e => e.stopPropagation()
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "flex items-center justify-between pb-2 border-b border-slate-800"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "flex items-center space-x-2"
-  }, /*#__PURE__*/React.createElement(Icons.Camera, {
+  }, React.createElement(Icons.Camera, {
     className: "w-4 h-4 text-cyan-400"
-  }), /*#__PURE__*/React.createElement("h4", {
+  }), React.createElement("h4", {
     className: "font-bold text-sm text-slate-100"
-  }, "Choose Entry Icon")), /*#__PURE__*/React.createElement("button", {
+  }, "Choose Entry Icon")), React.createElement("button", {
     type: "button",
     onClick: () => setIsArticleImagePickerOpen(false),
     className: "p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-  }, /*#__PURE__*/React.createElement(Icons.X, {
+  }, React.createElement(Icons.X, {
     className: "w-4 h-4"
-  }))), /*#__PURE__*/React.createElement("button", {
+  }))), React.createElement("button", {
     type: "button",
     onClick: () => {
       setIsArticleImagePickerOpen(false);
       articlePhotoRef.current?.click();
     },
     className: "w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-left transition flex items-center space-x-3 group"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform flex-shrink-0"
-  }, /*#__PURE__*/React.createElement(Icons.Camera, {
+  }, React.createElement(Icons.Camera, {
     className: "w-5 h-5"
-  })), /*#__PURE__*/React.createElement("div", {
+  })), React.createElement("div", {
     className: "flex-1 min-w-0"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "text-xs font-bold text-slate-100 group-hover:text-cyan-300"
-  }, "Upload & Crop Photo"), /*#__PURE__*/React.createElement("div", {
+  }, "Upload & Crop Photo"), React.createElement("div", {
     className: "text-[10px] text-slate-400"
-  }, "Photo Library, Gallery, or local files"))), /*#__PURE__*/React.createElement("div", {
+  }, "Photo Library, Gallery, or local files"))), React.createElement("div", {
     className: "p-3 rounded-xl bg-slate-850 border border-slate-750 space-y-2"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, React.createElement("div", {
     className: "text-xs font-bold text-slate-200 flex items-center space-x-1.5"
-  }, /*#__PURE__*/React.createElement(Icons.Link, {
+  }, React.createElement(Icons.Link, {
     className: "w-3.5 h-3.5 text-cyan-400"
-  }), /*#__PURE__*/React.createElement("span", null, "Paste Image Web Link (URL)")), /*#__PURE__*/React.createElement("input", {
+  }), React.createElement("span", null, "Paste Image Web Link (URL)")), React.createElement("input", {
     type: "url",
     value: tempArticleImageUrl,
     onChange: e => setTempArticleImageUrl(e.target.value),
     placeholder: "https://images.unsplash.com/... or https://...",
     className: "w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-  }), /*#__PURE__*/React.createElement("div", {
+  }), React.createElement("div", {
     className: "flex justify-end space-x-2 pt-1"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, React.createElement("button", {
     type: "button",
     onClick: () => {
       if (tempArticleImageUrl.trim()) {
         const val = tempArticleImageUrl.trim();
-        setForm({
-          ...form,
-          avatarUrl: val,
-          coverUrl: val,
-          imageUrl: val
-        });
+        handleSaveWithImg(val);
       }
       setIsArticleImagePickerOpen(false);
     },
     disabled: !tempArticleImageUrl.trim(),
     className: "px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white font-bold text-xs transition"
-  }, "Use Image URL"))))), isCropperOpen && /*#__PURE__*/React.createElement(ImageCropperModal, {
+  }, "Save Image URL"))))), isCropperOpen && React.createElement(ImageCropperModal, {
     isOpen: isCropperOpen,
     imageSrc: rawImageSrc,
     title: `Crop ${form.category ? form.category.toUpperCase() : 'Entry'} Icon`,
     onClose: () => setIsCropperOpen(false),
     onCropComplete: croppedUrl => {
-      setForm({
-        ...form,
-        avatarUrl: croppedUrl
-      });
+      handleSaveWithImg(croppedUrl);
       setIsCropperOpen(false);
       SoundFX.play('pop');
     }
-  }));
+  })));
 }
-
-// --- Sub-View: + New Entry Choice Modal (Characters, NPCs, Locations, Factions, Lore, Items) ---
 
 function NewEntryChoiceModal({
   isOpen,
@@ -4076,6 +4081,7 @@ function DMsScreen({
   wikiEntries = [],
   directory = [],
   onSendDM,
+  onSendInvite,
   onAcceptInvite,
   onDeclineInvite,
   onSwitchToWorld,
@@ -4339,24 +4345,38 @@ function DMsScreen({
     }, /*#__PURE__*/React.createElement("div", {
       className: `max-w-xs sm:max-w-md p-3 rounded-2xl text-xs sm:text-sm ${isMe ? 'bg-cyan-600 text-white rounded-br-xs' : 'bg-slate-800 text-slate-100 rounded-bl-xs border border-slate-700'}`
     }, msg.inviteWorldName ? /*#__PURE__*/React.createElement("div", {
-      className: "space-y-2 bg-slate-900/90 p-3 rounded-xl border border-cyan-500/40 text-left"
+      className: "space-y-2 bg-slate-900/95 p-3.5 rounded-xl border border-cyan-500/40 text-left shadow-lg"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center space-x-2 text-cyan-400 font-bold"
+      className: "flex items-center justify-between"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center space-x-2 text-cyan-400 font-bold text-xs"
     }, /*#__PURE__*/React.createElement(Icons.Globe, {
       className: "w-4 h-4"
-    }), /*#__PURE__*/React.createElement("span", null, "World Invite")), /*#__PURE__*/React.createElement("p", {
-      className: "text-xs text-slate-200"
+    }), /*#__PURE__*/React.createElement("span", null, "World Invite")), msg.inviteRole && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700/50"
+    }, msg.inviteRole === 'editor' ? 'World Editor' : 'Viewer')), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-slate-200 leading-relaxed"
     }, "You are invited to join ", /*#__PURE__*/React.createElement("strong", {
       className: "text-white"
-    }, msg.inviteWorldName), "!"), /*#__PURE__*/React.createElement("div", {
+    }, msg.inviteWorldName), msg.inviteRole ? /*#__PURE__*/React.createElement("span", {
+      className: "text-cyan-300 font-semibold"
+    }, ` as ${msg.inviteRole === 'editor' ? 'World Editor' : 'Viewer'}`) : '', "!"), (worlds || []).some(w => w.id === msg.inviteWorldId) ? /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center space-x-2 pt-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-xs font-bold text-emerald-400"
+    }, "✓ Joined World"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => onSwitchToWorld && onSwitchToWorld(msg.inviteWorldId),
+      className: "py-1 px-3 bg-slate-800 hover:bg-slate-750 text-cyan-300 text-xs font-semibold rounded-lg transition"
+    }, "Go to World →")) : /*#__PURE__*/React.createElement("div", {
       className: "flex space-x-2 pt-1"
     }, /*#__PURE__*/React.createElement("button", {
       type: "button",
-      onClick: () => onAcceptInvite && onAcceptInvite(msg.inviteWorldId),
-      className: "flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs"
+      onClick: () => onAcceptInvite && onAcceptInvite(msg.inviteWorldId, msg.inviteId, msg.inviteRole || 'viewer'),
+      className: "flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs shadow-md transition"
     }, "Accept & Join World"), /*#__PURE__*/React.createElement("button", {
       type: "button",
-      onClick: () => onDeclineInvite && onDeclineInvite(msg.inviteWorldId),
+      onClick: () => onDeclineInvite && onDeclineInvite(msg.inviteWorldId, msg.inviteId),
       className: "px-3 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-lg text-xs"
     }, "Decline"))) : /*#__PURE__*/React.createElement(React.Fragment, null, msg.content && /*#__PURE__*/React.createElement("div", {
       className: "whitespace-pre-wrap leading-relaxed"
@@ -4480,18 +4500,21 @@ function DMsScreen({
     targetHandle: selectedHandle,
     targetName: activeContact.name,
     onClose: () => setIsInviteModalOpen(false),
-    onSendInvite: (wId) => {
-      const targetWorld = myCreatedWorlds.find(w => w.id === wId);
-      if (!targetWorld) return;
-      onSendDM({
-        recipientHandle: selectedHandle,
-        content: `I invited you to join the world: **${targetWorld.name}**!`,
-        inviteWorldId: targetWorld.id,
-        inviteWorldName: targetWorld.name,
-        senderHandle: userProfile.handle,
-        senderName: userProfile.name,
-        senderAvatarUrl: userProfile.avatarUrl
-      });
+    onSendInvite: (wId, wName, chosenRole) => {
+      if (onSendInvite) {
+        onSendInvite(wId, chosenRole, selectedHandle);
+      } else {
+        onSendDM({
+          recipientHandle: selectedHandle,
+          content: `I invited you to join the world **${wName}** as **${chosenRole === 'editor' ? 'World Editor' : 'Viewer'}**!`,
+          inviteWorldId: wId,
+          inviteWorldName: wName,
+          inviteRole: chosenRole,
+          senderHandle: userProfile.handle,
+          senderName: userProfile.name,
+          senderAvatarUrl: userProfile.avatarUrl
+        });
+      }
       setIsInviteModalOpen(false);
     }
   }));
@@ -4561,11 +4584,9 @@ function InviteToWorldModal({
     className: "w-full bg-slate-800 border border-slate-750 rounded-xl p-2 text-xs text-slate-100"
   }, /*#__PURE__*/React.createElement("option", {
     value: "editor"
-  }, "Editor (Can create channels, edit lore & add characters)"), /*#__PURE__*/React.createElement("option", {
-    value: "collaborator"
-  }, "Collaborator (Can post in channels & add characters)"), /*#__PURE__*/React.createElement("option", {
+  }, "World Editor (Can create chat channels, edit wiki lore & add cast)"), /*#__PURE__*/React.createElement("option", {
     value: "viewer"
-  }, "Player / Viewer (Can join channels, read lore & add characters)")), /*#__PURE__*/React.createElement("p", {
+  }, "Viewer (Can participate in chat channels, read lore & add cast)")), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400 mt-1"
   }, "Note: All roles have full permission to add new characters to the world wiki.")), /*#__PURE__*/React.createElement("div", {
     className: "pt-2 flex items-center justify-end space-x-2"
@@ -5392,9 +5413,15 @@ function WorldSwitcherModal({
   onOpenPermissions,
   onDeleteWorld
 }) {
+  const myHandle = (userProfile?.handle || '').toLowerCase();
   const uniqueWorlds = useMemo(() => {
-    return (worlds || []).filter((w, i, arr) => arr.findIndex(x => x.id === w.id) === i);
-  }, [worlds]);
+    return (worlds || []).filter((w, i, arr) => {
+      if (arr.findIndex(x => x.id === w.id) !== i) return false;
+      const isCreator = (w.creatorHandle || '').toLowerCase() === myHandle;
+      const isMember = Array.isArray(w.members) && w.members.some(m => (m.handle || '').toLowerCase() === myHandle);
+      return isCreator || isMember;
+    });
+  }, [worlds, myHandle]);
   const [isCreating, setIsCreating] = useState(false);
   const [name, setName] = useState('');
   const [tagline, setTagline] = useState('');
@@ -5985,21 +6012,63 @@ function App() {
             } else if (data.type === 'WIKI_DELETED') {
               setWikiEntries(prev => prev.filter(w => w.id !== data.entryId));
             } else if (data.type === 'WORLD_CREATED') {
-              setWorlds(prev => {
-                if (prev.some(w => w.id === data.world.id)) return prev;
-                return [...prev, data.world];
-              });
-              if (data.channels) {
-                setChannels(prev => {
-                  let next = [...prev];
-                  data.channels.forEach(ch => {
-                    if (!next.some(c => c.id === ch.id)) next.push(ch);
-                  });
-                  return next;
+              const isCreator = (data.world.creatorHandle || '').toLowerCase() === myHandle;
+              const isMember = Array.isArray(data.world.members) && data.world.members.some(m => (m.handle || '').toLowerCase() === myHandle);
+              if (isCreator || isMember) {
+                setWorlds(prev => {
+                  if (prev.some(w => w.id === data.world.id)) return prev;
+                  return [...prev, data.world];
                 });
+                if (data.channels) {
+                  setChannels(prev => {
+                    let next = [...prev];
+                    data.channels.forEach(ch => {
+                      if (!next.some(c => c.id === ch.id)) next.push(ch);
+                    });
+                    return next;
+                  });
+                }
               }
             } else if (data.type === 'WORLD_UPDATED') {
-              setWorlds(prev => prev.map(w => w.id === data.world.id ? data.world : w));
+              const isCreator = (data.world.creatorHandle || '').toLowerCase() === myHandle;
+              const isMember = Array.isArray(data.world.members) && data.world.members.some(m => (m.handle || '').toLowerCase() === myHandle);
+              if (isCreator || isMember) {
+                setWorlds(prev => {
+                  if (prev.some(w => w.id === data.world.id)) {
+                    return prev.map(w => w.id === data.world.id ? data.world : w);
+                  }
+                  return [...prev, data.world];
+                });
+              } else {
+                setWorlds(prev => prev.filter(w => w.id !== data.world.id));
+              }
+            } else if (data.type === 'WORLD_MEMBERS_UPDATED') {
+              if (data.world) {
+                const isCreator = (data.world.creatorHandle || '').toLowerCase() === myHandle;
+                const isMember = Array.isArray(data.world.members) && data.world.members.some(m => (m.handle || '').toLowerCase() === myHandle);
+                if (isCreator || isMember) {
+                  setWorlds(prev => {
+                    const idx = prev.findIndex(w => w.id === data.world.id);
+                    if (idx >= 0) {
+                      const next = [...prev];
+                      next[idx] = data.world;
+                      return next;
+                    }
+                    return [...prev, data.world];
+                  });
+                  if (data.channels) {
+                    setChannels(prev => {
+                      let next = [...prev];
+                      data.channels.forEach(ch => {
+                        if (!next.some(c => c.id === ch.id)) next.push(ch);
+                      });
+                      return next;
+                    });
+                  }
+                } else {
+                  setWorlds(prev => prev.filter(w => w.id !== data.world.id));
+                }
+              }
             } else if (data.type === 'WORLD_DELETED') {
               setWorlds(prev => prev.filter(w => w.id !== data.worldId));
               setChannels(prev => prev.filter(c => c.worldId !== data.worldId));
@@ -6147,24 +6216,108 @@ function App() {
     } catch (e) {}
   };
 
-  const handleAcceptInvite = async (worldId) => {
-    const inv = invites.find(i => i.worldId === worldId && i.status === 'pending');
+  const handleSendInvite = async (worldId, role, recipientHandle) => {
+    const targetWorld = worlds.find(w => w.id === worldId);
+    if (!targetWorld) return;
+    const chosenRole = role === 'editor' ? 'editor' : 'viewer';
+    try {
+      const res = await fetch('/api/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          worldId,
+          fromHandle: userProfile.handle,
+          toHandle: recipientHandle,
+          role: chosenRole
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.dm) {
+        setDmMessages(prev => {
+          if (prev.some(m => m.id === data.dm.id)) return prev;
+          return [...prev, data.dm];
+        });
+        if (data.invite) {
+          setInvites(prev => [...prev, data.invite]);
+        }
+      }
+    } catch (e) {}
+  };
+
+  const handleAcceptInvite = async (worldId, inviteId, role = 'viewer') => {
+    try {
+      // 1. Join directly via /api/worlds/:worldId/join for guaranteed membership
+      const res = await fetch(`/api/worlds/${worldId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle: userProfile.handle, role })
+      });
+      const data = await res.json();
+      if (res.ok && data.world) {
+        setWorlds(prev => {
+          const idx = prev.findIndex(w => w.id === data.world.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = data.world;
+            return next;
+          }
+          return [...prev, data.world];
+        });
+        if (data.channels && data.channels.length > 0) {
+          setChannels(prev => {
+            let next = [...prev];
+            data.channels.forEach(ch => {
+              if (!next.some(c => c.id === ch.id)) next.push(ch);
+            });
+            return next;
+          });
+        }
+        setInvites(prev => prev.filter(i => i.worldId !== worldId));
+        setActiveWorldId(data.world.id);
+        if (data.channels && data.channels.length > 0) {
+          setActiveChannelId(data.channels[0].id);
+        }
+        setActiveTab('chat');
+        SoundFX.play('chime');
+        fetchBootstrap(userProfile.handle);
+        return;
+      }
+    } catch (e) {}
+
+    // Fallback via /api/invites/:id/respond
+    const inv = invites.find(i => (inviteId && i.id === inviteId) || (i.worldId === worldId && i.status === 'pending'));
     if (inv) {
       try {
-        await fetch(`/api/invites/${inv.id}/respond`, {
+        const res = await fetch(`/api/invites/${inv.id}/respond`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ handle: userProfile.handle, action: 'accept' })
         });
+        const data = await res.json();
+        if (res.ok && data.world) {
+          setWorlds(prev => {
+            if (prev.some(w => w.id === data.world.id)) return prev;
+            return [...prev, data.world];
+          });
+          if (data.channels) {
+            setChannels(prev => {
+              let next = [...prev];
+              data.channels.forEach(ch => {
+                if (!next.some(c => c.id === ch.id)) next.push(ch);
+              });
+              return next;
+            });
+          }
+        }
       } catch (e) {}
     }
-    fetchBootstrap(userProfile.handle);
+    await fetchBootstrap(userProfile.handle);
     setActiveWorldId(worldId);
     setActiveTab('chat');
   };
 
-  const handleDeclineInvite = async (worldId) => {
-    const inv = invites.find(i => i.worldId === worldId && i.status === 'pending');
+  const handleDeclineInvite = async (worldId, inviteId) => {
+    const inv = invites.find(i => (inviteId && i.id === inviteId) || (i.worldId === worldId && i.status === 'pending'));
     if (inv) {
       try {
         await fetch(`/api/invites/${inv.id}/respond`, {
@@ -6504,6 +6657,7 @@ function App() {
     wikiEntries: wikiEntries,
     directory: directory,
     onSendDM: handleSendDM,
+    onSendInvite: handleSendInvite,
     onAcceptInvite: handleAcceptInvite,
     onDeclineInvite: handleDeclineInvite,
     onSwitchToWorld: wId => {

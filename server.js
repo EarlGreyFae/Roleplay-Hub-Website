@@ -535,15 +535,17 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 5. Invites
+  // 5. Invites & Joining Worlds
   if (reqPath === '/api/invites' && req.method === 'POST') {
     try {
-      const { worldId, fromHandle, toHandle } = await parseJsonBody(req);
+      const { worldId, fromHandle, toHandle, role } = await parseJsonBody(req);
       const w = db.worlds[worldId];
       if (!w) return sendJson(res, 404, { error: 'World not found' });
 
       let normTo = toHandle.trim();
       if (!normTo.startsWith('@')) normTo = '@' + normTo;
+
+      const chosenRole = (role === 'editor' ? 'editor' : 'viewer');
 
       const invite = {
         id: `inv_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -551,6 +553,7 @@ const server = http.createServer(async (req, res) => {
         worldName: w.name,
         fromHandle,
         toHandle: normTo,
+        role: chosenRole,
         status: 'pending',
         createdAt: new Date().toISOString()
       };
@@ -558,13 +561,15 @@ const server = http.createServer(async (req, res) => {
       db.invites.push(invite);
 
       const dm = {
-        id: `dm_inv_${Date.now()}`,
+        id: `dm_inv_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         senderHandle: fromHandle,
         senderName: fromHandle.replace('@', ''),
         recipientHandle: normTo,
-        content: `I invited you to join the world: **${w.name}**!`,
+        content: `I invited you to join the world **${w.name}** as **${chosenRole === 'editor' ? 'World Editor' : 'Viewer'}**!`,
+        inviteId: invite.id,
         inviteWorldId: worldId,
         inviteWorldName: w.name,
+        inviteRole: chosenRole,
         timestamp: new Date().toISOString(),
         status: 'delivered'
       };
@@ -587,19 +592,57 @@ const server = http.createServer(async (req, res) => {
 
       inv.status = action === 'accept' ? 'accepted' : 'declined';
 
-      if (action === 'accept') {
-        const w = db.worlds[inv.worldId];
-        if (w) {
-          if (!Array.isArray(w.members)) w.members = [];
-          if (!w.members.some(m => (m.handle || '').toLowerCase() === handle.toLowerCase())) {
-            w.members.push({ handle, role: 'viewer', joinedAt: new Date().toISOString() });
-          }
+      let assignedRole = inv.role || 'viewer';
+      const w = db.worlds[inv.worldId];
+      let worldChannels = [];
+
+      if (action === 'accept' && w) {
+        if (!Array.isArray(w.members)) w.members = [];
+        const existingMember = w.members.find(m => (m.handle || '').toLowerCase() === handle.toLowerCase());
+        if (existingMember) {
+          existingMember.role = assignedRole;
+        } else {
+          w.members.push({ handle, role: assignedRole, joinedAt: new Date().toISOString() });
         }
+        worldChannels = Object.values(db.channels).filter(c => c.worldId === w.id);
       }
 
       saveDatabase();
-      broadcast({ type: 'INVITE_RESPONDED', inviteId, action, worldId: inv.worldId, handle });
-      return sendJson(res, 200, { success: true, invite: inv });
+      broadcast({ type: 'INVITE_RESPONDED', inviteId, action, worldId: inv.worldId, handle, role: assignedRole });
+      if (action === 'accept' && w) {
+        broadcast({ type: 'WORLD_MEMBERS_UPDATED', world: w, channels: worldChannels, member: { handle, role: assignedRole } });
+      }
+      return sendJson(res, 200, { success: true, invite: inv, world: w, channels: worldChannels, role: assignedRole });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath.startsWith('/api/worlds/') && reqPath.endsWith('/join') && req.method === 'POST') {
+    try {
+      const worldId = reqPath.split('/api/worlds/')[1].split('/join')[0];
+      const { handle, role } = await parseJsonBody(req);
+      const w = db.worlds[worldId];
+      if (!w) return sendJson(res, 404, { error: 'World not found' });
+
+      // Find any pending invite for this user and world
+      const inv = db.invites.find(i => i.worldId === worldId && (i.toHandle || '').toLowerCase() === handle.toLowerCase() && i.status === 'pending');
+      let assignedRole = (role === 'editor' || (inv && inv.role === 'editor')) ? 'editor' : 'viewer';
+      if (inv) inv.status = 'accepted';
+
+      if (!Array.isArray(w.members)) w.members = [];
+      const existingMember = w.members.find(m => (m.handle || '').toLowerCase() === handle.toLowerCase());
+      if (existingMember) {
+        existingMember.role = assignedRole;
+      } else {
+        w.members.push({ handle, role: assignedRole, joinedAt: new Date().toISOString() });
+      }
+
+      const worldChannels = Object.values(db.channels).filter(c => c.worldId === w.id);
+      saveDatabase();
+
+      broadcast({ type: 'WORLD_MEMBERS_UPDATED', world: w, channels: worldChannels, member: { handle, role: assignedRole } });
+      return sendJson(res, 200, { success: true, world: w, channels: worldChannels, role: assignedRole });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
