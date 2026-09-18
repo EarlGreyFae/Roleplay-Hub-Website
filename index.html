@@ -4547,6 +4547,7 @@ function DMsScreen({
   directory = [],
   onSendDM,
   onEditDM,
+  onDeleteDM,
   onSendInvite,
   onAcceptInvite,
   onDeclineInvite,
@@ -4701,6 +4702,12 @@ function DMsScreen({
     }
     const ok = await onEditDM(msg.id, trimmed);
     if (ok) cancelEditDM();
+  };
+
+  const deleteDM = msg => {
+    if (confirm('Delete this message? This cannot be undone.')) {
+      onDeleteDM(msg.id);
+    }
   };
 
   const handleImageSelect = e => {
@@ -4906,7 +4913,12 @@ function DMsScreen({
       onClick: () => startEditDM(msg),
       className: "hover:text-cyan-400 transition",
       title: "Edit message"
-    }, /*#__PURE__*/React.createElement(Icons.Edit3, { className: "w-2.5 h-2.5" }))));
+    }, /*#__PURE__*/React.createElement(Icons.Edit3, { className: "w-2.5 h-2.5" })), isEditable && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => deleteDM(msg),
+      className: "hover:text-rose-400 transition",
+      title: "Delete message"
+    }, /*#__PURE__*/React.createElement(Icons.Trash, { className: "w-2.5 h-2.5" }))));
   }), /*#__PURE__*/React.createElement("div", {
     ref: scrollRef,
     className: "h-1"
@@ -6790,6 +6802,8 @@ function App() {
               setMessages(prev => prev.filter(m => m.id !== data.messageId));
             } else if (data.type === 'DM_UPDATED') {
               setDmMessages(prev => prev.map(m => m.id === data.message.id ? data.message : m));
+            } else if (data.type === 'DM_DELETED') {
+              setDmMessages(prev => prev.filter(m => m.id !== data.messageId));
             } else if (data.type === 'DMS_READ') {
               setDmMessages(prev => prev.map(m => {
                 if ((m.recipientHandle || '').toLowerCase() === data.readerHandle.toLowerCase() &&
@@ -7098,6 +7112,20 @@ function App() {
       const res = await fetch(`/api/messages/${messageId}?callerHandle=${encodeURIComponent(userProfile.handle)}`, { method: 'DELETE' });
       if (res.ok) {
         setMessages(prev => prev.filter(m => m.id !== messageId));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Could not delete this message.');
+      }
+    } catch (e) {
+      alert('Could not reach the server to delete this message.');
+    }
+  };
+
+  const handleDeleteDM = async messageId => {
+    try {
+      const res = await fetch(`/api/dms/message/${messageId}?callerHandle=${encodeURIComponent(userProfile.handle)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDmMessages(prev => prev.filter(m => m.id !== messageId));
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.error || 'Could not delete this message.');
@@ -7681,6 +7709,7 @@ function App() {
     directory: directory,
     onSendDM: handleSendDM,
     onEditDM: handleEditDM,
+    onDeleteDM: handleDeleteDM,
     onSendInvite: handleSendInvite,
     onAcceptInvite: handleAcceptInvite,
     onDeclineInvite: handleDeclineInvite,

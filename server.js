@@ -1216,6 +1216,28 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Single-message delete - checked before the thread-delete route below since both
+  // start with /api/dms/ and this one needs the more specific match to win.
+  if (reqPath.startsWith('/api/dms/message/') && req.method === 'DELETE') {
+    try {
+      const messageId = reqPath.replace('/api/dms/message/', '').split('?')[0];
+      const callerHandle = query.get('callerHandle') || '';
+      const dm = db.dmMessages.find(d => d.id === messageId);
+      if (!dm) return sendJson(res, 404, { error: 'Message not found' });
+
+      // Only the original sender may delete their own DM.
+      const isAuthor = (dm.senderHandle || '').toLowerCase() === callerHandle.toLowerCase();
+      if (!isAuthor) return sendJson(res, 403, { error: 'You can only delete your own messages.' });
+
+      db.dmMessages = db.dmMessages.filter(d => d.id !== messageId);
+      saveDatabase();
+      broadcast({ type: 'DM_DELETED', messageId, senderHandle: dm.senderHandle, recipientHandle: dm.recipientHandle });
+      return sendJson(res, 200, { success: true, messageId });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   if (reqPath.startsWith('/api/dms/') && req.method === 'DELETE') {
     try {
       const contactHandle = decodeURIComponent(reqPath.replace('/api/dms/', '').split('?')[0]);
