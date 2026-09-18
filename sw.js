@@ -1,36 +1,21 @@
-const CACHE_NAME = 'vora-rphub-v4';
-const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  './apple-touch-icon.png',
-  './favicon.png'
-];
+// This service worker exists solely to receive Web Push notifications
+// (registration is required for push to work at all). It deliberately does
+// NOT cache or intercept any fetches - this app syncs live over WebSocket
+// and REST, so a cached response is never "fine to serve," it's just wrong.
+// A previous version of this file did cache-first caching here, which
+// froze accounts on stale data (sometimes permanently, since a cached
+// bootstrap response never expires on its own) - never bring that back.
+const OLD_CACHE_PREFIX = 'vora-rphub-';
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('Non-fatal asset cache failure on install:', err);
-      });
-    })
-  );
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    })
+    caches.keys().then((keys) => Promise.all(
+      keys.filter((key) => key.startsWith(OLD_CACHE_PREFIX)).map((key) => caches.delete(key))
+    ))
   );
   self.clients.claim();
 });
@@ -69,51 +54,6 @@ self.addEventListener('notificationclick', (event) => {
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
-    })
-  );
-});
-
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-
-  // The app shell (navigations, and index.html itself) is under active
-  // development and must never be served stale: always try the network
-  // first, and only fall back to whatever was last cached if truly offline.
-  const isAppShell = event.request.mode === 'navigate' ||
-    event.request.url.endsWith('/index.html') ||
-    event.request.url.endsWith('/');
-
-  if (isAppShell) {
-    event.respondWith(
-      fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
-        }
-        return networkResponse;
-      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
-    );
-    return;
-  }
-
-  // Static assets (icons, manifest) rarely change: cache-first is fine here.
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200) {
-          return networkResponse;
-        }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-        return networkResponse;
-      }).catch(() => {
-        return caches.match('./index.html') || caches.match('./');
-      });
     })
   );
 });
