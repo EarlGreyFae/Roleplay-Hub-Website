@@ -4939,8 +4939,8 @@ function CastScreen({
   const allCast = (wikiEntries || []).filter(w => {
     if (w.category !== 'character' && w.category !== 'npc') return false;
     if (w.id === 'ooc_player' || w.id === 'ooc_persona' || w.id.startsWith('temp_')) return false;
-    // Check if created by user
-    return (w.authorHandle && w.authorHandle.toLowerCase() === myHandle) || (w.authorUserId && w.authorUserId === userId) || isSuperAdmin(userProfile);
+    // Only characters/NPCs this account created - not everyone else's, even for Superadmin.
+    return (w.authorHandle && w.authorHandle.toLowerCase() === myHandle) || (w.authorUserId && w.authorUserId === userId);
   });
 
   const filtered = allCast.filter(c => {
