@@ -1102,6 +1102,33 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (reqPath.startsWith('/api/messages/') && req.method === 'PUT') {
+    try {
+      const messageId = reqPath.replace('/api/messages/', '').split('?')[0];
+      const { content, callerHandle } = await parseJsonBody(req);
+      const msg = db.messages.find(m => m.id === messageId);
+      if (!msg) return sendJson(res, 404, { error: 'Message not found' });
+
+      // Only the original sender may edit their own message.
+      const isAuthor = (msg.narratorHandle || '').toLowerCase() === (callerHandle || '').toLowerCase();
+      if (!isAuthor) return sendJson(res, 403, { error: 'You can only edit your own messages.' });
+
+      if (typeof content !== 'string' || !content.trim()) {
+        return sendJson(res, 400, { error: 'Message content cannot be empty.' });
+      }
+
+      msg.content = content;
+      msg.edited = true;
+      msg.editedAt = new Date().toISOString();
+
+      saveDatabase();
+      broadcast({ type: 'MESSAGE_UPDATED', message: msg });
+      return sendJson(res, 200, { message: msg });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // 8. Direct Messages (DMs)
   if (reqPath === '/api/dms' && req.method === 'POST') {
     try {
@@ -1182,6 +1209,33 @@ const server = http.createServer(async (req, res) => {
       saveDatabase();
       broadcast({ type: 'DMS_THREAD_DELETED', userHandle, contactHandle });
       return sendJson(res, 200, { success: true, contactHandle });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath.startsWith('/api/dms/') && req.method === 'PUT') {
+    try {
+      const messageId = reqPath.replace('/api/dms/', '').split('?')[0];
+      const { content, callerHandle } = await parseJsonBody(req);
+      const dm = db.dmMessages.find(d => d.id === messageId);
+      if (!dm) return sendJson(res, 404, { error: 'Message not found' });
+
+      // Only the original sender may edit their own message.
+      const isAuthor = (dm.senderHandle || '').toLowerCase() === (callerHandle || '').toLowerCase();
+      if (!isAuthor) return sendJson(res, 403, { error: 'You can only edit your own messages.' });
+
+      if (typeof content !== 'string' || !content.trim()) {
+        return sendJson(res, 400, { error: 'Message content cannot be empty.' });
+      }
+
+      dm.content = content;
+      dm.edited = true;
+      dm.editedAt = new Date().toISOString();
+
+      saveDatabase();
+      broadcast({ type: 'DM_UPDATED', message: dm });
+      return sendJson(res, 200, { message: dm });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

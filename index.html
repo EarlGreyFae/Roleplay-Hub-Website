@@ -4002,6 +4002,7 @@ function ChatScreen({
   activePersona,
   onSelectPersona,
   onSendMessage,
+  onEditMessage,
   onOpenWikiSheet,
   userProfile,
   customNpcs,
@@ -4017,6 +4018,8 @@ function ChatScreen({
   const [isSpawnModalOpen, setIsSpawnModalOpen] = useState(false);
   const [tempSpawnName, setTempSpawnName] = useState('');
   const [tempSpawnRole, setTempSpawnRole] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
   const scrollRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const accentColor = activeWorld?.themeAccent || '#38bdf8';
@@ -4072,6 +4075,26 @@ function ChatScreen({
     }
   };
 
+  const startEditMessage = msg => {
+    setEditingMessageId(msg.id);
+    setEditDraft(msg.content || '');
+  };
+
+  const cancelEditMessage = () => {
+    setEditingMessageId(null);
+    setEditDraft('');
+  };
+
+  const saveEditMessage = async msg => {
+    const trimmed = editDraft.trim();
+    if (!trimmed || trimmed === msg.content) {
+      cancelEditMessage();
+      return;
+    }
+    const ok = await onEditMessage(msg.id, trimmed);
+    if (ok) cancelEditMessage();
+  };
+
   // Cast characters the user can speak as: their own creations in this world only
   const userCast = (wikiEntries || []).filter(w => (w.category === 'character' || w.category === 'npc') && w.worldId === activeWorld?.id && (w.authorHandle || '').toLowerCase() === (userProfile?.handle || '').toLowerCase());
 
@@ -4109,6 +4132,8 @@ function ChatScreen({
     const isNPC = msg.speakerType === 'NPC';
     const isTEMP = msg.speakerType === 'TEMP';
     const linkedChar = (wikiEntries || []).find(w => w.id === msg.characterId || w.title.toLowerCase() === (msg.speakerName || '').toLowerCase());
+    const isOwnMessage = (msg.narratorHandle || '').toLowerCase() === (userProfile?.handle || '').toLowerCase();
+    const isEditing = editingMessageId === msg.id;
 
     return /*#__PURE__*/React.createElement("div", {
       key: msg.id,
@@ -4137,9 +4162,36 @@ function ChatScreen({
       className: "text-[10px] text-cyan-400 font-mono"
     }, msg.narratorHandle), isDM && /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] text-amber-300/90 bg-amber-950/70 border border-amber-500/30 px-1.5 py-0.2 rounded font-sans"
-    }, "Storyteller"), /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] text-slate-500 ml-auto flex-shrink-0"
-    }, formatTime(msg.timestamp))), /*#__PURE__*/React.createElement(EmbedRenderer, {
+    }, "Storyteller"), /*#__PURE__*/React.createElement("div", {
+      className: "ml-auto flex items-center space-x-1.5 flex-shrink-0"
+    }, msg.edited && /*#__PURE__*/React.createElement("span", {
+      className: "text-[9px] text-slate-500 italic"
+    }, "(edited)"), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] text-slate-500"
+    }, formatTime(msg.timestamp)), isOwnMessage && !isEditing && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => startEditMessage(msg),
+      className: "text-slate-500 hover:text-cyan-400 transition",
+      title: "Edit message"
+    }, /*#__PURE__*/React.createElement(Icons.Edit3, { className: "w-3 h-3" })))), isEditing ? /*#__PURE__*/React.createElement("div", {
+      className: "space-y-1.5"
+    }, /*#__PURE__*/React.createElement("textarea", {
+      value: editDraft,
+      onChange: e => setEditDraft(e.target.value),
+      autoFocus: true,
+      rows: 2,
+      className: "w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100 resize-none focus:outline-none focus:border-cyan-400"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center space-x-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => saveEditMessage(msg),
+      className: "px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold transition"
+    }, "Save"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: cancelEditMessage,
+      className: "px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-[10px] font-semibold transition"
+    }, "Cancel"))) : /*#__PURE__*/React.createElement(EmbedRenderer, {
       content: msg.content,
       imageUrl: msg.imageUrl,
       onOpenWikiSheet: onOpenWikiSheet,
@@ -4479,6 +4531,7 @@ function DMsScreen({
   wikiEntries = [],
   directory = [],
   onSendDM,
+  onEditDM,
   onSendInvite,
   onAcceptInvite,
   onDeclineInvite,
@@ -4493,6 +4546,8 @@ function DMsScreen({
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [searchHandle, setSearchHandle] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -4611,6 +4666,26 @@ function DMsScreen({
 
     setInputText('');
     setAttachedImage(null);
+  };
+
+  const startEditDM = msg => {
+    setEditingMessageId(msg.id);
+    setEditDraft(msg.content || '');
+  };
+
+  const cancelEditDM = () => {
+    setEditingMessageId(null);
+    setEditDraft('');
+  };
+
+  const saveEditDM = async msg => {
+    const trimmed = editDraft.trim();
+    if (!trimmed || trimmed === msg.content) {
+      cancelEditDM();
+      return;
+    }
+    const ok = await onEditDM(msg.id, trimmed);
+    if (ok) cancelEditDM();
   };
 
   const handleImageSelect = e => {
@@ -4740,6 +4815,8 @@ function DMsScreen({
   }, "Send a message to start direct roleplay chat.")) : activeMessages.map(msg => {
     const isMe = (msg.senderHandle || '').toLowerCase() === myHandle;
     const isRead = msg.status === 'read';
+    const isEditing = editingMessageId === msg.id;
+    const isEditable = isMe && !msg.inviteWorldName;
     return /*#__PURE__*/React.createElement("div", {
       key: msg.id,
       className: `flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`
@@ -4779,7 +4856,25 @@ function DMsScreen({
       type: "button",
       onClick: () => onDeclineInvite && onDeclineInvite(msg.inviteWorldId, msg.inviteId),
       className: "px-3 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-lg text-xs"
-    }, "Decline"))) : /*#__PURE__*/React.createElement(React.Fragment, null, msg.content && /*#__PURE__*/React.createElement("div", {
+    }, "Decline"))) : isEditing ? /*#__PURE__*/React.createElement("div", {
+      className: "space-y-1.5"
+    }, /*#__PURE__*/React.createElement("textarea", {
+      value: editDraft,
+      onChange: e => setEditDraft(e.target.value),
+      autoFocus: true,
+      rows: 2,
+      className: "w-full bg-slate-900/60 border border-white/20 rounded-lg px-2 py-1.5 text-xs sm:text-sm text-white resize-none focus:outline-none focus:border-white/50"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center space-x-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => saveEditDM(msg),
+      className: "px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold transition"
+    }, "Save"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: cancelEditDM,
+      className: "px-2.5 py-1 rounded-lg bg-black/20 hover:bg-black/30 text-white text-[10px] font-semibold transition"
+    }, "Cancel"))) : /*#__PURE__*/React.createElement(React.Fragment, null, msg.content && /*#__PURE__*/React.createElement("div", {
       className: "whitespace-pre-wrap leading-relaxed"
     }, msg.content), msg.imageUrl && /*#__PURE__*/React.createElement("img", {
       src: msg.imageUrl,
@@ -4787,9 +4882,16 @@ function DMsScreen({
       className: "mt-2 rounded-xl max-h-60 object-cover border border-slate-700"
     }))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center space-x-1.5 text-[9px] text-slate-500 px-1 font-mono"
-    }, /*#__PURE__*/React.createElement("span", null, new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), isMe && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), msg.edited && /*#__PURE__*/React.createElement("span", {
+      className: "italic"
+    }, "(edited)"), isMe && /*#__PURE__*/React.createElement("span", {
       className: `font-bold ${isRead ? 'text-cyan-400' : 'text-slate-400'}`
-    }, isRead ? "• Read" : "• Delivered")));
+    }, isRead ? "• Read" : "• Delivered"), isEditable && !isEditing && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => startEditDM(msg),
+      className: "hover:text-cyan-400 transition",
+      title: "Edit message"
+    }, /*#__PURE__*/React.createElement(Icons.Edit3, { className: "w-2.5 h-2.5" }))));
   }), /*#__PURE__*/React.createElement("div", {
     ref: scrollRef,
     className: "h-1"
@@ -6667,6 +6769,10 @@ function App() {
               if ((data.message.recipientHandle || '').toLowerCase() === myHandle) {
                 SoundFX.play('pop');
               }
+            } else if (data.type === 'MESSAGE_UPDATED') {
+              setMessages(prev => prev.map(m => m.id === data.message.id ? data.message : m));
+            } else if (data.type === 'DM_UPDATED') {
+              setDmMessages(prev => prev.map(m => m.id === data.message.id ? data.message : m));
             } else if (data.type === 'DMS_READ') {
               setDmMessages(prev => prev.map(m => {
                 if ((m.recipientHandle || '').toLowerCase() === data.readerHandle.toLowerCase() &&
@@ -6944,6 +7050,50 @@ function App() {
         body: JSON.stringify({ ...dmData, clientMessageId: clientDmId })
       });
     } catch (e) {}
+  };
+
+  // Do NOT apply an edit locally until the server confirms it - only the
+  // original sender is allowed to edit, and the server is the one that
+  // decides. Applying it optimistically would make a rejected edit look
+  // like it succeeded in the editor's own browser.
+  const handleEditMessage = async (messageId, content) => {
+    try {
+      const res = await fetch(`/api/messages/${messageId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, callerHandle: userProfile.handle })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.message) {
+        setMessages(prev => prev.map(m => m.id === data.message.id ? data.message : m));
+        return true;
+      }
+      alert(data.error || 'Could not edit this message.');
+      return false;
+    } catch (e) {
+      alert('Could not reach the server to save this edit.');
+      return false;
+    }
+  };
+
+  const handleEditDM = async (messageId, content) => {
+    try {
+      const res = await fetch(`/api/dms/${messageId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, callerHandle: userProfile.handle })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.message) {
+        setDmMessages(prev => prev.map(m => m.id === data.message.id ? data.message : m));
+        return true;
+      }
+      alert(data.error || 'Could not edit this message.');
+      return false;
+    } catch (e) {
+      alert('Could not reach the server to save this edit.');
+      return false;
+    }
   };
 
   const handleSendInvite = async (worldId, role, recipientHandle) => {
@@ -7440,6 +7590,7 @@ function App() {
     activePersona: activePersona,
     onSelectPersona: setActivePersona,
     onSendMessage: handleSendMessage,
+    onEditMessage: handleEditMessage,
     onOpenWikiSheet: entry => {
       if (entry.category === 'character' || entry.category === 'npc') {
         setActiveSheetEntry(entry);
@@ -7497,6 +7648,7 @@ function App() {
     wikiEntries: wikiEntries,
     directory: directory,
     onSendDM: handleSendDM,
+    onEditDM: handleEditDM,
     onSendInvite: handleSendInvite,
     onAcceptInvite: handleAcceptInvite,
     onDeclineInvite: handleDeclineInvite,
