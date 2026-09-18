@@ -4637,10 +4637,14 @@ function DMsScreen({
   const activeMessages = useMemo(() => {
     if (!selectedHandle) return [];
     const target = selectedHandle.toLowerCase();
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
     return (dmMessages || []).filter(m => {
       const s = (m.senderHandle || '').toLowerCase();
       const r = (m.recipientHandle || '').toLowerCase();
-      return (s === target && r === myHandle) || (s === myHandle && r === target);
+      if (!((s === target && r === myHandle) || (s === myHandle && r === target))) return false;
+      // World Invite cards disappear from the chat 1 day after being sent.
+      if (m.inviteWorldName && new Date(m.timestamp).getTime() < dayAgo) return false;
+      return true;
     });
   }, [dmMessages, selectedHandle, myHandle]);
 
@@ -4839,6 +4843,7 @@ function DMsScreen({
     const isRead = msg.status === 'read';
     const isEditing = editingMessageId === msg.id;
     const isEditable = isMe && !msg.inviteWorldName;
+    const canDelete = isMe;
     return /*#__PURE__*/React.createElement("div", {
       key: msg.id,
       className: `flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`
@@ -4913,7 +4918,7 @@ function DMsScreen({
       onClick: () => startEditDM(msg),
       className: "hover:text-cyan-400 transition",
       title: "Edit message"
-    }, /*#__PURE__*/React.createElement(Icons.Edit3, { className: "w-2.5 h-2.5" })), isEditable && /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement(Icons.Edit3, { className: "w-2.5 h-2.5" })), canDelete && /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => deleteDM(msg),
       className: "hover:text-rose-400 transition",
