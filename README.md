@@ -75,3 +75,20 @@ When logged in as the site administrator, tap the **"Dev Tools"** button in the 
 - **Simulate World Chat Dialogue**: Simulates in-character dialogue in the active channel.
 - **Test 0-Worlds State**: Reset worlds to 0 to verify the onboarding empty state.
 - **Seed Demo World**: One-click restore for the pre-built *Aethelgard: Astral Frontier* fantasy realm.
+
+---
+
+## 💾 Data Persistence & Seamless Redeployments
+
+### 1. Automatic Zero-Button Cloud Recovery (Active by Default)
+Your active worlds, chat history, lore entries, and direct messages are automatically mirrored into a persistent local browser vault on your device. Every time you update the website or Render deploys a new build, the website automatically checks the server state and silently restores all of your data in milliseconds upon loading. **No manual buttons or settings toggles required.**
+
+### 2. Permanent Render Cloud Database (Recommended Option)
+For 100% cloud-hosted persistence independent of local browsers:
+1. In your **Render Dashboard**, click **New +** -> **PostgreSQL**.
+2. Give it any name (e.g. `roleplay-hub-db`) and create it (free tier).
+3. Copy the **Internal Database URL**.
+4. In your Web Service settings on Render, go to the **Environment** tab and add:
+   - Key: `DATABASE_URL`
+   - Value: `[Paste your Internal Database URL]`
+5. The server will automatically connect to PostgreSQL and permanently persist all worlds, channels, and messages across every website update.

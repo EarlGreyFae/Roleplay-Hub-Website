@@ -6108,6 +6108,41 @@ function App() {
           setUserProfile(prev => ({ ...(prev || {}), ...data.user }));
           AccountManager.saveAccount(data.user);
         }
+
+        // Automatic Zero-Button Restore if server database was reset on redeploy
+        if ((!data.worlds || data.worlds.length === 0) && handle) {
+          const rawVault = localStorage.getItem('roleplay_hub_vault_v2');
+          if (rawVault) {
+            try {
+              const vault = JSON.parse(rawVault);
+              if (vault && vault.worlds && Object.keys(vault.worlds).length > 0) {
+                console.log('[Auto-Sync] Server redeployed with empty DB. Seamlessly auto-restoring...');
+                const autoRes = await fetch('/api/sync/auto-sync', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ snapshot: vault, userHandle: handle })
+                });
+                const autoData = await autoRes.json();
+                if (autoRes.ok && autoData.data) {
+                  const restored = autoData.data;
+                  setWorlds(restored.worlds || []);
+                  setChannels(restored.channels || []);
+                  setMessages(restored.messages || []);
+                  setDmMessages(restored.dmMessages || []);
+                  setWikiEntries(restored.wikiEntries || []);
+                  setInvites(restored.invites || []);
+                  if (data.directory) setDirectory(data.directory);
+                  if (restored.worlds && restored.worlds.length > 0) {
+                    setActiveWorldId(restored.worlds[0].id);
+                  }
+                  return;
+                }
+              }
+            } catch (syncErr) {
+              console.warn('[Auto-Sync] Could not restore vault:', syncErr);
+            }
+          }
+        }
         const uniqueWorlds = (data.worlds || []).filter((w, i, arr) => arr.findIndex(x => x.id === w.id) === i);
         setWorlds(uniqueWorlds);
         if (data.worlds && data.worlds.length > 0) {
@@ -6253,6 +6288,8 @@ function App() {
               } else {
                 setWorlds(prev => prev.filter(w => w.id !== data.world.id));
               }
+            } else if (data.type === 'SERVER_DATA_RESTORED') {
+              fetchBootstrap(userProfile?.handle);
             } else if (data.type === 'WORLD_MEMBERS_UPDATED') {
               if (data.world) {
                 const isCreator = (data.world.creatorHandle || '').toLowerCase() === myHandle;
@@ -6346,46 +6383,23 @@ function App() {
     document.documentElement.style.setProperty('--world-accent', accent);
   }, [activeWorld?.themeAccent]);
 
-  // Client-side auto-mirror to localStorage to survive server redeployments
+  // Continuous Local Vault Mirror: Always keeps a complete mirror locally
   useEffect(() => {
-    if (worlds.length > 0 || dmMessages.length > 0 || wikiEntries.length > 0) {
+    if (worlds.length > 0 || dmMessages.length > 0 || wikiEntries.length > 0 || messages.length > 0) {
       try {
         const snapshot = {
           worlds: worlds.reduce((acc, w) => { acc[w.id] = w; return acc; }, {}),
           channels: channels.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}),
-          messages: messages.slice(-200),
-          dmMessages: dmMessages.slice(-200),
+          messages: messages.slice(-500),
+          dmMessages: dmMessages.slice(-500),
           wikiEntries: wikiEntries,
           invites: invites,
           savedAt: new Date().toISOString()
         };
-        localStorage.setItem('roleplay_hub_snapshot_v1', JSON.stringify(snapshot));
+        localStorage.setItem('roleplay_hub_vault_v2', JSON.stringify(snapshot));
       } catch (e) {}
     }
   }, [worlds, channels, messages, dmMessages, wikiEntries, invites]);
-
-  // Automatic restore if server database was reset on deploy
-  const hasAttemptedAutoRestore = useRef(false);
-  useEffect(() => {
-    if (!hasAttemptedAutoRestore.current && myHandle && worlds.length === 0) {
-      try {
-        const raw = localStorage.getItem('roleplay_hub_snapshot_v1');
-        if (raw) {
-          const cached = JSON.parse(raw);
-          if (cached && cached.worlds && Object.keys(cached.worlds).length > 0) {
-            hasAttemptedAutoRestore.current = true;
-            fetch('/api/sync/restore', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ snapshot: cached })
-            }).then(() => {
-              fetchBootstrap(userProfile.handle);
-            }).catch(() => {});
-          }
-        }
-      } catch (e) {}
-    }
-  }, [worlds.length, myHandle, userProfile?.handle]);
 
 
   useEffect(() => {

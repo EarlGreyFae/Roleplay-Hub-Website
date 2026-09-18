@@ -39,6 +39,53 @@ const defaultDb = {
 
 let db = { ...defaultDb };
 
+let pgPool = null;
+if (process.env.DATABASE_URL) {
+  try {
+    const { Pool } = require('pg');
+    pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
+    });
+    console.log('[DB] PostgreSQL pool initialized via DATABASE_URL');
+  } catch (e) {
+    console.warn('[DB] PostgreSQL driver note:', e.message);
+  }
+}
+
+async function initPgStore() {
+  if (!pgPool) return;
+  try {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS roleplay_hub_store (
+        key text PRIMARY KEY,
+        value jsonb NOT NULL,
+        updated_at timestamptz DEFAULT now()
+      );
+    `);
+    const res = await pgPool.query("SELECT value FROM roleplay_hub_store WHERE key = 'database_state'");
+    if (res.rows && res.rows[0] && res.rows[0].value) {
+      const pgData = res.rows[0].value;
+      if (pgData && pgData.worlds && Object.keys(pgData.worlds).length > 0) {
+        db = {
+          users: { ...defaultDb.users, ...(pgData.users || {}) },
+          worlds: pgData.worlds || {},
+          channels: pgData.channels || {},
+          messages: pgData.messages || [],
+          dmMessages: pgData.dmMessages || [],
+          wikiEntries: pgData.wikiEntries || [],
+          invites: pgData.invites || []
+        };
+        saveDatabaseSync();
+        console.log('[DB] Successfully restored database state from PostgreSQL!');
+      }
+    }
+  } catch (err) {
+    console.error('[DB] PostgreSQL init error:', err.message);
+  }
+}
+initPgStore();
+
 function loadDatabase() {
   try {
     if (fs.existsSync(DB_FILE)) {
@@ -77,6 +124,12 @@ function saveDatabaseSync() {
     const tempFile = DB_FILE + '.tmp';
     fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf8');
     fs.renameSync(tempFile, DB_FILE);
+    if (pgPool) {
+      pgPool.query(
+        "INSERT INTO roleplay_hub_store (key, value, updated_at) VALUES ('database_state', $1, now()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()",
+        [JSON.stringify(db)]
+      ).catch(err => console.error('[DB] PG save error:', err.message));
+    }
   } catch (err) {
     console.error('[DB] Error saving database:', err.message);
   }
@@ -136,6 +189,91 @@ const server = http.createServer(async (req, res) => {
 
   const [reqPath, queryString] = (req.url || '/').split('?');
   const query = new URLSearchParams(queryString || '');
+
+  // Auto-Sync endpoint for zero-button seamless restore upon redeployment
+  if (reqPath === '/api/sync/auto-sync' && req.method === 'POST') {
+    try {
+      const payload = await parseJsonBody(req);
+      const snapshot = payload.snapshot || payload;
+      const userHandle = (payload.userHandle || '').trim().toLowerCase();
+
+      if (snapshot.worlds && typeof snapshot.worlds === 'object') {
+        db.worlds = { ...db.worlds, ...snapshot.worlds };
+      }
+      if (snapshot.channels && typeof snapshot.channels === 'object') {
+        db.channels = { ...db.channels, ...snapshot.channels };
+      }
+      if (Array.isArray(snapshot.messages)) {
+        const existingIds = new Set(db.messages.map(m => m.id));
+        snapshot.messages.forEach(m => {
+          if (!existingIds.has(m.id)) {
+            db.messages.push(m);
+            existingIds.add(m.id);
+          }
+        });
+      }
+      if (Array.isArray(snapshot.dmMessages)) {
+        const existingDmIds = new Set(db.dmMessages.map(d => d.id));
+        snapshot.dmMessages.forEach(d => {
+          if (!existingDmIds.has(d.id)) {
+            db.dmMessages.push(d);
+            existingDmIds.add(d.id);
+          }
+        });
+      }
+      if (Array.isArray(snapshot.wikiEntries)) {
+        const existingWikiIds = new Set(db.wikiEntries.map(w => w.id));
+        snapshot.wikiEntries.forEach(w => {
+          if (!existingWikiIds.has(w.id)) {
+            db.wikiEntries.push(w);
+            existingWikiIds.add(w.id);
+          }
+        });
+      }
+      if (Array.isArray(snapshot.invites)) {
+        const existingInvIds = new Set(db.invites.map(i => i.id));
+        snapshot.invites.forEach(i => {
+          if (!existingInvIds.has(i.id)) {
+            db.invites.push(i);
+            existingInvIds.add(i.id);
+          }
+        });
+      }
+
+      saveDatabaseSync();
+      broadcast({ type: 'SERVER_DATA_RESTORED' });
+
+      const userWorlds = Object.values(db.worlds).filter(w => {
+        if ((w.creatorHandle || '').toLowerCase() === userHandle) return true;
+        if (Array.isArray(w.members) && w.members.some(m => (m.handle || '').toLowerCase() === userHandle)) return true;
+        return false;
+      });
+      const userWorldIds = userWorlds.map(w => w.id);
+      const userChannels = Object.values(db.channels).filter(ch => userWorldIds.includes(ch.worldId));
+      const userMessages = db.messages.filter(m => userWorldIds.includes(m.worldId));
+      const userWiki = db.wikiEntries.filter(w => userWorldIds.includes(w.worldId)).map(w => {
+        const img = w.avatarUrl || w.coverUrl || w.imageUrl || '';
+        return { ...w, avatarUrl: img, coverUrl: img, imageUrl: img };
+      });
+      const userDMs = db.dmMessages.filter(d => (d.senderHandle || '').toLowerCase() === userHandle || (d.recipientHandle || '').toLowerCase() === userHandle);
+      const userInvites = db.invites.filter(inv => (inv.toHandle || '').toLowerCase() === userHandle && inv.status === 'pending');
+
+      return sendJson(res, 200, {
+        success: true,
+        message: 'Server data auto-restored seamlessly',
+        data: {
+          worlds: userWorlds,
+          channels: userChannels,
+          messages: userMessages,
+          wikiEntries: userWiki,
+          dmMessages: userDMs,
+          invites: userInvites
+        }
+      });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
 
   // Backup & Restore Database
   if (reqPath === '/api/sync/backup' && req.method === 'GET') {
