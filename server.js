@@ -1046,6 +1046,18 @@ const server = http.createServer(async (req, res) => {
   if (reqPath === '/api/messages' && req.method === 'POST') {
     try {
       const payload = await parseJsonBody(req);
+
+      // Only the creator of a character/NPC may speak as it in chat.
+      const speakerType = payload.persona?.type;
+      const characterId = payload.persona?.characterId;
+      if ((speakerType === 'IC' || speakerType === 'NPC') && characterId) {
+        const linkedEntry = db.wikiEntries.find(w => w.id === characterId);
+        const isAuthor = linkedEntry && (linkedEntry.authorHandle || '').toLowerCase() === (payload.narratorHandle || '').toLowerCase();
+        if (!linkedEntry || !isAuthor) {
+          return sendJson(res, 403, { error: "Only the character's creator can speak as it." });
+        }
+      }
+
       const msg = {
         id: payload.clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         worldId: payload.worldId,

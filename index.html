@@ -4069,8 +4069,8 @@ function ChatScreen({
     }
   };
 
-  // Cast characters for this world or created by user
-  const userCast = (wikiEntries || []).filter(w => (w.category === 'character' || w.category === 'npc') && (w.worldId === activeWorld?.id || w.authorHandle === userProfile?.handle));
+  // Cast characters the user can speak as: their own creations in this world only
+  const userCast = (wikiEntries || []).filter(w => (w.category === 'character' || w.category === 'npc') && w.worldId === activeWorld?.id && (w.authorHandle || '').toLowerCase() === (userProfile?.handle || '').toLowerCase());
 
   return /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-h-0 flex flex-col overflow-hidden w-full relative"
@@ -6905,11 +6905,18 @@ function App() {
     });
 
     try {
-      await fetch('/api/messages', {
+      const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (!res.ok) {
+        // The server rejected this (e.g. speaking as a character you don't own) -
+        // remove the optimistic bubble so a rejected send doesn't look like it worked.
+        const data = await res.json().catch(() => ({}));
+        setMessages(prev => prev.filter(m => m.id !== clientMsgId));
+        alert(data.error || 'This message could not be sent.');
+      }
     } catch (e) {}
   };
 
