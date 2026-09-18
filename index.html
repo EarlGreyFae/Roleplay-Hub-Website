@@ -2735,7 +2735,7 @@ function WikiArticleModal({
     className: "px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs border border-slate-700 flex items-center space-x-1"
   }, React.createElement("span", null, isEditing ? 'Read Article' : 'Edit Source')) : React.createElement("span", {
     className: "text-[10px] text-slate-400 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700"
-  }, "Read-Only (Editor rank required)"), React.createElement("button", {
+  }, "Read-Only (World Editor rank required)"), React.createElement("button", {
     onClick: onClose,
     className: "p-1 text-slate-400 hover:text-white"
   }, "✕"))), React.createElement("div", {
@@ -3330,7 +3330,7 @@ function WorldPermissionsModal({
     value: "viewer"
   }, "Viewer")) : React.createElement("span", {
     className: "text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded"
-  }, m.role === 'creator' ? 'Creator' : m.role === 'editor' ? 'Editor' : 'Viewer'), isCreator && m.role !== 'creator' && React.createElement("button", {
+  }, m.role === 'creator' ? 'Creator' : m.role === 'editor' ? 'World Editor' : 'Viewer'), isCreator && m.role !== 'creator' && React.createElement("button", {
     type: "button",
     onClick: () => handleRemoveMember(m.userId),
     className: "p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition",
@@ -5111,7 +5111,7 @@ function InviteToWorldModal({
     className: "w-3.5 h-3.5 flex-shrink-0 text-cyan-400"
   }), /*#__PURE__*/React.createElement("span", null, "Wiki Character Creation")), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-cyan-200/90 leading-relaxed"
-  }, /*#__PURE__*/React.createElement("strong", null, "Every role"), " (including Players, Viewers, Collaborators, and Editors) can create and add their own characters and cast sheets to the world wiki.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }, /*#__PURE__*/React.createElement("strong", null, "Every role"), " (including Players, Viewers, Collaborators, and World Editors) can create and add their own characters and cast sheets to the world wiki.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "block text-xs font-semibold text-slate-300 mb-1"
   }, "World Permission Role"), /*#__PURE__*/React.createElement("select", {
     value: role,
@@ -7618,7 +7618,7 @@ function App() {
     className: "w-3.5 h-3.5 text-cyan-400"
   }) : null, /*#__PURE__*/React.createElement("span", {
     className: "hidden md:inline"
-  }, getUserWorldRole(activeWorld, userProfile, userProfile?.userId) === 'creator' ? 'Creator' : getUserWorldRole(activeWorld, userProfile, userProfile?.userId) === 'editor' ? 'Editor' : 'Viewer')), activeTab === 'chat' && /*#__PURE__*/React.createElement("button", {
+  }, getUserWorldRole(activeWorld, userProfile, userProfile?.userId) === 'creator' ? 'Creator' : getUserWorldRole(activeWorld, userProfile, userProfile?.userId) === 'editor' ? 'World Editor' : 'Viewer')), activeTab === 'chat' && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setIsSearchOpen(true),
     className: "p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-cyan-300 transition flex-shrink-0",
