@@ -948,13 +948,36 @@ const server = http.createServer(async (req, res) => {
         name: normName,
         category: category || 'General',
         description: description ? description.trim() : '',
-        topic: topic ? topic.trim() : ''
+        topic: topic ? topic.trim() : '',
+        archived: false
       };
 
       db.channels[channelId] = newChan;
       saveDatabase();
       broadcast({ type: 'CHANNEL_CREATED', channel: newChan });
       return sendJson(res, 201, { channel: newChan });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath.startsWith('/api/channels/') && reqPath.endsWith('/archive') && req.method === 'POST') {
+    try {
+      const channelId = reqPath.split('/api/channels/')[1].split('/archive')[0];
+      const { callerHandle, archived } = await parseJsonBody(req);
+      const ch = db.channels[channelId];
+      if (!ch) return sendJson(res, 404, { error: 'Channel not found' });
+
+      const w = db.worlds[ch.worldId];
+      const role = getRoleForWorld(w, callerHandle);
+      if (role !== 'creator' && role !== 'editor' && !isSuperAdminHandle(callerHandle)) {
+        return sendJson(res, 403, { error: 'Only the Creator or World Editors can archive channels.' });
+      }
+
+      ch.archived = !!archived;
+      saveDatabase();
+      broadcast({ type: 'CHANNEL_UPDATED', channel: ch });
+      return sendJson(res, 200, { success: true, channel: ch });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

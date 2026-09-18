@@ -23,10 +23,9 @@ You and other players can add the website directly to your phone's home screen f
 
 ### 2. Worlds & Permissions
 - **World Creation**: Founders give worlds a title, quote/one-liner hook, and short description.
-- **Starter Channels**: Every new world automatically seeds with three core channels:
+- **Starter Channels**: Every new world automatically seeds with two core channels:
   1. `#main-roleplay` (Primary in-character storytelling)
-  2. `#related-images` (Visual references, character art, and maps)
-  3. `#ooc-lounge` (Out-of-character player discussion & plotting)
+  2. `#ooc-lounge` (Out-of-character player discussion & plotting)
 - **3-Tier Permissions**:
   - **Creator**: World founder with full administrative control, channel creation, transfer ownership, and deletion.
   - **World Editor**: Permission granted by Creator to create chat channels/categories and edit wiki articles.

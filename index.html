@@ -817,6 +817,34 @@ const IconsRaw = {
       x2: "17",
       y2: "11"
     }))
+  })),
+  Copy: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
+    path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+      x: "9",
+      y: "9",
+      width: "13",
+      height: "13",
+      rx: "2",
+      ry: "2"
+    }), /*#__PURE__*/React.createElement("path", {
+      d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+    }))
+  })),
+  Archive: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
+    path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+      x: "2",
+      y: "3",
+      width: "20",
+      height: "5",
+      rx: "1"
+    }), /*#__PURE__*/React.createElement("path", {
+      d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: "10",
+      y1: "12",
+      x2: "14",
+      y2: "12"
+    }))
   }))
 };
 
@@ -2395,7 +2423,7 @@ function WikiArticleModal({
 
   const renderInline = str => {
     if (!str) return str;
-    const regex = /('''''[\s\S]+?'''''|\*\*\*[\s\S]+?\*\*\*|'''[\s\S]+?'''|\*\*[\s\S]+?\*\*|''[\s\S]+?''|\*[^\s\*][^\*]*?\*|\[\[[^\]]+\]\]|\[https?:\/\/[^\s\]]+(?:\s+[^\]]+)?\]|`[^`]+`)/g;
+    const regex = /(\[size=\d+\][\s\S]+?\[\/size\]|'''''[\s\S]+?'''''|\*\*\*[\s\S]+?\*\*\*|'''[\s\S]+?'''|\*\*[\s\S]+?\*\*|''[\s\S]+?''|\*[^\s\*][^\*]*?\*|\[\[[^\]]+\]\]|\[https?:\/\/[^\s\]]+(?:\s+[^\]]+)?\]|`[^`]+`)/g;
     const parts = [];
     let lastIndex = 0;
     let match;
@@ -2405,7 +2433,13 @@ function WikiArticleModal({
         parts.push(str.substring(lastIndex, match.index));
       }
       const token = match[0];
-      if (token.startsWith("'''''") && token.endsWith("'''''") || token.startsWith('***') && token.endsWith('***')) {
+      if (token.startsWith('[size=') && token.endsWith('[/size]')) {
+        const sizeMatch = token.match(/^\[size=(\d+)\]([\s\S]*)\[\/size\]$/);
+        parts.push(sizeMatch ? React.createElement("span", {
+          key: k++,
+          style: { fontSize: `${sizeMatch[1]}px` }
+        }, sizeMatch[2]) : token);
+      } else if (token.startsWith("'''''") && token.endsWith("'''''") || token.startsWith('***') && token.endsWith('***')) {
         const inner = token.startsWith("'''''") ? token.slice(5, -5) : token.slice(3, -3);
         parts.push(React.createElement("strong", {
           key: k++,
@@ -2753,7 +2787,17 @@ function WikiArticleModal({
     className: "p-1 bg-slate-750 text-slate-200 rounded"
   }, React.createElement(Icons.Minus, {
     className: "w-3.5 h-3.5"
-  }))), React.createElement("textarea", {
+  })), React.createElement("span", {
+    className: "text-slate-600"
+  }, "|"), React.createElement("select", {
+    value: "",
+    onChange: e => {
+      const val = e.target.value;
+      if (val) insertTag(`[size=${val}]`, '[/size]', 'sized text');
+    },
+    title: "Wrap selected text in a font size",
+    className: "px-1.5 py-1 bg-slate-750 text-slate-200 rounded text-[10px] border-none focus:outline-none"
+  }, React.createElement("option", { value: "" }, "Font Size"), React.createElement("option", { value: "11" }, "Small"), React.createElement("option", { value: "16" }, "Normal"), React.createElement("option", { value: "22" }, "Large"), React.createElement("option", { value: "30" }, "X-Large"), React.createElement("option", { value: "42" }, "Huge"))), React.createElement("textarea", {
     ref: textareaRef,
     rows: 12,
     spellCheck: true,
@@ -3155,6 +3199,128 @@ function WorldPermissionsModal({
     className: "p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition",
     title: "Remove Member"
   }, "✕")))))), React.createElement("div", {
+    className: "p-3 border-t border-slate-800 bg-slate-850 flex justify-end flex-shrink-0"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "px-4 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-sm transition"
+  }, "Done"))));
+}
+
+// --- Channel Archive Modal: put RP channels aside, or bring them back ---
+function ChannelArchiveModal({ channels, onClose, onToggleArchive, onSelectChannel }) {
+  const active = channels.filter(c => !c.archived);
+  const archived = channels.filter(c => c.archived);
+  const renderRow = (c, isArchived) => React.createElement("div", {
+    key: c.id,
+    className: "p-2.5 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between text-xs gap-2"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => onSelectChannel(c.id),
+    className: "font-medium text-slate-200 font-mono truncate min-w-0 text-left hover:text-cyan-300 transition"
+  }, "# ", c.name), React.createElement("button", {
+    type: "button",
+    onClick: () => onToggleArchive(c.id, !isArchived),
+    className: `px-2.5 py-1 rounded-lg text-[11px] font-semibold flex-shrink-0 flex items-center space-x-1 transition ${isArchived ? 'bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300' : 'bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300'}`
+  }, React.createElement(Icons.Archive, { className: "w-3 h-3" }), React.createElement("span", null, isArchived ? "Unarchive" : "Archive")));
+
+  return React.createElement("div", {
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+  }, React.createElement("div", {
+    className: "bg-slate-900 border border-slate-750 w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[92dvh] overflow-hidden my-auto"
+  }, React.createElement("div", {
+    className: "p-4 border-b border-slate-800 flex items-center justify-between bg-slate-850 flex-shrink-0"
+  }, React.createElement("div", {
+    className: "flex items-center space-x-2 min-w-0"
+  }, React.createElement(Icons.Archive, {
+    className: "w-5 h-5 text-cyan-400 flex-shrink-0"
+  }), React.createElement("h3", {
+    className: "font-bold text-sm sm:text-base text-slate-100 truncate"
+  }, "Channel Archive")), React.createElement("button", {
+    onClick: onClose,
+    className: "p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+  }, "✕")), React.createElement("div", {
+    className: "flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 touch-scroll min-h-0"
+  }, React.createElement("div", {
+    className: "space-y-2"
+  }, React.createElement("div", {
+    className: "text-[10px] font-bold uppercase tracking-wider text-slate-400"
+  }, "Active Channels (", active.length, ")"), active.length === 0 ? React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "No active channels.") : active.map(c => renderRow(c, false))), React.createElement("div", {
+    className: "space-y-2 pt-2 border-t border-slate-800"
+  }, React.createElement("div", {
+    className: "text-[10px] font-bold uppercase tracking-wider text-slate-400"
+  }, "Archived Channels (", archived.length, ")"), archived.length === 0 ? React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "Nothing archived yet. Archived channels stay here, fully readable, until you bring them back.") : archived.map(c => renderRow(c, true)))), React.createElement("div", {
+    className: "p-3 border-t border-slate-800 bg-slate-850 flex justify-end flex-shrink-0"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: onClose,
+    className: "px-4 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-sm transition"
+  }, "Done"))));
+}
+
+// --- Wiki Archive Modal: put lore/character entries aside, or bring them back ---
+function WikiArchiveModal({ entries, activeWorld, userProfile, userId, onClose, onToggleArchive, onSelectEntry }) {
+  const relevant = (entries || []).filter(e => e.worldId === activeWorld?.id && e.id !== 'ooc_player' && e.id !== 'ooc_persona' && !e.id.startsWith('temp_'));
+  const active = relevant.filter(e => !e.archived);
+  const archived = relevant.filter(e => e.archived);
+  const catLabel = cat => ({ character: 'Character', npc: 'NPC', location: 'Location', faction: 'Faction', lore: 'Lore', item: 'Item' }[cat] || cat);
+  const canManage = e => {
+    const isChar = e.category === 'character' || e.category === 'npc';
+    return isChar ? canEditCharacter(e, userProfile, userId) : canEditWikiArticle(activeWorld, userProfile, userId);
+  };
+  const renderRow = (e, isArchived) => React.createElement("div", {
+    key: e.id,
+    className: "p-2.5 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between text-xs gap-2"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => onSelectEntry(e),
+    className: "flex items-center space-x-2 min-w-0 text-left hover:text-cyan-300 transition"
+  }, React.createElement("span", {
+    className: "text-[8px] uppercase font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 flex-shrink-0"
+  }, catLabel(e.category)), React.createElement("span", {
+    className: "font-medium text-slate-200 truncate"
+  }, e.title)), canManage(e) ? React.createElement("button", {
+    type: "button",
+    onClick: () => onToggleArchive(e, !isArchived),
+    className: `px-2.5 py-1 rounded-lg text-[11px] font-semibold flex-shrink-0 flex items-center space-x-1 transition ${isArchived ? 'bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300' : 'bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300'}`
+  }, React.createElement(Icons.Archive, { className: "w-3 h-3" }), React.createElement("span", null, isArchived ? "Unarchive" : "Archive")) : React.createElement("span", {
+    className: "text-[10px] text-slate-500 flex-shrink-0"
+  }, "by ", e.authorHandle || 'World Lore'));
+
+  return React.createElement("div", {
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+  }, React.createElement("div", {
+    className: "bg-slate-900 border border-slate-750 w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[92dvh] overflow-hidden my-auto"
+  }, React.createElement("div", {
+    className: "p-4 border-b border-slate-800 flex items-center justify-between bg-slate-850 flex-shrink-0"
+  }, React.createElement("div", {
+    className: "flex items-center space-x-2 min-w-0"
+  }, React.createElement(Icons.Archive, {
+    className: "w-5 h-5 text-cyan-400 flex-shrink-0"
+  }), React.createElement("h3", {
+    className: "font-bold text-sm sm:text-base text-slate-100 truncate"
+  }, "Wiki Archive")), React.createElement("button", {
+    onClick: onClose,
+    className: "p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+  }, "✕")), React.createElement("div", {
+    className: "flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 touch-scroll min-h-0"
+  }, React.createElement("div", {
+    className: "space-y-2"
+  }, React.createElement("div", {
+    className: "text-[10px] font-bold uppercase tracking-wider text-slate-400"
+  }, "Active Entries (", active.length, ")"), active.length === 0 ? React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "No active entries.") : active.map(e => renderRow(e, false))), React.createElement("div", {
+    className: "space-y-2 pt-2 border-t border-slate-800"
+  }, React.createElement("div", {
+    className: "text-[10px] font-bold uppercase tracking-wider text-slate-400"
+  }, "Archived Entries (", archived.length, ")"), archived.length === 0 ? React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "Nothing archived yet. Archived entries stay here, fully intact, until you bring them back.") : archived.map(e => renderRow(e, true)))), React.createElement("div", {
     className: "p-3 border-t border-slate-800 bg-slate-850 flex justify-end flex-shrink-0"
   }, React.createElement("button", {
     type: "button",
@@ -4635,6 +4801,48 @@ function InviteToWorldModal({
 
 // ===== p6_cast.js =====
 
+// --- Clone Character/NPC Modal: pick a destination world for the copy ---
+function CloneCharacterModal({ entry, worlds, onClose, onClone }) {
+  const [targetWorldId, setTargetWorldId] = useState(entry?.worldId || worlds[0]?.id || '');
+  if (!entry) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900 border border-slate-750 w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between pb-3 border-b border-slate-800"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-2"
+  }, /*#__PURE__*/React.createElement(Icons.Copy, {
+    className: "w-4 h-4 text-cyan-400"
+  }), /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-100"
+  }, "Clone \"", entry.title, "\"")), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    className: "p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+  }, "✕")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400 leading-relaxed"
+  }, "Creates an editable copy of this character/NPC, assigned to whichever world you choose below."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300 mb-1.5"
+  }, "Assign Clone To World"), /*#__PURE__*/React.createElement("select", {
+    value: targetWorldId,
+    onChange: e => setTargetWorldId(e.target.value),
+    className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-slate-100 text-sm"
+  }, worlds.map(w => /*#__PURE__*/React.createElement("option", {
+    key: w.id,
+    value: w.id
+  }, w.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-end space-x-2 pt-1"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    className: "px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onClone(targetWorldId),
+    disabled: !targetWorldId,
+    className: "px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-slate-950 font-bold text-xs"
+  }, "Clone Character"))));
+}
+
 // ==========================================
 // Cast Screen: Cross-World Personal Cast & Profiles
 // ==========================================
@@ -4647,7 +4855,8 @@ function CastScreen({
   onSelectPersona,
   onOpenDetail,
   onCreateCastMember,
-  onDeleteEntry
+  onDeleteEntry,
+  onCloneEntry
 }) {
   const [worldFilter, setWorldFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -4775,6 +4984,13 @@ function CastScreen({
       onClick: () => onOpenDetail(c),
       className: "px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 font-semibold transition"
     }, "Edit Profile"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => onCloneEntry && onCloneEntry(c),
+      className: "p-1.5 text-slate-500 hover:text-cyan-400 rounded-xl hover:bg-slate-800 transition",
+      title: "Clone Character"
+    }, /*#__PURE__*/React.createElement(Icons.Copy, {
+      className: "w-3.5 h-3.5"
+    })), /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => {
         if (confirm(`Delete ${c.title}?`)) onDeleteEntry(c.id);
@@ -5833,11 +6049,9 @@ function WorldSwitcherModal({
     className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100"
   })), React.createElement("div", {
     className: "p-2.5 rounded-xl bg-slate-850 border border-slate-800 text-[11px] text-slate-400"
-  }, "✨ Every world is seeded with three starter channels: ", React.createElement("strong", {
+  }, "✨ Every world is seeded with two starter channels: ", React.createElement("strong", {
     className: "text-cyan-300"
-  }, "#main-roleplay"), ", ", React.createElement("strong", {
-    className: "text-cyan-300"
-  }, "#related-images"), ", and ", React.createElement("strong", {
+  }, "#main-roleplay"), " and ", React.createElement("strong", {
     className: "text-cyan-300"
   }, "#ooc-lounge"), "."), React.createElement("div", {
     className: "flex justify-end space-x-2 pt-2 border-t border-slate-800 flex-shrink-0"
@@ -5908,7 +6122,8 @@ function WikiScreen({
   onSelectCharacter,
   onSelectArticle,
   onOpenNewChoice,
-  onDeleteEntry
+  onDeleteEntry,
+  onOpenWikiArchive
 }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -5931,6 +6146,7 @@ function WikiScreen({
   const worldEntries = (wikiEntries || []).filter(w => {
     if (w.worldId !== activeWorld?.id) return false;
     if (w.id === 'ooc_player' || w.id === 'ooc_persona' || w.id.startsWith('temp_')) return false;
+    if (w.archived) return false;
 
     if (activeCategory === 'characters') return w.category === 'character';
     if (activeCategory === 'npcs') return w.category === 'npc';
@@ -5957,14 +6173,23 @@ function WikiScreen({
     className: "w-5 h-5 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("h2", {
     className: "text-sm font-bold text-slate-100 truncate"
-  }, activeWorld?.name ? `${activeWorld.name.split(':')[0]} Wiki` : 'World Wiki')), canCreate && /*#__PURE__*/React.createElement("button", {
+  }, activeWorld?.name ? `${activeWorld.name.split(':')[0]} Wiki` : 'World Wiki')), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center space-x-1.5 flex-shrink-0"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onOpenWikiArchive,
+    className: "p-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 transition",
+    title: "Wiki Archive"
+  }, /*#__PURE__*/React.createElement(Icons.Archive, {
+    className: "w-3.5 h-3.5"
+  })), canCreate && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: onOpenNewChoice,
     style: { backgroundColor: accentColor, color: '#020617' },
-    className: "px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 shadow-sm transition flex-shrink-0 hover:opacity-90"
+    className: "px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 shadow-sm transition hover:opacity-90"
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
     className: "w-3.5 h-3.5"
-  }), /*#__PURE__*/React.createElement("span", null, "New Entry"))), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", null, "New Entry")))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex-1 relative"
@@ -6117,6 +6342,9 @@ function App() {
   const [isArticleModalOpen, setIsArticleModalOpen] = useState(false);
   const [activeArticleEntry, setActiveArticleEntry] = useState(null);
   const [activeSheetEntry, setActiveSheetEntry] = useState(null);
+  const [cloneSourceEntry, setCloneSourceEntry] = useState(null);
+  const [isChannelArchiveOpen, setIsChannelArchiveOpen] = useState(false);
+  const [isWikiArchiveOpen, setIsWikiArchiveOpen] = useState(false);
   const [isGlobalNewDMOpen, setIsGlobalNewDMOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
 
@@ -6399,6 +6627,8 @@ function App() {
                 if (prev.some(c => c.id === data.channel.id)) return prev;
                 return [...prev, data.channel];
               });
+            } else if (data.type === 'CHANNEL_UPDATED') {
+              setChannels(prev => prev.map(c => c.id === data.channel.id ? data.channel : c));
             } else if (data.type === 'CHANNEL_DELETED') {
               setChannels(prev => prev.filter(c => c.id !== data.channelId));
               setMessages(prev => prev.filter(m => m.channelId !== data.channelId));
@@ -6446,7 +6676,9 @@ function App() {
   // Keep activeChannelId aligned with activeWorld
   const activeWorld = worlds.find(w => w.id === activeWorldId) || worlds[0];
   const worldChannels = channels.filter(c => c.worldId === activeWorld?.id);
-  const activeChannel = worldChannels.find(c => c.id === activeChannelId) || worldChannels[0];
+  const visibleWorldChannels = worldChannels.filter(c => !c.archived);
+  const activeChannel = worldChannels.find(c => c.id === activeChannelId) || visibleWorldChannels[0] || worldChannels[0];
+  const channelDropdownList = (activeChannel && activeChannel.archived) ? [activeChannel, ...visibleWorldChannels] : visibleWorldChannels;
 
   // Dynamic World Theme Accent
   useEffect(() => {
@@ -6475,7 +6707,9 @@ function App() {
 
   useEffect(() => {
     if (activeWorld && (!activeChannelId || !worldChannels.some(c => c.id === activeChannelId))) {
-      if (worldChannels.length > 0) {
+      if (visibleWorldChannels.length > 0) {
+        setActiveChannelId(visibleWorldChannels[0].id);
+      } else if (worldChannels.length > 0) {
         setActiveChannelId(worldChannels[0].id);
       }
     }
@@ -6767,6 +7001,21 @@ function App() {
     } catch (e) {}
   };
 
+  const handleToggleChannelArchive = async (channelId, archived) => {
+    setChannels(prev => prev.map(c => c.id === channelId ? { ...c, archived } : c));
+    try {
+      const res = await fetch(`/api/channels/${channelId}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callerHandle: userProfile.handle, archived })
+      });
+      const data = await res.json();
+      if (res.ok && data.channel) {
+        setChannels(prev => prev.map(c => c.id === data.channel.id ? data.channel : c));
+      }
+    } catch (e) {}
+  };
+
   const handleUpdateWiki = async (entry) => {
     const img = entry.avatarUrl || entry.coverUrl || entry.imageUrl || '';
     const updated = {
@@ -6891,12 +7140,19 @@ function App() {
     value: activeChannel?.id || '',
     onChange: e => setActiveChannelId(e.target.value),
     className: "bg-slate-850 border border-slate-750 text-slate-200 text-xs font-semibold rounded-xl px-2 py-1.5 pr-5 sm:pr-6 appearance-none cursor-pointer truncate max-w-[85px] xs:max-w-[110px] sm:max-w-[160px]"
-  }, worldChannels.map(c => /*#__PURE__*/React.createElement("option", {
+  }, channelDropdownList.map(c => /*#__PURE__*/React.createElement("option", {
     key: c.id,
     value: c.id
-  }, "# ", c.name))), /*#__PURE__*/React.createElement(Icons.ChevronDown, {
+  }, "# ", c.name, c.archived ? " (Archived)" : ""))), /*#__PURE__*/React.createElement(Icons.ChevronDown, {
     className: "w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none"
   }), canManageChannels(activeWorld, userProfile, userProfile?.userId) && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setIsChannelArchiveOpen(true),
+    className: "p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 text-xs flex-shrink-0",
+    title: "Channel Archive"
+  }, /*#__PURE__*/React.createElement(Icons.Archive, {
+    className: "w-3.5 h-3.5 sm:w-4 sm:h-4"
+  })), canManageChannels(activeWorld, userProfile, userProfile?.userId) && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => {
       const name = prompt("New Channel Name (e.g. ruined-sanctuary):");
@@ -7016,7 +7272,8 @@ function App() {
       setIsArticleModalOpen(true);
     },
     onOpenNewChoice: () => setIsNewEntryChoiceOpen(true),
-    onDeleteEntry: handleDeleteWiki
+    onDeleteEntry: handleDeleteWiki,
+    onOpenWikiArchive: () => setIsWikiArchiveOpen(true)
   })), activeTab === 'dms' && /*#__PURE__*/React.createElement(DMsScreen, {
     dmMessages: dmMessages,
     userProfile: userProfile,
@@ -7063,7 +7320,54 @@ function App() {
       });
       setIsModalOpen(true);
     },
-    onDeleteEntry: handleDeleteWiki
+    onDeleteEntry: handleDeleteWiki,
+    onCloneEntry: entry => setCloneSourceEntry(entry)
+  }), isWikiArchiveOpen && /*#__PURE__*/React.createElement(WikiArchiveModal, {
+    entries: wikiEntries,
+    activeWorld: activeWorld,
+    userProfile: userProfile,
+    userId: userProfile?.userId,
+    onClose: () => setIsWikiArchiveOpen(false),
+    onToggleArchive: (entry, archived) => handleUpdateWiki({ ...entry, archived }),
+    onSelectEntry: entry => {
+      setIsWikiArchiveOpen(false);
+      if (entry.category === 'character' || entry.category === 'npc') {
+        setActiveModalEntry(entry);
+        setIsModalOpen(true);
+      } else {
+        setActiveArticleEntry(entry);
+        setIsArticleModalOpen(true);
+      }
+    }
+  }), isChannelArchiveOpen && /*#__PURE__*/React.createElement(ChannelArchiveModal, {
+    channels: worldChannels,
+    onClose: () => setIsChannelArchiveOpen(false),
+    onToggleArchive: handleToggleChannelArchive,
+    onSelectChannel: chId => {
+      setActiveChannelId(chId);
+      setActiveTab('chat');
+      setIsChannelArchiveOpen(false);
+    }
+  }), cloneSourceEntry && /*#__PURE__*/React.createElement(CloneCharacterModal, {
+    entry: cloneSourceEntry,
+    worlds: worlds,
+    onClose: () => setCloneSourceEntry(null),
+    onClone: targetWorldId => {
+      const cloned = {
+        ...cloneSourceEntry,
+        id: `char_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        worldId: targetWorldId,
+        title: `${cloneSourceEntry.title} (Copy)`,
+        authorHandle: userProfile.handle,
+        authorUserId: userProfile.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      handleUpdateWiki(cloned);
+      setCloneSourceEntry(null);
+      setActiveModalEntry(cloned);
+      setIsModalOpen(true);
+    }
   }), activeTab === 'settings' && /*#__PURE__*/React.createElement(SettingsScreen, {
     isOnline: isOnline,
     setIsOnline: setIsOnline,
