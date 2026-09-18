@@ -215,6 +215,36 @@ function isSuperAdminHandle(handle) {
   return !!u && u.role === 'superadmin';
 }
 
+// Passwords are salted + hashed with scrypt (Node's built-in crypto, no new
+// dependency needed) and stored as "scrypt:<saltHex>:<hashHex>". Accounts
+// created before this existed still have their raw password string stored;
+// verifyPassword() falls back to a plain comparison for those and the login
+// handler transparently upgrades them to the hashed format on next
+// successful login, so nobody gets locked out.
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `scrypt:${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (typeof stored !== 'string') return false;
+  if (stored.startsWith('scrypt:')) {
+    const parts = stored.split(':');
+    if (parts.length !== 3) return false;
+    const [, salt, hashHex] = parts;
+    try {
+      const candidate = crypto.scryptSync(password, salt, 64);
+      const expected = Buffer.from(hashHex, 'hex');
+      return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
+    } catch (e) {
+      return false;
+    }
+  }
+  // Legacy plaintext account, pre-dating password hashing.
+  return stored === password;
+}
+
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -418,8 +448,12 @@ const server = http.createServer(async (req, res) => {
       if (!user) {
         return sendJson(res, 401, { error: `No account found for ${handle}. Please check your handle or create an account.` });
       }
-      if (user.password !== password) {
+      if (!verifyPassword(password, user.password)) {
         return sendJson(res, 401, { error: 'Incorrect password. Please try again.' });
+      }
+      if (!user.password.startsWith('scrypt:')) {
+        user.password = hashPassword(password);
+        saveDatabase();
       }
       return sendJson(res, 200, {
         success: true,
@@ -454,7 +488,7 @@ const server = http.createServer(async (req, res) => {
       const newUser = {
         handle: h,
         name: name.trim(),
-        password: password,
+        password: hashPassword(password),
         role: 'user',
         avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name.trim())}`,
         passkeys: [],
@@ -487,7 +521,7 @@ const server = http.createServer(async (req, res) => {
       if (!handle || !newPassword) return sendJson(res, 400, { error: 'Missing handle or new password' });
       const normKey = handle.trim().toLowerCase();
       if (!db.users[normKey]) return sendJson(res, 404, { error: 'User not found' });
-      db.users[normKey].password = newPassword;
+      db.users[normKey].password = hashPassword(newPassword);
       saveDatabase();
       return sendJson(res, 200, { success: true, message: 'Password updated successfully' });
     } catch (e) {
