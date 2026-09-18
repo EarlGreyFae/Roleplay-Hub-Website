@@ -175,6 +175,30 @@ function parseJsonBody(req) {
   });
 }
 
+function getRoleForWorld(world, handle) {
+  const h = (handle || '').trim().toLowerCase();
+  if (!world || !h) return 'viewer';
+  if ((world.creatorHandle || '').toLowerCase() === h) return 'creator';
+  if (Array.isArray(world.members)) {
+    const mem = world.members.find(m => (m.handle || '').toLowerCase() === h);
+    if (mem && mem.role) return mem.role;
+  }
+  return 'viewer';
+}
+
+function isWorldMember(world, handle) {
+  const h = (handle || '').trim().toLowerCase();
+  if (!world || !h) return false;
+  if ((world.creatorHandle || '').toLowerCase() === h) return true;
+  return Array.isArray(world.members) && world.members.some(m => (m.handle || '').toLowerCase() === h);
+}
+
+function isSuperAdminHandle(handle) {
+  const h = (handle || '').trim().toLowerCase();
+  const u = db.users[h];
+  return !!u && u.role === 'superadmin';
+}
+
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -637,8 +661,7 @@ const server = http.createServer(async (req, res) => {
 
       // Seed starter channels:
       // 1. #main-roleplay
-      // 2. #related-images
-      // 3. #ooc-lounge
+      // 2. #ooc-lounge
       const starterChannels = [
         {
           id: `ch_${worldId}_main_roleplay`,
@@ -647,14 +670,6 @@ const server = http.createServer(async (req, res) => {
           category: 'Roleplay',
           description: `Primary roleplay storytelling and in-character scenes for ${newWorld.name}`,
           topic: 'Act 1: The journey begins'
-        },
-        {
-          id: `ch_${worldId}_related_images`,
-          worldId,
-          name: 'related-images',
-          category: 'Media & Art',
-          description: 'Character art, locations, maps, visual references, and mood boards',
-          topic: 'Visual lore & world aesthetics'
         },
         {
           id: `ch_${worldId}_ooc_lounge`,
@@ -687,13 +702,25 @@ const server = http.createServer(async (req, res) => {
       if (!w) return sendJson(res, 404, { error: 'World not found' });
 
       const payload = await parseJsonBody(req);
+      const callerHandle = payload.callerHandle || '';
+      const role = getRoleForWorld(w, callerHandle);
+      const isAdmin = isSuperAdminHandle(callerHandle);
+      const changingMembers = Array.isArray(payload.members);
+
+      if (changingMembers && role !== 'creator' && !isAdmin) {
+        return sendJson(res, 403, { error: 'Only the World Creator can change member roles.' });
+      }
+      if (!changingMembers && role !== 'creator' && role !== 'editor' && !isAdmin) {
+        return sendJson(res, 403, { error: 'Only the Creator or World Editors can edit this world.' });
+      }
+
       if (payload.name) w.name = payload.name.trim();
       if (payload.tagline !== undefined) w.tagline = payload.tagline.trim();
       if (payload.description !== undefined) w.description = payload.description.trim();
       if (payload.genre !== undefined) w.genre = payload.genre.trim();
       if (payload.themeAccent !== undefined) w.themeAccent = payload.themeAccent;
       if (payload.coverUrl !== undefined) w.coverUrl = payload.coverUrl;
-      if (Array.isArray(payload.members)) w.members = payload.members;
+      if (changingMembers && (role === 'creator' || isAdmin)) w.members = payload.members;
       w.updatedAt = new Date().toISOString();
 
       saveDatabase();
@@ -707,7 +734,14 @@ const server = http.createServer(async (req, res) => {
   if (reqPath.startsWith('/api/worlds/') && req.method === 'DELETE') {
     try {
       const worldId = reqPath.replace('/api/worlds/', '').split('/')[0];
-      if (!db.worlds[worldId]) return sendJson(res, 404, { error: 'World not found' });
+      const w = db.worlds[worldId];
+      if (!w) return sendJson(res, 404, { error: 'World not found' });
+
+      const callerHandle = query.get('callerHandle') || '';
+      const role = getRoleForWorld(w, callerHandle);
+      if (role !== 'creator' && !isSuperAdminHandle(callerHandle)) {
+        return sendJson(res, 403, { error: 'Only the World Creator can delete this world.' });
+      }
 
       delete db.worlds[worldId];
       for (const [cId, ch] of Object.entries(db.channels)) {
@@ -757,9 +791,13 @@ const server = http.createServer(async (req, res) => {
   if (reqPath.includes('/members') && req.method === 'POST') {
     try {
       const worldId = reqPath.split('/api/worlds/')[1].split('/members')[0];
-      const { handle, role } = await parseJsonBody(req);
+      const { handle, role, callerHandle } = await parseJsonBody(req);
       const w = db.worlds[worldId];
       if (!w) return sendJson(res, 404, { error: 'World not found' });
+      const callerRole = getRoleForWorld(w, callerHandle);
+      if (callerRole !== 'creator' && !isSuperAdminHandle(callerHandle)) {
+        return sendJson(res, 403, { error: 'Only the World Creator can manage member roles.' });
+      }
       if (!Array.isArray(w.members)) w.members = [];
 
       const existing = w.members.find(m => (m.handle || '').toLowerCase() === handle.toLowerCase());
@@ -893,9 +931,14 @@ const server = http.createServer(async (req, res) => {
   // 6. Channels
   if (reqPath === '/api/channels' && req.method === 'POST') {
     try {
-      const { worldId, name, description, topic, category } = await parseJsonBody(req);
+      const { worldId, name, description, topic, category, callerHandle } = await parseJsonBody(req);
       const w = db.worlds[worldId];
       if (!w) return sendJson(res, 404, { error: 'World not found' });
+
+      const role = getRoleForWorld(w, callerHandle);
+      if (role !== 'creator' && role !== 'editor' && !isSuperAdminHandle(callerHandle)) {
+        return sendJson(res, 403, { error: 'Only the Creator or World Editors can create channels.' });
+      }
 
       const normName = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/^#/, '');
       const channelId = `ch_${worldId}_${normName}_${Date.now()}`;
@@ -1032,12 +1075,40 @@ const server = http.createServer(async (req, res) => {
   // 9. Wiki & Cast Endpoints
   if (reqPath === '/api/wiki' && req.method === 'POST') {
     try {
-      const { entry } = await parseJsonBody(req);
+      const payload = await parseJsonBody(req);
+      const entry = payload.entry;
+      const callerHandle = payload.callerHandle || '';
       if (!entry || !entry.worldId || !entry.title) {
         return sendJson(res, 400, { error: 'Missing required entry fields' });
       }
 
+      const world = db.worlds[entry.worldId];
+      const isChar = entry.category === 'character' || entry.category === 'npc';
+      const isAdmin = isSuperAdminHandle(callerHandle);
+      const worldRole = getRoleForWorld(world, callerHandle);
       const existingIndex = db.wikiEntries.findIndex(w => w.id === entry.id);
+      const existing = existingIndex >= 0 ? db.wikiEntries[existingIndex] : null;
+
+      if (existing) {
+        if (isChar) {
+          const isAuthor = (existing.authorHandle || '').toLowerCase() === callerHandle.toLowerCase();
+          if (!isAuthor && !isAdmin) {
+            return sendJson(res, 403, { error: "Only the character's creator can edit it." });
+          }
+        } else if (worldRole !== 'creator' && worldRole !== 'editor' && !isAdmin) {
+          return sendJson(res, 403, { error: 'Only the Creator or World Editors can edit this entry.' });
+        }
+      } else if (isChar) {
+        if (!isWorldMember(world, callerHandle) && !isAdmin) {
+          return sendJson(res, 403, { error: 'You must be a member of this world to create a character here.' });
+        }
+        if ((entry.authorHandle || '').toLowerCase() !== callerHandle.toLowerCase() && !isAdmin) {
+          return sendJson(res, 403, { error: 'Cannot create a character on behalf of another user.' });
+        }
+      } else if (worldRole !== 'creator' && worldRole !== 'editor' && !isAdmin) {
+        return sendJson(res, 403, { error: 'Only the Creator or World Editors can add wiki lore entries.' });
+      }
+
       const img = entry.avatarUrl || entry.coverUrl || entry.imageUrl || '';
       const updatedEntry = {
         ...entry,
@@ -1065,8 +1136,24 @@ const server = http.createServer(async (req, res) => {
   if (reqPath.startsWith('/api/wiki/') && req.method === 'DELETE') {
     try {
       const entryId = reqPath.replace('/api/wiki/', '').split('/')[0];
+      const callerHandle = query.get('callerHandle') || '';
       const entry = db.wikiEntries.find(w => w.id === entryId);
       if (!entry) return sendJson(res, 404, { error: 'Entry not found' });
+
+      const isChar = entry.category === 'character' || entry.category === 'npc';
+      const isAdmin = isSuperAdminHandle(callerHandle);
+      if (isChar) {
+        const isAuthor = (entry.authorHandle || '').toLowerCase() === callerHandle.toLowerCase();
+        if (!isAuthor && !isAdmin) {
+          return sendJson(res, 403, { error: "Only the character's creator can delete it." });
+        }
+      } else {
+        const world = db.worlds[entry.worldId];
+        const worldRole = getRoleForWorld(world, callerHandle);
+        if (worldRole !== 'creator' && worldRole !== 'editor' && !isAdmin) {
+          return sendJson(res, 403, { error: 'Only the Creator or World Editors can delete this entry.' });
+        }
+      }
 
       db.wikiEntries = db.wikiEntries.filter(w => w.id !== entryId);
       saveDatabase();
@@ -1145,7 +1232,6 @@ const server = http.createServer(async (req, res) => {
 
         const starterChannels = [
           { id: `ch_${demoId}_main_roleplay`, worldId: demoId, name: 'main-roleplay', category: 'Roleplay', description: 'Primary IC scenes', topic: 'Act 1' },
-          { id: `ch_${demoId}_related_images`, worldId: demoId, name: 'related-images', category: 'Media & Art', description: 'Visual lore & references', topic: 'World art' },
           { id: `ch_${demoId}_ooc_lounge`, worldId: demoId, name: 'ooc-lounge', category: 'Discussion', description: 'Out-of-character chat', topic: 'OOC talk' }
         ];
         starterChannels.forEach(c => { db.channels[c.id] = c; });
@@ -1425,6 +1511,19 @@ try {
   });
 }
 
+// One-time migration: the '#related-images' starter channel was removed from
+// the product; purge any that already exist so old worlds don't keep it.
+function pruneRelatedImagesChannels() {
+  const staleIds = Object.values(db.channels)
+    .filter(c => (c.name || '').toLowerCase() === 'related-images')
+    .map(c => c.id);
+  if (staleIds.length === 0) return;
+  staleIds.forEach(id => { delete db.channels[id]; });
+  db.messages = db.messages.filter(m => !staleIds.includes(m.channelId));
+  console.log(`[Migration] Removed ${staleIds.length} #related-images channel(s)`);
+  saveDatabaseSync();
+}
+
 function startServer() {
   server.listen(PORT, () => {
     console.log('=======================================================');
@@ -1435,7 +1534,10 @@ function startServer() {
 }
 
 initializeDatabase()
-  .then(startServer)
+  .then(() => {
+    pruneRelatedImagesChannels();
+    startServer();
+  })
   .catch(err => {
     console.error('[DB] Fatal error during database initialization, starting server with in-memory defaults:', err.message);
     startServer();
