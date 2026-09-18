@@ -6714,12 +6714,23 @@ function App() {
     }
   }, [userProfile?.handle]);
 
-  // Temporary Spawned Characters: persist locally per-account until explicitly deleted
+  // Temporary Spawned Characters: persist locally per-account until explicitly deleted.
+  // skipNextNpcSaveRef guards against the save effect below firing in the SAME
+  // commit as a handle switch, where `customNpcs` still holds the *previous*
+  // account's (stale) list - without this guard, logging in/out would
+  // immediately overwrite the newly-loaded account's saved NPCs with the
+  // stale list from whichever account/state was active a moment ago.
+  const skipNextNpcSaveRef = useRef(true);
   useEffect(() => {
+    skipNextNpcSaveRef.current = true;
     setCustomNpcs(AccountManager.getTempNpcs(userProfile?.handle));
   }, [userProfile?.handle]);
 
   useEffect(() => {
+    if (skipNextNpcSaveRef.current) {
+      skipNextNpcSaveRef.current = false;
+      return;
+    }
     if (userProfile?.handle) {
       AccountManager.saveTempNpcs(userProfile.handle, customNpcs);
     }
@@ -7275,19 +7286,25 @@ function App() {
     } catch (e) {}
   };
 
+  // Do NOT apply this locally until the server confirms it - the caller may
+  // not actually have permission (their role may have changed since this
+  // client last synced), and the server is the one that decides.
   const handleToggleChannelArchive = async (channelId, archived) => {
-    setChannels(prev => prev.map(c => c.id === channelId ? { ...c, archived } : c));
     try {
       const res = await fetch(`/api/channels/${channelId}/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callerHandle: userProfile.handle, archived })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.channel) {
         setChannels(prev => prev.map(c => c.id === data.channel.id ? data.channel : c));
+      } else {
+        alert(data.error || 'You do not have permission to make this change.');
       }
-    } catch (e) {}
+    } catch (e) {
+      alert('Could not reach the server to save this change.');
+    }
   };
 
   const handleUpdateWiki = async (entry) => {
