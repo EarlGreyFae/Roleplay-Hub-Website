@@ -53,40 +53,7 @@ if (process.env.DATABASE_URL) {
   }
 }
 
-async function initPgStore() {
-  if (!pgPool) return;
-  try {
-    await pgPool.query(`
-      CREATE TABLE IF NOT EXISTS roleplay_hub_store (
-        key text PRIMARY KEY,
-        value jsonb NOT NULL,
-        updated_at timestamptz DEFAULT now()
-      );
-    `);
-    const res = await pgPool.query("SELECT value FROM roleplay_hub_store WHERE key = 'database_state'");
-    if (res.rows && res.rows[0] && res.rows[0].value) {
-      const pgData = res.rows[0].value;
-      if (pgData && pgData.worlds && Object.keys(pgData.worlds).length > 0) {
-        db = {
-          users: { ...defaultDb.users, ...(pgData.users || {}) },
-          worlds: pgData.worlds || {},
-          channels: pgData.channels || {},
-          messages: pgData.messages || [],
-          dmMessages: pgData.dmMessages || [],
-          wikiEntries: pgData.wikiEntries || [],
-          invites: pgData.invites || []
-        };
-        saveDatabaseSync();
-        console.log('[DB] Successfully restored database state from PostgreSQL!');
-      }
-    }
-  } catch (err) {
-    console.error('[DB] PostgreSQL init error:', err.message);
-  }
-}
-initPgStore();
-
-function loadDatabase() {
+function loadDatabaseFromFile() {
   try {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf8');
@@ -103,14 +70,13 @@ function loadDatabase() {
       if (!db.users['@earlgreyfae']) {
         db.users['@earlgreyfae'] = defaultDb.users['@earlgreyfae'];
       }
-    } else {
-      saveDatabaseSync();
+      return true;
     }
   } catch (err) {
-    console.error('[DB] Error loading database:', err.message);
+    console.error('[DB] Error loading local database file:', err.message);
     db = { ...defaultDb };
-    saveDatabaseSync();
   }
+  return false;
 }
 
 let saveTimeout = null;
@@ -135,7 +101,50 @@ function saveDatabaseSync() {
   }
 }
 
-loadDatabase();
+// PostgreSQL is the durable source of truth across redeploys, since Render
+// wipes local disk on every deploy. This MUST finish resolving before the
+// server starts accepting requests or writing anything back — otherwise a
+// fresh container's empty in-memory db can race ahead and overwrite the
+// real data in Postgres before the restore even completes.
+async function initializeDatabase() {
+  if (pgPool) {
+    try {
+      await pgPool.query(`
+        CREATE TABLE IF NOT EXISTS roleplay_hub_store (
+          key text PRIMARY KEY,
+          value jsonb NOT NULL,
+          updated_at timestamptz DEFAULT now()
+        );
+      `);
+      const res = await pgPool.query("SELECT value FROM roleplay_hub_store WHERE key = 'database_state'");
+      if (res.rows && res.rows[0] && res.rows[0].value) {
+        const pgData = res.rows[0].value;
+        db = {
+          users: { ...defaultDb.users, ...(pgData.users || {}) },
+          worlds: pgData.worlds || {},
+          channels: pgData.channels || {},
+          messages: pgData.messages || [],
+          dmMessages: pgData.dmMessages || [],
+          wikiEntries: pgData.wikiEntries || [],
+          invites: pgData.invites || []
+        };
+        console.log('[DB] Restored database state from PostgreSQL (source of truth)');
+        saveDatabaseSync();
+        return;
+      }
+      console.log('[DB] No existing PostgreSQL record found - seeding it from local disk once');
+      loadDatabaseFromFile();
+      saveDatabaseSync();
+      return;
+    } catch (err) {
+      console.error('[DB] PostgreSQL unreachable at startup, falling back to local disk (data will NOT survive the next redeploy until this is resolved):', err.message);
+    }
+  }
+
+  if (!loadDatabaseFromFile()) {
+    saveDatabaseSync();
+  }
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -1416,9 +1425,18 @@ try {
   });
 }
 
-server.listen(PORT, () => {
-  console.log('=======================================================');
-  console.log(`>>> Roleplay Hub Cloud Server online on port ${PORT} <<<`);
-  console.log(`>>> Render Deployment Ready (Persistent DB & WebSockets) <<<`);
-  console.log('=======================================================');
-});
+function startServer() {
+  server.listen(PORT, () => {
+    console.log('=======================================================');
+    console.log(`>>> Roleplay Hub Cloud Server online on port ${PORT} <<<`);
+    console.log(`>>> Render Deployment Ready (Persistent DB & WebSockets) <<<`);
+    console.log('=======================================================');
+  });
+}
+
+initializeDatabase()
+  .then(startServer)
+  .catch(err => {
+    console.error('[DB] Fatal error during database initialization, starting server with in-memory defaults:', err.message);
+    startServer();
+  });
