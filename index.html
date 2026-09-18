@@ -7062,22 +7062,26 @@ function App() {
   };
 
   const handleUpdateWorldProfile = async (updatedWorld) => {
-    // Optimistically update local worlds state
-    setWorlds(prev => prev.map(w => w.id === updatedWorld.id ? { ...w, ...updatedWorld } : w));
-    if (activePermissionsWorld && activePermissionsWorld.id === updatedWorld.id) {
-      setActivePermissionsWorld(prev => ({ ...prev, ...updatedWorld }));
-    }
+    // Do NOT apply this locally until the server confirms it - the caller may
+    // not actually have permission, and the server is the one that decides.
     try {
       const res = await fetch(`/api/worlds/${updatedWorld.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...updatedWorld, callerHandle: userProfile.handle })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.world) {
         setWorlds(prev => prev.map(w => w.id === data.world.id ? data.world : w));
+        if (activePermissionsWorld && activePermissionsWorld.id === data.world.id) {
+          setActivePermissionsWorld(data.world);
+        }
+      } else {
+        alert(data.error || 'You do not have permission to make this change.');
       }
-    } catch (e) {}
+    } catch (e) {
+      alert('Could not reach the server to save this change.');
+    }
   };
 
   const handleCreateWorld = async (worldData) => {
@@ -7165,30 +7169,48 @@ function App() {
       authorHandle: entry.authorHandle || userProfile.handle,
       updatedAt: new Date().toISOString()
     };
-    setWikiEntries(prev => {
-      const idx = prev.findIndex(w => w.id === updated.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = updated;
-        return next;
-      }
-      return [...prev, updated];
-    });
 
+    // Do NOT apply this locally until the server confirms it - the caller may
+    // not actually own this character/entry, and the server is the one that
+    // decides. Applying it optimistically would make a rejected edit look
+    // like it succeeded in the editor's own browser.
     try {
-      await fetch('/api/wiki', {
+      const res = await fetch('/api/wiki', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entry: updated, callerHandle: userProfile.handle })
       });
-    } catch (e) {}
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.entry) {
+        setWikiEntries(prev => {
+          const idx = prev.findIndex(w => w.id === data.entry.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = data.entry;
+            return next;
+          }
+          return [...prev, data.entry];
+        });
+      } else {
+        alert(data.error || 'You do not have permission to make this change.');
+      }
+    } catch (e) {
+      alert('Could not reach the server to save this change.');
+    }
   };
 
   const handleDeleteWiki = async (entryId) => {
-    setWikiEntries(prev => prev.filter(w => w.id !== entryId));
     try {
-      await fetch(`/api/wiki/${entryId}?callerHandle=${encodeURIComponent(userProfile.handle)}`, { method: 'DELETE' });
-    } catch (e) {}
+      const res = await fetch(`/api/wiki/${entryId}?callerHandle=${encodeURIComponent(userProfile.handle)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setWikiEntries(prev => prev.filter(w => w.id !== entryId));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'You do not have permission to delete this entry.');
+      }
+    } catch (e) {
+      alert('Could not reach the server to delete this entry.');
+    }
   };
 
   // Dynamic Unread DMs Calculation
