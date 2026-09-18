@@ -2042,7 +2042,7 @@ function WikiEditorModal({
     onSave(updated);
   };
   return /*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-3"
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-2 sm:px-3 safe-top safe-bottom"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full max-w-xl rounded-3xl h-full max-h-[90vh] flex flex-col overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2711,7 +2711,7 @@ function WikiArticleModal({
   const currentImg = form.avatarUrl || form.coverUrl || form.imageUrl;
 
   return React.createElement("div", {
-    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
+    className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-2 sm:px-4 safe-top safe-bottom"
   }, React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full max-w-4xl rounded-3xl shadow-2xl h-full max-h-[92vh] flex flex-col overflow-hidden"
   }, React.createElement("div", {
