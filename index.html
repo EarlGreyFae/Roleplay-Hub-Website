@@ -3345,7 +3345,7 @@ function WorldPermissionsModal({
 }
 
 // --- Channel Archive Modal: put RP channels aside, or bring them back ---
-function ChannelArchiveModal({ channels, onClose, onToggleArchive, onSelectChannel, scratchpadNotes, onOpenNotes }) {
+function ChannelArchiveModal({ channels, onClose, onToggleArchive, onSelectChannel, scratchpadNotes, onOpenNotes, unreadChannelIds }) {
   const active = channels.filter(c => !c.archived);
   const archived = channels.filter(c => c.archived);
   const renderRow = (c, isArchived) => React.createElement("div", {
@@ -3354,8 +3354,11 @@ function ChannelArchiveModal({ channels, onClose, onToggleArchive, onSelectChann
   }, React.createElement("button", {
     type: "button",
     onClick: () => onSelectChannel(c.id),
-    className: "font-medium text-slate-200 font-mono truncate min-w-0 text-left hover:text-cyan-300 transition"
-  }, "# ", c.name), React.createElement("div", {
+    className: "font-medium text-slate-200 font-mono truncate min-w-0 text-left hover:text-cyan-300 transition flex items-center space-x-1.5"
+  }, unreadChannelIds && unreadChannelIds.has(c.id) && React.createElement("span", {
+    className: "w-1.5 h-1.5 bg-rose-500 rounded-full flex-shrink-0",
+    title: "Unread messages"
+  }), React.createElement("span", { className: "truncate" }, "# ", c.name)), React.createElement("div", {
     className: "flex items-center space-x-1.5 flex-shrink-0"
   }, React.createElement("button", {
     type: "button",
@@ -6461,6 +6464,7 @@ function App() {
   const [isChannelArchiveOpen, setIsChannelArchiveOpen] = useState(false);
   const [isWikiArchiveOpen, setIsWikiArchiveOpen] = useState(false);
   const [notesChannel, setNotesChannel] = useState(null);
+  const [isChannelSwitcherOpen, setIsChannelSwitcherOpen] = useState(false);
   const [isGlobalNewDMOpen, setIsGlobalNewDMOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
 
@@ -7335,16 +7339,30 @@ function App() {
     className: "flex items-center space-x-1 min-w-0 flex-shrink"
   }, /*#__PURE__*/React.createElement("div", {
     className: "relative flex-shrink min-w-0"
-  }, /*#__PURE__*/React.createElement("select", {
-    value: activeChannel?.id || '',
-    onChange: e => setActiveChannelId(e.target.value),
-    className: "bg-slate-850 border border-slate-750 text-slate-200 text-xs font-semibold rounded-xl px-2 py-1.5 pr-5 sm:pr-6 appearance-none cursor-pointer truncate max-w-[85px] xs:max-w-[110px] sm:max-w-[160px]"
-  }, channelDropdownList.map(c => /*#__PURE__*/React.createElement("option", {
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setIsChannelSwitcherOpen(!isChannelSwitcherOpen),
+    className: "bg-slate-850 border border-slate-750 text-slate-200 text-xs font-semibold rounded-xl pl-2 pr-5 sm:pr-6 py-1.5 flex items-center cursor-pointer truncate max-w-[85px] xs:max-w-[110px] sm:max-w-[160px]"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "truncate"
+  }, "# ", activeChannel?.name, activeChannel?.archived ? " (Archived)" : ""), /*#__PURE__*/React.createElement(Icons.ChevronDown, {
+    className: `w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none transition-transform ${isChannelSwitcherOpen ? 'rotate-180' : ''}`
+  })), isChannelSwitcherOpen && /*#__PURE__*/React.createElement("div", {
+    className: "absolute top-full left-0 mt-1 w-52 bg-slate-900 border border-slate-700 rounded-xl p-1.5 shadow-2xl z-50 max-h-64 overflow-y-auto space-y-0.5"
+  }, channelDropdownList.map(c => /*#__PURE__*/React.createElement("button", {
     key: c.id,
-    value: c.id
-  }, "# ", c.name, c.archived ? " (Archived)" : ""))), /*#__PURE__*/React.createElement(Icons.ChevronDown, {
-    className: "w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none"
-  })), activeChannel && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => {
+      setActiveChannelId(c.id);
+      setIsChannelSwitcherOpen(false);
+    },
+    className: `w-full text-left px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition ${c.id === activeChannel?.id ? 'bg-cyan-950/60 text-cyan-300' : 'text-slate-200 hover:bg-slate-800'}`
+  }, unreadChannelIds.has(c.id) && /*#__PURE__*/React.createElement("span", {
+    className: "w-1.5 h-1.5 bg-rose-500 rounded-full flex-shrink-0",
+    title: "Unread messages"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "truncate"
+  }, "# ", c.name, c.archived ? " (Archived)" : ""))))), activeChannel && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setNotesChannel(activeChannel),
     className: "relative p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-750 text-amber-400 border border-slate-700 text-xs flex-shrink-0",
@@ -7546,7 +7564,8 @@ function App() {
       setIsChannelArchiveOpen(false);
     },
     scratchpadNotes: scratchpadNotes,
-    onOpenNotes: ch => setNotesChannel(ch)
+    onOpenNotes: ch => setNotesChannel(ch),
+    unreadChannelIds: unreadChannelIds
   }), notesChannel && /*#__PURE__*/React.createElement(ChannelScratchpadModal, {
     channel: notesChannel,
     notes: scratchpadNotes,
