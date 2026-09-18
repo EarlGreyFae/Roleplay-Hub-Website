@@ -34,10 +34,19 @@ const defaultDb = {
   messages: [],
   dmMessages: [],
   wikiEntries: [],
-  invites: []
+  invites: [],
+  pushSubscriptions: [],
+  vapidKeys: null
 };
 
 let db = { ...defaultDb };
+
+let webpush = null;
+try {
+  webpush = require('web-push');
+} catch (e) {
+  console.warn('[Push] web-push module not installed; push notifications disabled.');
+}
 
 let pgPool = null;
 if (process.env.DATABASE_URL) {
@@ -65,7 +74,9 @@ function loadDatabaseFromFile() {
         messages: parsed.messages || [],
         dmMessages: parsed.dmMessages || [],
         wikiEntries: parsed.wikiEntries || [],
-        invites: parsed.invites || []
+        invites: parsed.invites || [],
+        pushSubscriptions: parsed.pushSubscriptions || [],
+        vapidKeys: parsed.vapidKeys || null
       };
       if (!db.users['@earlgreyfae']) {
         db.users['@earlgreyfae'] = defaultDb.users['@earlgreyfae'];
@@ -126,7 +137,9 @@ async function initializeDatabase() {
           messages: pgData.messages || [],
           dmMessages: pgData.dmMessages || [],
           wikiEntries: pgData.wikiEntries || [],
-          invites: pgData.invites || []
+          invites: pgData.invites || [],
+          pushSubscriptions: pgData.pushSubscriptions || [],
+          vapidKeys: pgData.vapidKeys || null
         };
         console.log('[DB] Restored database state from PostgreSQL (source of truth)');
         saveDatabaseSync();
@@ -857,6 +870,12 @@ const server = http.createServer(async (req, res) => {
 
       saveDatabase();
       broadcast({ type: 'NEW_INVITE', invite, dm });
+      sendPushToHandles([normTo], {
+        title: 'World Invitation',
+        body: `${fromHandle} invited you to join "${w.name}"`,
+        tag: 'invite',
+        url: '/'
+      }).catch(() => {});
       return sendJson(res, 201, { success: true, invite, dm });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
@@ -1010,6 +1029,21 @@ const server = http.createServer(async (req, res) => {
 
       saveDatabase();
       broadcast({ type: 'NEW_MESSAGE', message: msg });
+
+      const msgWorld = db.worlds[msg.worldId];
+      if (msgWorld) {
+        const senderKey = (msg.speakerHandle || msg.narratorHandle || '').toLowerCase();
+        const otherHandles = (msgWorld.members || [])
+          .map(m => m.handle)
+          .filter(h => (h || '').toLowerCase() !== senderKey);
+        sendPushToHandles(otherHandles, {
+          title: `${msg.speakerName} in ${msgWorld.name}`,
+          body: msg.content || (msg.imageUrl ? 'Sent an image' : 'Sent a message'),
+          tag: `chat-${msg.channelId}`,
+          url: '/'
+        }).catch(() => {});
+      }
+
       return sendJson(res, 201, { message: msg });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
@@ -1042,6 +1076,12 @@ const server = http.createServer(async (req, res) => {
       db.dmMessages.push(dm);
       saveDatabase();
       broadcast({ type: 'NEW_DM', message: dm });
+      sendPushToHandles([dm.recipientHandle], {
+        title: `New message from ${dm.senderName}`,
+        body: dm.content || (dm.imageUrl ? 'Sent an image' : 'Sent a message'),
+        tag: 'dm',
+        url: '/'
+      }).catch(() => {});
       return sendJson(res, 201, { message: dm });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
@@ -1182,6 +1222,41 @@ const server = http.createServer(async (req, res) => {
       saveDatabase();
       broadcast({ type: 'WIKI_DELETED', entryId, worldId: entry.worldId });
       return sendJson(res, 200, { success: true, entryId });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // 9b. Push Notifications
+  if (reqPath === '/api/push/vapid-public-key' && req.method === 'GET') {
+    return sendJson(res, 200, { publicKey: (db.vapidKeys && db.vapidKeys.publicKey) || null });
+  }
+
+  if (reqPath === '/api/push/subscribe' && req.method === 'POST') {
+    try {
+      const { handle, subscription } = await parseJsonBody(req);
+      if (!handle || !subscription || !subscription.endpoint) {
+        return sendJson(res, 400, { error: 'Missing handle or subscription' });
+      }
+      db.pushSubscriptions = db.pushSubscriptions.filter(s => s.subscription.endpoint !== subscription.endpoint);
+      db.pushSubscriptions.push({
+        handle,
+        subscription,
+        createdAt: new Date().toISOString()
+      });
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/push/unsubscribe' && req.method === 'POST') {
+    try {
+      const { endpoint } = await parseJsonBody(req);
+      db.pushSubscriptions = db.pushSubscriptions.filter(s => s.subscription.endpoint !== endpoint);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -1547,6 +1622,42 @@ function pruneRelatedImagesChannels() {
   saveDatabaseSync();
 }
 
+// Push notifications need a stable VAPID keypair. Generate one on first boot
+// and persist it in the (now-durable) db so every device that subscribes
+// keeps working across restarts instead of silently breaking.
+function ensureVapidKeys() {
+  if (!webpush) return;
+  if (!db.vapidKeys || !db.vapidKeys.publicKey || !db.vapidKeys.privateKey) {
+    db.vapidKeys = webpush.generateVAPIDKeys();
+    saveDatabaseSync();
+    console.log('[Push] Generated new VAPID keypair');
+  }
+  webpush.setVapidDetails('mailto:admin@roleplay-hub.local', db.vapidKeys.publicKey, db.vapidKeys.privateKey);
+}
+
+async function sendPushToHandles(handles, payload) {
+  if (!webpush || !db.vapidKeys) return;
+  const targets = new Set((handles || []).map(h => (h || '').trim().toLowerCase()).filter(Boolean));
+  if (targets.size === 0) return;
+  const subs = db.pushSubscriptions.filter(s => targets.has((s.handle || '').toLowerCase()));
+  if (subs.length === 0) return;
+
+  let removedAny = false;
+  await Promise.all(subs.map(async s => {
+    try {
+      await webpush.sendNotification(s.subscription, JSON.stringify(payload));
+    } catch (err) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        db.pushSubscriptions = db.pushSubscriptions.filter(x => x.subscription.endpoint !== s.subscription.endpoint);
+        removedAny = true;
+      } else {
+        console.error('[Push] Send error:', err.message);
+      }
+    }
+  }));
+  if (removedAny) saveDatabase();
+}
+
 function startServer() {
   server.listen(PORT, () => {
     console.log('=======================================================');
@@ -1559,6 +1670,7 @@ function startServer() {
 initializeDatabase()
   .then(() => {
     pruneRelatedImagesChannels();
+    ensureVapidKeys();
     startServer();
   })
   .catch(err => {

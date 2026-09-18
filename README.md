@@ -10,6 +10,9 @@ You and other players can add the website directly to your phone's home screen f
 - **iPhone (Chrome / Safari)**: Tap the **Share** icon -> select **"Add to Home Screen"** -> tap **"Add"**.
 - **Android (Chrome)**: Tap the **three dots (⋮)** menu in the top right -> tap **"Install App"** or **"Add to Home screen"**.
 
+### 🔔 Push Notifications
+From **Settings -> Push Notifications**, tap **"Enable on This Device"** to get native OS notifications for new DMs, world invites, and chat messages even when the app is closed. No setup required on your end — the server generates and stores its own notification keys automatically the first time it starts. On iPhone, install the PWA to your Home Screen first (see above), then enable notifications from inside the installed app (Safari's browser tab can't receive push on iOS).
+
 ---
 
 ## 🌟 Key Features & Capabilities
