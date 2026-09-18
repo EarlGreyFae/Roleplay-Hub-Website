@@ -1931,6 +1931,59 @@ function SlideUpQuickSheet({
   }), /*#__PURE__*/React.createElement("span", null, "Open Full Character Bio")))));
 }
 
+// --- Private Scratch Pad: per-account notes on a wiki/character entry, visible only to the author ---
+function ScratchpadNotes({ entryId, notes, onSave }) {
+  const existing = (notes && notes[entryId]) || '';
+  const [isOpen, setIsOpen] = useState(false);
+  const [text, setText] = useState(existing);
+  const [saveStatus, setSaveStatus] = useState('');
+
+  useEffect(() => {
+    setText(existing);
+  }, [entryId]);
+
+  const handleSave = () => {
+    onSave(entryId, text);
+    setSaveStatus('✓ Saved');
+    setTimeout(() => setSaveStatus(''), 2000);
+  };
+
+  return React.createElement("div", {
+    className: "border-t border-slate-800 pt-3 mt-1"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => setIsOpen(!isOpen),
+    className: "w-full flex items-center justify-between text-xs font-bold text-slate-300 hover:text-amber-300 transition"
+  }, React.createElement("span", {
+    className: "flex items-center space-x-1.5"
+  }, React.createElement(Icons.Edit3, {
+    className: "w-3.5 h-3.5 text-amber-400"
+  }), React.createElement("span", null, "My Private Notes"), existing && React.createElement("span", {
+    className: "w-1.5 h-1.5 rounded-full bg-amber-400",
+    title: "You have notes on this"
+  })), React.createElement(Icons.ChevronDown, {
+    className: `w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`
+  })), isOpen && React.createElement("div", {
+    className: "mt-2 space-y-1.5"
+  }, React.createElement("p", {
+    className: "text-[10px] text-slate-500"
+  }, "Only visible to you — not shared with other players."), React.createElement("textarea", {
+    rows: 3,
+    value: text,
+    onChange: e => setText(e.target.value),
+    placeholder: "Jot down anything you want to remember about this...",
+    className: "w-full bg-slate-850 border border-amber-500/30 rounded-xl p-2.5 text-xs text-slate-100 leading-relaxed focus:outline-none focus:border-amber-400"
+  }), React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: handleSave,
+    className: "px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition"
+  }, "Save Notes"), saveStatus && React.createElement("span", {
+    className: "text-[11px] text-emerald-400 font-medium"
+  }, saveStatus))));
+}
+
 // --- Sub-View: Character / NPC Bio Modal (Strict Account Ownership) ---
 
 function WikiEditorModal({
@@ -1939,7 +1992,9 @@ function WikiEditorModal({
   userProfile,
   userId,
   onClose,
-  onSave
+  onSave,
+  scratchpadNotes,
+  onSaveScratchpadNote
 }) {
   const isChar = entry?.category === 'character' || entry?.category === 'npc';
   const isNpc = entry?.category === 'npc';
@@ -2228,7 +2283,11 @@ function WikiEditorModal({
     className: "text-[10px] font-bold uppercase tracking-wider text-slate-400"
   }, "Notes & Hooks"), /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-850 p-2.5 rounded-xl border border-slate-800 text-slate-200 leading-relaxed whitespace-pre-wrap"
-  }, form.characterDetails.notes))))), /*#__PURE__*/React.createElement("div", {
+  }, form.characterDetails.notes)))), /*#__PURE__*/React.createElement(ScratchpadNotes, {
+    entryId: entry.id,
+    notes: scratchpadNotes,
+    onSave: onSaveScratchpadNote
+  })), /*#__PURE__*/React.createElement("div", {
     className: "p-3 border-t border-slate-800 bg-slate-850 flex justify-end space-x-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: onClose,
@@ -2384,7 +2443,9 @@ function WikiArticleModal({
   isOpen,
   onClose,
   onSave,
-  onNavigateToEntry
+  onNavigateToEntry,
+  scratchpadNotes,
+  onSaveScratchpadNote
 }) {
   const [form, setForm] = useState(() => {
     if (!entry) return null;
@@ -2925,7 +2986,11 @@ function WikiArticleModal({
     className: "font-semibold text-slate-400"
   }, k), React.createElement("span", {
     className: "text-slate-200 text-right"
-  }, v))))))), React.createElement("div", {
+  }, v))))))), React.createElement(ScratchpadNotes, {
+    entryId: entry.id,
+    notes: scratchpadNotes,
+    onSave: onSaveScratchpadNote
+  }), React.createElement("div", {
     className: "p-3 border-t border-slate-800 bg-slate-850 flex justify-end space-x-2"
   }, React.createElement("button", {
     onClick: onClose,
@@ -6446,6 +6511,8 @@ function App() {
   const [directory, setDirectory] = useState([]);
   const [theme, setTheme] = useState('dark');
   const [unreadChannelIds, setUnreadChannelIds] = useState(() => new Set());
+  // Private per-account scratch pad notes on wiki/character entries: { [entryId]: content }
+  const [scratchpadNotes, setScratchpadNotes] = useState({});
 
   // Active persona
   const [activePersona, setActivePersona] = useState(() => {
@@ -6569,6 +6636,7 @@ function App() {
         setDmMessages(data.dmMessages || []);
         setWikiEntries(data.wikiEntries || []);
         setInvites(data.invites || []);
+        setScratchpadNotes((data.scratchpadNotes || []).reduce((acc, n) => { acc[n.entryId] = n.content; return acc; }, {}));
         if (data.directory) setDirectory(data.directory);
       }
     } catch (e) {
@@ -7213,6 +7281,27 @@ function App() {
     }
   };
 
+  // Private per-account scratch pad notes - always your own, so applying
+  // locally right away is safe (no permission check can reject your own note).
+  const handleSaveScratchpadNote = async (entryId, content) => {
+    setScratchpadNotes(prev => {
+      const next = { ...prev };
+      if ((content || '').trim()) {
+        next[entryId] = content;
+      } else {
+        delete next[entryId];
+      }
+      return next;
+    });
+    try {
+      await fetch('/api/scratchpad', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle: userProfile.handle, entryId, content })
+      });
+    } catch (e) {}
+  };
+
   // Dynamic Unread DMs Calculation
   const unreadDmCount = useMemo(() => {
     if (!myHandle) return 0;
@@ -7637,7 +7726,9 @@ function App() {
       handleUpdateWiki(updated);
       setIsModalOpen(false);
       setActiveModalEntry(null);
-    }
+    },
+    scratchpadNotes: scratchpadNotes,
+    onSaveScratchpadNote: handleSaveScratchpadNote
   }), isArticleModalOpen && activeArticleEntry && /*#__PURE__*/React.createElement(WikiArticleModal, {
     entry: activeArticleEntry,
     worlds: worlds,
@@ -7664,7 +7755,9 @@ function App() {
           setActiveArticleEntry(found);
         }
       }
-    }
+    },
+    scratchpadNotes: scratchpadNotes,
+    onSaveScratchpadNote: handleSaveScratchpadNote
   }), activeSheetEntry && /*#__PURE__*/React.createElement(SlideUpQuickSheet, {
     entry: activeSheetEntry,
     worlds: worlds,

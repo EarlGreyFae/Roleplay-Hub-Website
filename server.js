@@ -36,7 +36,8 @@ const defaultDb = {
   wikiEntries: [],
   invites: [],
   pushSubscriptions: [],
-  vapidKeys: null
+  vapidKeys: null,
+  scratchpadNotes: []
 };
 
 let db = { ...defaultDb };
@@ -76,7 +77,8 @@ function loadDatabaseFromFile() {
         wikiEntries: parsed.wikiEntries || [],
         invites: parsed.invites || [],
         pushSubscriptions: parsed.pushSubscriptions || [],
-        vapidKeys: parsed.vapidKeys || null
+        vapidKeys: parsed.vapidKeys || null,
+        scratchpadNotes: parsed.scratchpadNotes || []
       };
       if (!db.users['@earlgreyfae']) {
         db.users['@earlgreyfae'] = defaultDb.users['@earlgreyfae'];
@@ -139,7 +141,8 @@ async function initializeDatabase() {
           wikiEntries: pgData.wikiEntries || [],
           invites: pgData.invites || [],
           pushSubscriptions: pgData.pushSubscriptions || [],
-          vapidKeys: pgData.vapidKeys || null
+          vapidKeys: pgData.vapidKeys || null,
+          scratchpadNotes: pgData.scratchpadNotes || []
         };
         console.log('[DB] Restored database state from PostgreSQL (source of truth)');
         saveDatabaseSync();
@@ -614,6 +617,8 @@ const server = http.createServer(async (req, res) => {
     });
     const userDMs = db.dmMessages.filter(d => (d.senderHandle || '').toLowerCase() === normKey || (d.recipientHandle || '').toLowerCase() === normKey);
     const userInvites = db.invites.filter(inv => (inv.toHandle || '').toLowerCase() === normKey && inv.status === 'pending');
+    // Private, per-account scratch pad notes - never returned for any handle but the caller's own.
+    const userScratchpadNotes = db.scratchpadNotes.filter(n => (n.handle || '').toLowerCase() === normKey);
 
     const directory = Object.values(db.users).map(u => ({
       handle: u.handle,
@@ -638,6 +643,7 @@ const server = http.createServer(async (req, res) => {
       wikiEntries: userWiki,
       dmMessages: userDMs,
       invites: userInvites,
+      scratchpadNotes: userScratchpadNotes,
       directory
     });
   }
@@ -1258,6 +1264,40 @@ const server = http.createServer(async (req, res) => {
       const { endpoint } = await parseJsonBody(req);
       db.pushSubscriptions = db.pushSubscriptions.filter(s => s.subscription.endpoint !== endpoint);
       saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // 9c. Scratch Pad Notes (private, per-account - never shared or broadcast)
+  if (reqPath === '/api/scratchpad' && req.method === 'POST') {
+    try {
+      const { handle, entryId, content } = await parseJsonBody(req);
+      if (!handle || !entryId) {
+        return sendJson(res, 400, { error: 'Missing handle or entryId' });
+      }
+      const key = handle.toLowerCase();
+      const existingIndex = db.scratchpadNotes.findIndex(n => (n.handle || '').toLowerCase() === key && n.entryId === entryId);
+      const trimmed = (content || '').trim();
+
+      if (!trimmed) {
+        if (existingIndex >= 0) db.scratchpadNotes.splice(existingIndex, 1);
+      } else if (existingIndex >= 0) {
+        db.scratchpadNotes[existingIndex].content = content;
+        db.scratchpadNotes[existingIndex].updatedAt = new Date().toISOString();
+      } else {
+        db.scratchpadNotes.push({
+          id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          handle,
+          entryId,
+          content,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      saveDatabase();
+      // Intentionally no broadcast: scratch pad notes are private to the author.
       return sendJson(res, 200, { success: true });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
