@@ -883,8 +883,8 @@ function canEditWikiArticle(world, userProfile, userId) {
 }
 
 function canEditCharacter(entry, userProfile, userId) {
+  // No exceptions, not even Superadmin: only the character's own creator can edit it.
   if (!entry || !userProfile) return false;
-  if (isSuperAdmin(userProfile)) return true;
   const myHandle = (userProfile.handle || '').toLowerCase();
   if (entry.authorHandle && entry.authorHandle.toLowerCase() === myHandle) return true;
   if (entry.authorUserId && entry.authorUserId === userId) return true;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vora-rphub-v3';
+const CACHE_NAME = 'vora-rphub-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -76,6 +76,27 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
+  // The app shell (navigations, and index.html itself) is under active
+  // development and must never be served stale: always try the network
+  // first, and only fall back to whatever was last cached if truly offline.
+  const isAppShell = event.request.mode === 'navigate' ||
+    event.request.url.endsWith('/index.html') ||
+    event.request.url.endsWith('/');
+
+  if (isAppShell) {
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+        }
+        return networkResponse;
+      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Static assets (icons, manifest) rarely change: cache-first is fine here.
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {

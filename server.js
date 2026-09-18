@@ -1154,8 +1154,9 @@ const server = http.createServer(async (req, res) => {
 
       if (existing) {
         if (isChar) {
+          // No exceptions, not even Superadmin: only the character's own creator can edit it.
           const isAuthor = (existing.authorHandle || '').toLowerCase() === callerHandle.toLowerCase();
-          if (!isAuthor && !isAdmin) {
+          if (!isAuthor) {
             return sendJson(res, 403, { error: "Only the character's creator can edit it." });
           }
         } else if (worldRole !== 'creator' && worldRole !== 'editor' && !isAdmin) {
@@ -1165,7 +1166,7 @@ const server = http.createServer(async (req, res) => {
         if (!isWorldMember(world, callerHandle) && !isAdmin) {
           return sendJson(res, 403, { error: 'You must be a member of this world to create a character here.' });
         }
-        if ((entry.authorHandle || '').toLowerCase() !== callerHandle.toLowerCase() && !isAdmin) {
+        if ((entry.authorHandle || '').toLowerCase() !== callerHandle.toLowerCase()) {
           return sendJson(res, 403, { error: 'Cannot create a character on behalf of another user.' });
         }
       } else if (worldRole !== 'creator' && worldRole !== 'editor' && !isAdmin) {
@@ -1206,8 +1207,9 @@ const server = http.createServer(async (req, res) => {
       const isChar = entry.category === 'character' || entry.category === 'npc';
       const isAdmin = isSuperAdminHandle(callerHandle);
       if (isChar) {
+        // No exceptions, not even Superadmin: only the character's own creator can delete it.
         const isAuthor = (entry.authorHandle || '').toLowerCase() === callerHandle.toLowerCase();
-        if (!isAuthor && !isAdmin) {
+        if (!isAuthor) {
           return sendJson(res, 403, { error: "Only the character's creator can delete it." });
         }
       } else {
