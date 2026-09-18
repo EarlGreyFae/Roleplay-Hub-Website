@@ -137,6 +137,76 @@ const server = http.createServer(async (req, res) => {
   const [reqPath, queryString] = (req.url || '/').split('?');
   const query = new URLSearchParams(queryString || '');
 
+  // Backup & Restore Database
+  if (reqPath === '/api/sync/backup' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      worlds: db.worlds,
+      channels: db.channels,
+      messages: db.messages,
+      dmMessages: db.dmMessages,
+      wikiEntries: db.wikiEntries,
+      invites: db.invites,
+      exportedAt: new Date().toISOString()
+    });
+  }
+
+  if (reqPath === '/api/sync/restore' && req.method === 'POST') {
+    try {
+      const payload = await parseJsonBody(req);
+      const snapshot = payload.snapshot || payload;
+
+      let restoredCount = 0;
+      if (snapshot.worlds && typeof snapshot.worlds === 'object') {
+        db.worlds = { ...db.worlds, ...snapshot.worlds };
+        restoredCount += Object.keys(snapshot.worlds).length;
+      }
+      if (snapshot.channels && typeof snapshot.channels === 'object') {
+        db.channels = { ...db.channels, ...snapshot.channels };
+      }
+      if (Array.isArray(snapshot.messages)) {
+        const existingIds = new Set(db.messages.map(m => m.id));
+        snapshot.messages.forEach(m => {
+          if (!existingIds.has(m.id)) {
+            db.messages.push(m);
+            existingIds.add(m.id);
+          }
+        });
+      }
+      if (Array.isArray(snapshot.dmMessages)) {
+        const existingDmIds = new Set(db.dmMessages.map(d => d.id));
+        snapshot.dmMessages.forEach(d => {
+          if (!existingDmIds.has(d.id)) {
+            db.dmMessages.push(d);
+            existingDmIds.add(d.id);
+          }
+        });
+      }
+      if (Array.isArray(snapshot.wikiEntries)) {
+        const existingWikiIds = new Set(db.wikiEntries.map(w => w.id));
+        snapshot.wikiEntries.forEach(w => {
+          if (!existingWikiIds.has(w.id)) {
+            db.wikiEntries.push(w);
+            existingWikiIds.add(w.id);
+          }
+        });
+      }
+      if (Array.isArray(snapshot.invites)) {
+        const existingInvIds = new Set(db.invites.map(i => i.id));
+        snapshot.invites.forEach(i => {
+          if (!existingInvIds.has(i.id)) {
+            db.invites.push(i);
+            existingInvIds.add(i.id);
+          }
+        });
+      }
+
+      saveDatabaseSync();
+      return sendJson(res, 200, { success: true, message: 'Database restored successfully', restoredCount });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // 1. Health check
   if (reqPath === '/healthz' || reqPath === '/api/health') {
     return sendJson(res, 200, {

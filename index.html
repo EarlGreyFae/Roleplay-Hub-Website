@@ -3635,6 +3635,7 @@ function ChatScreen({
   const [tempSpawnRole, setTempSpawnRole] = useState('');
   const scrollRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const accentColor = activeWorld?.themeAccent || '#38bdf8';
 
   const handleImageSelect = e => {
     const file = e.target.files?.[0];
@@ -3698,13 +3699,15 @@ function ChatScreen({
   }, /*#__PURE__*/React.createElement("div", {
     className: "py-2.5 text-center border-b border-slate-800/80 mb-2"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "inline-flex items-center space-x-1 text-[10px] font-bold text-cyan-400 bg-cyan-950/70 border border-cyan-800 px-2.5 py-0.5 rounded-full mb-1"
+    style: { borderColor: `${accentColor}80`, color: accentColor, backgroundColor: `${accentColor}18` },
+    className: "inline-flex items-center space-x-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-1 border"
   }, /*#__PURE__*/React.createElement(Icons.Globe, {
     className: "w-3 h-3"
   }), /*#__PURE__*/React.createElement("span", null, activeWorld?.name || 'Roleplay World')), /*#__PURE__*/React.createElement("h2", {
     className: "text-sm font-bold text-slate-100 flex items-center justify-center space-x-1.5"
   }, /*#__PURE__*/React.createElement(Icons.Hash, {
-    className: "w-4 h-4 text-cyan-400"
+    style: { color: accentColor },
+    className: "w-4 h-4"
   }), /*#__PURE__*/React.createElement("span", null, activeChannel?.name || 'main-roleplay')), activeChannel?.description && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 max-w-md mx-auto mt-0.5 line-clamp-1"
   }, activeChannel.description)), channelMessages.length === 0 ? /*#__PURE__*/React.createElement("div", {
@@ -3775,7 +3778,8 @@ function ChatScreen({
   }, /*#__PURE__*/React.createElement("img", {
     src: activePersona?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(activePersona?.name || 'Persona')}`,
     alt: activePersona?.name,
-    className: "w-8 h-8 rounded-lg object-cover border border-cyan-500/40 flex-shrink-0"
+    style: { borderColor: `${accentColor}80` },
+    className: "w-8 h-8 rounded-lg object-cover border flex-shrink-0"
   }), /*#__PURE__*/React.createElement("div", {
     className: "min-w-0"
   }, /*#__PURE__*/React.createElement("div", {
@@ -3972,7 +3976,8 @@ function ChatScreen({
     type: "button",
     onClick: handleSend,
     disabled: !inputText.trim() && !attachedImage,
-    className: `p-2.5 rounded-xl ${inputText.trim() || attachedImage ? 'bg-cyan-600 hover:bg-cyan-500 text-white font-bold shadow-lg' : 'bg-slate-800 text-slate-600'} transition flex-shrink-0`,
+    style: (inputText.trim() || attachedImage) ? { backgroundColor: accentColor, color: '#020617' } : {},
+    className: `p-2.5 rounded-xl ${(inputText.trim() || attachedImage) ? 'font-bold shadow-lg hover:opacity-90' : 'bg-slate-800 text-slate-600'} transition flex-shrink-0`,
     title: "Send Message"
   }, /*#__PURE__*/React.createElement(Icons.Send, {
     className: "w-4 h-4"
@@ -5316,6 +5321,83 @@ function SettingsScreen({
       )
     ),
 
+    // Section 4.5: Database Backup & Cloud Persistence
+    React.createElement("div", {
+      className: "bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3.5 shadow-md"
+    },
+      React.createElement("div", { className: "flex items-center space-x-2.5" },
+        React.createElement(Icons.Globe, { className: "w-5 h-5 text-cyan-400" }),
+        React.createElement("div", null,
+          React.createElement("h3", { className: "font-bold text-sm text-slate-100" }, "Data Backup & Cloud Persistence"),
+          React.createElement("p", { className: "text-xs text-slate-400 mt-0.5 leading-relaxed" },
+            "Your worlds, chat logs, lore, and DMs are mirrored automatically in your browser's persistent storage so website updates never erase your data. You can also export and import manual backups anytime."
+          )
+        )
+      ),
+      React.createElement("div", { className: "flex flex-wrap gap-2.5 pt-1" },
+        React.createElement("button", {
+          type: "button",
+          onClick: async () => {
+            try {
+              const res = await fetch('/api/sync/backup');
+              const data = await res.json();
+              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `roleplay-hub-backup-${new Date().toISOString().split('T')[0]}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+              SoundFX.play('chime');
+            } catch (e) {
+              alert('Error exporting backup');
+            }
+          },
+          className: "px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 font-bold text-xs border border-slate-700 flex items-center space-x-1.5 transition shadow-sm"
+        },
+          React.createElement(Icons.Download, { className: "w-3.5 h-3.5" }),
+          React.createElement("span", null, "Download Backup (.json)")
+        ),
+        React.createElement("label", {
+          className: "px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center space-x-1.5 transition shadow-sm cursor-pointer"
+        },
+          React.createElement(Icons.Upload, { className: "w-3.5 h-3.5" }),
+          React.createElement("span", null, "Restore from Backup (.json)"),
+          React.createElement("input", {
+            type: "file",
+            accept: ".json",
+            className: "hidden",
+            onChange: async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = async (evt) => {
+                try {
+                  const json = JSON.parse(evt.target.result);
+                  const res = await fetch('/api/sync/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ snapshot: json })
+                  });
+                  const rData = await res.json();
+                  if (res.ok) {
+                    alert('✓ Database restored successfully! Reloading...');
+                    window.location.reload();
+                  } else {
+                    alert('Restore failed: ' + (rData.error || 'Unknown error'));
+                  }
+                } catch (err) {
+                  alert('Invalid backup JSON file.');
+                }
+              };
+              reader.readAsText(file);
+              e.target.value = '';
+            }
+          })
+        )
+      )
+    ),
+
     // Section 5: Danger Zone
     /*#__PURE__*/React.createElement("div", {
       className: "bg-rose-950/30 border-2 border-rose-600/50 rounded-3xl p-5 space-y-4 shadow-xl text-rose-200"
@@ -5512,6 +5594,7 @@ function WorldSwitcherModal({
   };
 
   return React.createElement("div", {
+    style: activeCategory === cat.id ? { backgroundColor: accentColor, color: '#020617' } : {},
     className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
   }, React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full max-w-lg rounded-3xl p-4 sm:p-5 space-y-4 max-h-[92dvh] flex flex-col overflow-hidden shadow-2xl my-auto"
@@ -5806,6 +5889,7 @@ function WikiScreen({
 }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const accentColor = activeWorld?.themeAccent || '#38bdf8';
 
   const currentRole = getUserWorldRole(activeWorld, userProfile, userId);
   const canCreate = currentRole === 'creator' || currentRole === 'editor' || isSuperAdmin(userProfile);
@@ -5846,13 +5930,15 @@ function WikiScreen({
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2 min-w-0"
   }, /*#__PURE__*/React.createElement(Icons.Book, {
-    className: "w-5 h-5 text-cyan-400 flex-shrink-0"
+    style: { color: accentColor },
+    className: "w-5 h-5 flex-shrink-0"
   }), /*#__PURE__*/React.createElement("h2", {
     className: "text-sm font-bold text-slate-100 truncate"
   }, activeWorld?.name ? `${activeWorld.name.split(':')[0]} Wiki` : 'World Wiki')), canCreate && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: onOpenNewChoice,
-    className: "px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-sm transition flex-shrink-0"
+    style: { backgroundColor: accentColor, color: '#020617' },
+    className: "px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 shadow-sm transition flex-shrink-0 hover:opacity-90"
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
     className: "w-3.5 h-3.5"
   }), /*#__PURE__*/React.createElement("span", null, "New Entry"))), /*#__PURE__*/React.createElement("div", {
@@ -5911,7 +5997,8 @@ function WikiScreen({
       alt: item.title,
       className: "w-12 h-12 rounded-xl object-cover border border-slate-700 bg-slate-800 flex-shrink-0"
     }) : /*#__PURE__*/React.createElement("div", {
-      className: "w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-cyan-400"
+      style: { color: accentColor },
+      className: "w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0"
     }, item.category === 'location' ? /*#__PURE__*/React.createElement(Icons.MapPin, {
       className: "w-6 h-6"
     }) : item.category === 'faction' ? /*#__PURE__*/React.createElement(Icons.Flag, {
@@ -5933,7 +6020,8 @@ function WikiScreen({
     }, item.summary))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-800/80"
     }, /*#__PURE__*/React.createElement("span", null, item.authorHandle ? `by ${item.authorHandle}` : "World Lore"), /*#__PURE__*/React.createElement("span", {
-      className: canEdit ? "text-cyan-400 font-semibold" : "text-slate-500"
+      style: canEdit ? { color: accentColor } : {},
+      className: canEdit ? "font-semibold" : "text-slate-500"
     }, canEdit ? "Click to Edit" : "Click to View")));
   }))));
 }
@@ -6251,6 +6339,54 @@ function App() {
   const activeWorld = worlds.find(w => w.id === activeWorldId) || worlds[0];
   const worldChannels = channels.filter(c => c.worldId === activeWorld?.id);
   const activeChannel = worldChannels.find(c => c.id === activeChannelId) || worldChannels[0];
+
+  // Dynamic World Theme Accent
+  useEffect(() => {
+    const accent = activeWorld?.themeAccent || '#38bdf8';
+    document.documentElement.style.setProperty('--world-accent', accent);
+  }, [activeWorld?.themeAccent]);
+
+  // Client-side auto-mirror to localStorage to survive server redeployments
+  useEffect(() => {
+    if (worlds.length > 0 || dmMessages.length > 0 || wikiEntries.length > 0) {
+      try {
+        const snapshot = {
+          worlds: worlds.reduce((acc, w) => { acc[w.id] = w; return acc; }, {}),
+          channels: channels.reduce((acc, c) => { acc[c.id] = c; return acc; }, {}),
+          messages: messages.slice(-200),
+          dmMessages: dmMessages.slice(-200),
+          wikiEntries: wikiEntries,
+          invites: invites,
+          savedAt: new Date().toISOString()
+        };
+        localStorage.setItem('roleplay_hub_snapshot_v1', JSON.stringify(snapshot));
+      } catch (e) {}
+    }
+  }, [worlds, channels, messages, dmMessages, wikiEntries, invites]);
+
+  // Automatic restore if server database was reset on deploy
+  const hasAttemptedAutoRestore = useRef(false);
+  useEffect(() => {
+    if (!hasAttemptedAutoRestore.current && myHandle && worlds.length === 0) {
+      try {
+        const raw = localStorage.getItem('roleplay_hub_snapshot_v1');
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (cached && cached.worlds && Object.keys(cached.worlds).length > 0) {
+            hasAttemptedAutoRestore.current = true;
+            fetch('/api/sync/restore', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ snapshot: cached })
+            }).then(() => {
+              fetchBootstrap(userProfile.handle);
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {}
+    }
+  }, [worlds.length, myHandle, userProfile?.handle]);
+
 
   useEffect(() => {
     if (activeWorld && (!activeChannelId || !worldChannels.some(c => c.id === activeChannelId))) {
