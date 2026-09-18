@@ -5594,7 +5594,6 @@ function WorldSwitcherModal({
   };
 
   return React.createElement("div", {
-    style: activeCategory === cat.id ? { backgroundColor: accentColor, color: '#020617' } : {},
     className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
   }, React.createElement("div", {
     className: "bg-slate-900 border border-slate-750 w-full max-w-lg rounded-3xl p-4 sm:p-5 space-y-4 max-h-[92dvh] flex flex-col overflow-hidden shadow-2xl my-auto"
@@ -5959,7 +5958,8 @@ function WikiScreen({
     key: cat.id,
     type: "button",
     onClick: () => setActiveCategory(cat.id),
-    className: `px-3 py-1 rounded-xl whitespace-nowrap font-semibold transition ${activeCategory === cat.id ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`
+    style: activeCategory === cat.id ? { backgroundColor: accentColor, color: '#020617' } : {},
+    className: `px-3 py-1 rounded-xl whitespace-nowrap font-semibold transition ${activeCategory === cat.id ? 'shadow-sm font-bold' : 'text-slate-400 hover:text-slate-200'}`
   }, cat.label)))), /*#__PURE__*/React.createElement("div", {
     className: "flex-1 overflow-y-auto p-3 sm:p-4 touch-scroll"
   }, filtered.length === 0 ? /*#__PURE__*/React.createElement("div", {
