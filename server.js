@@ -462,6 +462,31 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Update World Profile (Name, Tagline, Description, Genre, Theme, Members)
+  if (reqPath.startsWith('/api/worlds/') && !reqPath.includes('/transfer') && !reqPath.includes('/members') && !reqPath.includes('/join') && (req.method === 'PUT' || req.method === 'PATCH' || (req.method === 'POST' && !reqPath.endsWith('/worlds')))) {
+    try {
+      const worldId = reqPath.replace('/api/worlds/', '').split('/')[0];
+      const w = db.worlds[worldId];
+      if (!w) return sendJson(res, 404, { error: 'World not found' });
+
+      const payload = await parseJsonBody(req);
+      if (payload.name) w.name = payload.name.trim();
+      if (payload.tagline !== undefined) w.tagline = payload.tagline.trim();
+      if (payload.description !== undefined) w.description = payload.description.trim();
+      if (payload.genre !== undefined) w.genre = payload.genre.trim();
+      if (payload.themeAccent !== undefined) w.themeAccent = payload.themeAccent;
+      if (payload.coverUrl !== undefined) w.coverUrl = payload.coverUrl;
+      if (Array.isArray(payload.members)) w.members = payload.members;
+      w.updatedAt = new Date().toISOString();
+
+      saveDatabase();
+      broadcast({ type: 'WORLD_UPDATED', world: w });
+      return sendJson(res, 200, { success: true, world: w });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   if (reqPath.startsWith('/api/worlds/') && req.method === 'DELETE') {
     try {
       const worldId = reqPath.replace('/api/worlds/', '').split('/')[0];
