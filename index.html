@@ -4508,8 +4508,11 @@ function DMsScreen({
     return m;
   }, [directory]);
 
-  // Worlds created by the current user
-  const myCreatedWorlds = (worlds || []).filter(w => (w.creatorHandle || '').toLowerCase() === myHandle);
+  // Worlds the current user can invite others to: worlds they created or where they're an Editor
+  const myCreatedWorlds = (worlds || []).filter(w => {
+    const role = getUserWorldRole(w, userProfile, userId);
+    return role === 'creator' || role === 'editor';
+  });
 
   // Group DM messages by conversation handle
   const conversations = useMemo(() => {
