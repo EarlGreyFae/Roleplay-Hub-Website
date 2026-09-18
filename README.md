@@ -4,39 +4,6 @@ A responsive, mobile-first collaborative roleplay platform crafted for seamless 
 
 ---
 
-## 🚀 How to Deploy to Render (Free 24/7 Hosting)
-
-Render provides free hosting with full WebSocket support and persistent file storage, allowing players across different devices (iPhone, Android, PC, Mac) to roleplay and chat in real time across any distance.
-
-### Step 1: Upload to GitHub
-1. Create a new repository on [GitHub](https://github.com/new) (e.g., `roleplay-hub-website`).
-2. Extract the provided `Roleplay-Hub-Website-Deployable.zip` archive.
-3. Push or drag-and-drop the files into your GitHub repository:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit - Roleplay Hub complete website"
-   git branch -M main
-   git remote add origin https://github.com/<your-github-username>/roleplay-hub-website.git
-   git push -u origin main
-   ```
-
-### Step 2: Deploy on Render.com
-1. Log in to [Render.com](https://render.com) using your connected GitHub account.
-2. Click **"New +"** in the top right and select **"Web Service"**.
-3. Choose your `roleplay-hub-website` GitHub repository.
-4. Render will automatically read `render.yaml` or you can confirm the settings:
-   - **Name**: `roleplay-hub`
-   - **Environment**: `Node`
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-   - **Instance Type**: `Free`
-5. Click **"Create Web Service"**.
-6. Within 60 seconds, Render will build and launch your live site with a permanent URL (e.g., `https://roleplay-hub-xxxx.onrender.com`).
-7. Share the link with your roleplay partner or group so they can create an account and start roleplaying!
-
----
-
 ## 📱 Mobile App (PWA) Installation
 
 You and other players can add the website directly to your phone's home screen for a full-screen, native app experience without browser URL bars:
@@ -104,7 +71,7 @@ You and other players can add the website directly to your phone's home screen f
 
 ## 🛠️ Superadmin Dev Testing Suite
 When logged in as the site administrator, tap the **"Dev Tools"** button in the top header to:
-- **Simulate Incoming Husband DM**: Simulates `@HusbandRP` sending a message to test delivered/read status and sound alerts.
+- **Simulate Incoming DM**: Simulates sending a message to test delivered/read status and sound alerts.
 - **Simulate World Chat Dialogue**: Simulates in-character dialogue in the active channel.
 - **Test 0-Worlds State**: Reset worlds to 0 to verify the onboarding empty state.
 - **Seed Demo World**: One-click restore for the pre-built *Aethelgard: Astral Frontier* fantasy realm.
