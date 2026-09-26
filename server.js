@@ -618,6 +618,8 @@ const server = http.createServer(async (req, res) => {
 
       db.dmMessages = db.dmMessages.filter(d => (d.senderHandle || '').toLowerCase() !== normKey && (d.recipientHandle || '').toLowerCase() !== normKey);
       db.invites = db.invites.filter(inv => (inv.fromHandle || '').toLowerCase() !== normKey && (inv.toHandle || '').toLowerCase() !== normKey);
+      db.pushSubscriptions = db.pushSubscriptions.filter(s => (s.handle || '').toLowerCase() !== normKey);
+      db.scratchpadNotes = db.scratchpadNotes.filter(n => (n.handle || '').toLowerCase() !== normKey);
 
       delete db.users[normKey];
       saveDatabase();
@@ -839,33 +841,6 @@ const server = http.createServer(async (req, res) => {
       saveDatabase();
       broadcast({ type: 'WORLD_OWNERSHIP_TRANSFERRED', worldId, newCreatorHandle });
       return sendJson(res, 200, { success: true, world: w });
-    } catch (e) {
-      return sendJson(res, 500, { error: e.message });
-    }
-  }
-
-  if (reqPath.includes('/members') && req.method === 'POST') {
-    try {
-      const worldId = reqPath.split('/api/worlds/')[1].split('/members')[0];
-      const { handle, role, callerHandle } = await parseJsonBody(req);
-      const w = db.worlds[worldId];
-      if (!w) return sendJson(res, 404, { error: 'World not found' });
-      const callerRole = getRoleForWorld(w, callerHandle);
-      if (callerRole !== 'creator' && !isSuperAdminHandle(callerHandle)) {
-        return sendJson(res, 403, { error: 'Only the World Creator can manage member roles.' });
-      }
-      if (!Array.isArray(w.members)) w.members = [];
-
-      const existing = w.members.find(m => (m.handle || '').toLowerCase() === handle.toLowerCase());
-      if (existing) {
-        existing.role = role;
-      } else {
-        w.members.push({ handle, role: role || 'viewer', joinedAt: new Date().toISOString() });
-      }
-
-      saveDatabase();
-      broadcast({ type: 'WORLD_MEMBERS_UPDATED', worldId, members: w.members });
-      return sendJson(res, 200, { success: true, members: w.members });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

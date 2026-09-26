@@ -7023,8 +7023,35 @@ function App() {
               if ((data.invite.toHandle || '').toLowerCase() === myHandle) {
                 SoundFX.play('join');
               }
-            } else if (data.type === 'WORLD_MEMBERS_UPDATED') {
-              setWorlds(prev => prev.map(w => w.id === data.worldId ? { ...w, members: data.members } : w));
+            } else if (data.type === 'INVITE_RESPONDED') {
+              // Bootstrap only ever returns pending invites, so a responded one is
+              // simply dropped rather than updated in place - keeps this array's
+              // contents consistent with what a fresh bootstrap would return.
+              setInvites(prev => prev.filter(i => i.id !== data.inviteId));
+            } else if (data.type === 'USER_REGISTERED') {
+              if (data.user) {
+                setDirectory(prev => {
+                  if (prev.some(u => (u.handle || '').toLowerCase() === (data.user.handle || '').toLowerCase())) return prev;
+                  return [...prev, data.user];
+                });
+              }
+            } else if (data.type === 'ACCOUNT_DELETED') {
+              // Mirrors the server's own delete-account cascade so every other
+              // connected client's state stays consistent instead of holding
+              // references to worlds, messages, and members that no longer exist
+              // until their next full reload.
+              const deletedHandle = (data.handle || '').toLowerCase();
+              const deletedWorldIds = data.deletedWorldIds || [];
+              setDirectory(prev => prev.filter(u => (u.handle || '').toLowerCase() !== deletedHandle));
+              setWorlds(prev => prev
+                .filter(w => !deletedWorldIds.includes(w.id))
+                .map(w => Array.isArray(w.members) ? { ...w, members: w.members.filter(m => (m.handle || '').toLowerCase() !== deletedHandle) } : w)
+              );
+              setChannels(prev => prev.filter(c => !deletedWorldIds.includes(c.worldId)));
+              setMessages(prev => prev.filter(m => !deletedWorldIds.includes(m.worldId)));
+              setWikiEntries(prev => prev.filter(w => !deletedWorldIds.includes(w.worldId) && (w.authorHandle || '').toLowerCase() !== deletedHandle));
+              setDmMessages(prev => prev.filter(m => (m.senderHandle || '').toLowerCase() !== deletedHandle && (m.recipientHandle || '').toLowerCase() !== deletedHandle));
+              setInvites(prev => prev.filter(i => (i.fromHandle || '').toLowerCase() !== deletedHandle && (i.toHandle || '').toLowerCase() !== deletedHandle));
             } else if (data.type === 'WORLD_OWNERSHIP_TRANSFERRED') {
               setWorlds(prev => prev.map(w => {
                 if (w.id === data.worldId) {
