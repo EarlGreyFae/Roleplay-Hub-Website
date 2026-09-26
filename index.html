@@ -193,104 +193,113 @@
     .theme-noir .hover\:border-slate-600:hover { border-color: #595757 !important; }
     .theme-noir .hover\:border-cyan-400:hover { border-color: #ed233a !important; }
     .theme-noir .hover\:border-cyan-500:hover { border-color: #d2081f !important; }
+    /* ---- noir: focus / focus-within accent-glow variants (never covered before) ---- */
+    .theme-noir .focus\:border-cyan-400:focus { border-color: #ed233a !important; }
+    .theme-noir .focus-within\:border-cyan-400:focus-within { border-color: #ed233a !important; box-shadow: 0 0 0 2px rgba(237, 35, 58, 0.35) !important; }
 
 
     /* ---- fantasy ---- */
-    .theme-fantasy { background-color: #0b1009 !important; color: #f4f7f3 !important; }
-    .theme-fantasy body { background-color: #0b1009 !important; color: #f4f7f3 !important; }
-    .theme-fantasy .bg-slate-700 { background-color: #424b3d !important; }
-    .theme-fantasy .bg-slate-750 { background-color: #363f32 !important; }
-    .theme-fantasy .bg-slate-800 { background-color: #2b3227 !important; }
-    .theme-fantasy .bg-slate-850 { background-color: #22291e !important; }
-    .theme-fantasy .bg-slate-900 { background-color: #1b2217 !important; }
-    .theme-fantasy .bg-slate-950 { background-color: #0b1009 !important; }
-    .theme-fantasy .text-slate-100 { color: #f4f7f3 !important; }
-    .theme-fantasy .text-slate-200 { color: #e8ece6 !important; }
-    .theme-fantasy .text-slate-300 { color: #d4dbd1 !important; }
-    .theme-fantasy .text-slate-400 { color: #a3ae9e !important; }
-    .theme-fantasy .text-slate-500 { color: #74816e !important; }
-    .theme-fantasy .text-slate-600 { color: #556050 !important; }
-    .theme-fantasy .text-slate-700 { color: #424b3d !important; }
-    .theme-fantasy .text-slate-950 { color: #0b1009 !important; }
-    .theme-fantasy .border-slate-500 { border-color: #74816e !important; }
-    .theme-fantasy .border-slate-600 { border-color: #556050 !important; }
-    .theme-fantasy .border-slate-700 { border-color: #424b3d !important; }
-    .theme-fantasy .border-slate-750 { border-color: #363f32 !important; }
-    .theme-fantasy .border-slate-800 { border-color: #2b3227 !important; }
-    .theme-fantasy .placeholder-slate-500::placeholder { color: #74816e !important; }
-    .theme-fantasy .ring-slate-900 { --tw-ring-color: #1b2217 !important; }
-    .theme-fantasy .bg-cyan-400 { background-color: #f9c117 !important; }
-    .theme-fantasy .bg-cyan-500 { background-color: #daa400 !important; }
-    .theme-fantasy .bg-cyan-600 { background-color: #ba8b00 !important; }
-    .theme-fantasy .bg-cyan-800 { background-color: #7b600f !important; }
-    .theme-fantasy .bg-cyan-900 { background-color: #685211 !important; }
-    .theme-fantasy .bg-cyan-950 { background-color: #473705 !important; }
-    .theme-fantasy .text-cyan-200 { color: #ffe8a2 !important; }
-    .theme-fantasy .text-cyan-300 { color: #ffd861 !important; }
-    .theme-fantasy .text-cyan-400 { color: #f9c117 !important; }
-    .theme-fantasy .text-cyan-500 { color: #daa400 !important; }
-    .theme-fantasy .border-cyan-400 { border-color: #f9c117 !important; }
-    .theme-fantasy .border-cyan-500 { border-color: #daa400 !important; }
-    .theme-fantasy .border-cyan-700 { border-color: #977307 !important; }
-    .theme-fantasy .border-cyan-800 { border-color: #7b600f !important; }
-    .theme-fantasy .ring-cyan-400 { --tw-ring-color: #f9c117 !important; }
-    .theme-fantasy .ring-cyan-500 { --tw-ring-color: #daa400 !important; }
-    .theme-fantasy .shadow-cyan-500\/10 { --tw-shadow-color: #daa4001a !important; }
-    .theme-fantasy .shadow-cyan-500\/20 { --tw-shadow-color: #daa40033 !important; }
+    .theme-fantasy { background-color: #0a0812 !important; color: #eae6f0 !important; }
+    .theme-fantasy body { background-color: #0a0812 !important; color: #eae6f0 !important; }
+    .theme-fantasy .bg-slate-700 { background-color: #362b4d !important; }
+    .theme-fantasy .bg-slate-750 { background-color: #2d2340 !important; }
+    .theme-fantasy .bg-slate-800 { background-color: #241c33 !important; }
+    .theme-fantasy .bg-slate-850 { background-color: #11172a !important; }
+    .theme-fantasy .bg-slate-900 { background-color: #191224 !important; }
+    .theme-fantasy .bg-slate-950 { background-color: #0a0812 !important; }
+    .theme-fantasy .text-slate-100 { color: #eae6f0 !important; }
+    .theme-fantasy .text-slate-200 { color: #dcd4e6 !important; }
+    .theme-fantasy .text-slate-300 { color: #c7bcd6 !important; }
+    .theme-fantasy .text-slate-400 { color: #a3a8b6 !important; }
+    .theme-fantasy .text-slate-500 { color: #7d8296 !important; }
+    .theme-fantasy .text-slate-600 { color: #5f6274 !important; }
+    .theme-fantasy .text-slate-700 { color: #4a4d5c !important; }
+    .theme-fantasy .text-slate-950 { color: #0a0812 !important; }
+    .theme-fantasy .border-slate-500 { border-color: #c0c5ce !important; }
+    .theme-fantasy .border-slate-600 { border-color: #a7acb8 !important; }
+    .theme-fantasy .border-slate-700 { border-color: #8b909c !important; }
+    .theme-fantasy .border-slate-750 { border-color: #71768a !important; }
+    .theme-fantasy .border-slate-800 { border-color: #565a66 !important; }
+    .theme-fantasy .placeholder-slate-500::placeholder { color: #7d8296 !important; }
+    .theme-fantasy .ring-slate-900 { --tw-ring-color: #191224 !important; }
+    .theme-fantasy .bg-cyan-400 { background-color: #c5a059 !important; }
+    .theme-fantasy .bg-cyan-500 { background-color: #b38f4d !important; }
+    .theme-fantasy .bg-cyan-600 { background-color: #9c7d43 !important; }
+    .theme-fantasy .bg-cyan-800 { background-color: #5c4a28 !important; }
+    .theme-fantasy .bg-cyan-900 { background-color: #4a3c20 !important; }
+    .theme-fantasy .bg-cyan-950 { background-color: #362c18 !important; }
+    .theme-fantasy .text-cyan-200 { color: #f0dcb0 !important; }
+    .theme-fantasy .text-cyan-300 { color: #e2c88a !important; }
+    .theme-fantasy .text-cyan-400 { color: #c5a059 !important; }
+    .theme-fantasy .text-cyan-500 { color: #b38f4d !important; }
+    .theme-fantasy .border-cyan-400 { border-color: #c5a059 !important; }
+    .theme-fantasy .border-cyan-500 { border-color: #b38f4d !important; }
+    .theme-fantasy .border-cyan-700 { border-color: #7a6234 !important; }
+    .theme-fantasy .border-cyan-800 { border-color: #5c4a28 !important; }
+    .theme-fantasy .ring-cyan-400 { --tw-ring-color: #c5a059 !important; }
+    .theme-fantasy .ring-cyan-500 { --tw-ring-color: #b38f4d !important; }
+    .theme-fantasy .shadow-cyan-500\/10 { --tw-shadow-color: #b38f4d1a !important; }
+    .theme-fantasy .shadow-cyan-500\/20 { --tw-shadow-color: #b38f4d33 !important; }
     .theme-fantasy h1, .theme-fantasy h2, .theme-fantasy h3, .theme-fantasy h4, .theme-fantasy .font-serif { font-family: 'Cinzel', serif; letter-spacing: 0.02em; }
     /* ---- fantasy: opacity-modified variants (headers, nav bars, backdrops) ---- */
-    .theme-fantasy .bg-cyan-500\/10 { background-color: rgba(218, 164, 0, 0.1) !important; }
-    .theme-fantasy .bg-cyan-500\/20 { background-color: rgba(218, 164, 0, 0.2) !important; }
-    .theme-fantasy .bg-cyan-950\/40 { background-color: rgba(71, 55, 5, 0.4) !important; }
-    .theme-fantasy .bg-cyan-950\/60 { background-color: rgba(71, 55, 5, 0.6) !important; }
-    .theme-fantasy .bg-cyan-950\/70 { background-color: rgba(71, 55, 5, 0.7) !important; }
-    .theme-fantasy .bg-cyan-950\/80 { background-color: rgba(71, 55, 5, 0.8) !important; }
-    .theme-fantasy .bg-slate-800\/80 { background-color: rgba(43, 50, 39, 0.8) !important; }
-    .theme-fantasy .bg-slate-800\/90 { background-color: rgba(43, 50, 39, 0.9) !important; }
-    .theme-fantasy .bg-slate-850\/40 { background-color: rgba(34, 41, 30, 0.4) !important; }
-    .theme-fantasy .bg-slate-850\/60 { background-color: rgba(34, 41, 30, 0.6) !important; }
-    .theme-fantasy .bg-slate-850\/80 { background-color: rgba(34, 41, 30, 0.8) !important; }
-    .theme-fantasy .bg-slate-850\/90 { background-color: rgba(34, 41, 30, 0.9) !important; }
-    .theme-fantasy .bg-slate-850\/95 { background-color: rgba(34, 41, 30, 0.95) !important; }
-    .theme-fantasy .bg-slate-900\/60 { background-color: rgba(27, 34, 23, 0.6) !important; }
-    .theme-fantasy .bg-slate-900\/95 { background-color: rgba(27, 34, 23, 0.95) !important; }
-    .theme-fantasy .bg-slate-950\/50 { background-color: rgba(11, 16, 9, 0.5) !important; }
-    .theme-fantasy .bg-slate-950\/70 { background-color: rgba(11, 16, 9, 0.7) !important; }
-    .theme-fantasy .bg-slate-950\/80 { background-color: rgba(11, 16, 9, 0.8) !important; }
-    .theme-fantasy .bg-slate-950\/90 { background-color: rgba(11, 16, 9, 0.9) !important; }
-    .theme-fantasy .border-cyan-500\/30 { border-color: rgba(218, 164, 0, 0.3) !important; }
-    .theme-fantasy .border-cyan-500\/40 { border-color: rgba(218, 164, 0, 0.4) !important; }
-    .theme-fantasy .border-cyan-500\/50 { border-color: rgba(218, 164, 0, 0.5) !important; }
-    .theme-fantasy .border-cyan-500\/60 { border-color: rgba(218, 164, 0, 0.6) !important; }
-    .theme-fantasy .border-cyan-700\/50 { border-color: rgba(151, 115, 7, 0.5) !important; }
-    .theme-fantasy .border-cyan-800\/40 { border-color: rgba(123, 96, 15, 0.4) !important; }
-    .theme-fantasy .border-slate-700\/80 { border-color: rgba(66, 75, 61, 0.8) !important; }
-    .theme-fantasy .border-slate-750\/70 { border-color: rgba(54, 63, 50, 0.7) !important; }
-    .theme-fantasy .border-slate-800\/80 { border-color: rgba(43, 50, 39, 0.8) !important; }
-    .theme-fantasy .ring-cyan-500\/20 { --tw-ring-color: rgba(218, 164, 0, 0.2) !important; }
-    .theme-fantasy .text-cyan-200\/90 { color: rgba(255, 232, 162, 0.9) !important; }
-    .theme-fantasy .text-cyan-300\/90 { color: rgba(255, 216, 97, 0.9) !important; }
-    .theme-fantasy .text-cyan-400\/90 { color: rgba(249, 193, 23, 0.9) !important; }
-    .theme-fantasy .text-slate-400\/80 { color: rgba(163, 174, 158, 0.8) !important; }
-    .theme-fantasy .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(43, 50, 39, 0.6) !important; }
+    .theme-fantasy .bg-cyan-500\/10 { background-color: rgba(179, 143, 77, 0.1) !important; }
+    .theme-fantasy .bg-cyan-500\/20 { background-color: rgba(179, 143, 77, 0.2) !important; }
+    .theme-fantasy .bg-cyan-950\/40 { background-color: rgba(54, 44, 24, 0.4) !important; }
+    .theme-fantasy .bg-cyan-950\/60 { background-color: rgba(54, 44, 24, 0.6) !important; }
+    .theme-fantasy .bg-cyan-950\/70 { background-color: rgba(54, 44, 24, 0.7) !important; }
+    .theme-fantasy .bg-cyan-950\/80 { background-color: rgba(54, 44, 24, 0.8) !important; }
+    .theme-fantasy .bg-slate-800\/80 { background-color: rgba(36, 28, 51, 0.8) !important; }
+    .theme-fantasy .bg-slate-800\/90 { background-color: rgba(36, 28, 51, 0.9) !important; }
+    .theme-fantasy .bg-slate-850\/40 { background-color: rgba(17, 23, 42, 0.4) !important; }
+    .theme-fantasy .bg-slate-850\/60 { background-color: rgba(17, 23, 42, 0.6) !important; }
+    .theme-fantasy .bg-slate-850\/80 { background-color: rgba(17, 23, 42, 0.8) !important; }
+    .theme-fantasy .bg-slate-850\/90 { background-color: rgba(17, 23, 42, 0.9) !important; }
+    .theme-fantasy .bg-slate-850\/95 { background-color: rgba(17, 23, 42, 0.95) !important; }
+    .theme-fantasy .bg-slate-900\/60 { background-color: rgba(25, 18, 36, 0.6) !important; }
+    .theme-fantasy .bg-slate-900\/95 { background-color: rgba(25, 18, 36, 0.95) !important; }
+    .theme-fantasy .bg-slate-950\/50 { background-color: rgba(10, 8, 18, 0.5) !important; }
+    .theme-fantasy .bg-slate-950\/70 { background-color: rgba(10, 8, 18, 0.7) !important; }
+    .theme-fantasy .bg-slate-950\/80 { background-color: rgba(10, 8, 18, 0.8) !important; }
+    .theme-fantasy .bg-slate-950\/90 { background-color: rgba(10, 8, 18, 0.9) !important; }
+    .theme-fantasy .border-cyan-500\/30 { border-color: rgba(179, 143, 77, 0.3) !important; }
+    .theme-fantasy .border-cyan-500\/40 { border-color: rgba(179, 143, 77, 0.4) !important; }
+    .theme-fantasy .border-cyan-500\/50 { border-color: rgba(179, 143, 77, 0.5) !important; }
+    .theme-fantasy .border-cyan-500\/60 { border-color: rgba(179, 143, 77, 0.6) !important; }
+    .theme-fantasy .border-cyan-700\/50 { border-color: rgba(122, 98, 52, 0.5) !important; }
+    .theme-fantasy .border-cyan-800\/40 { border-color: rgba(92, 74, 40, 0.4) !important; }
+    .theme-fantasy .border-slate-700\/80 { border-color: rgba(139, 144, 156, 0.8) !important; }
+    .theme-fantasy .border-slate-750\/70 { border-color: rgba(113, 118, 138, 0.7) !important; }
+    .theme-fantasy .border-slate-800\/80 { border-color: rgba(86, 90, 102, 0.8) !important; }
+    .theme-fantasy .ring-cyan-500\/20 { --tw-ring-color: rgba(179, 143, 77, 0.2) !important; }
+    .theme-fantasy .text-cyan-200\/90 { color: rgba(240, 220, 176, 0.9) !important; }
+    .theme-fantasy .text-cyan-300\/90 { color: rgba(226, 200, 138, 0.9) !important; }
+    .theme-fantasy .text-cyan-400\/90 { color: rgba(197, 160, 89, 0.9) !important; }
+    .theme-fantasy .text-slate-400\/80 { color: rgba(163, 168, 182, 0.8) !important; }
+    .theme-fantasy .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(86, 90, 102, 0.6) !important; }
 
     /* ---- fantasy: hover: variants (never covered before - a separate class name from the base) ---- */
-    .theme-fantasy .hover\:bg-slate-750:hover { background-color: #363f32 !important; }
-    .theme-fantasy .hover\:bg-slate-800:hover { background-color: #2b3227 !important; }
-    .theme-fantasy .hover\:bg-slate-850:hover { background-color: #22291e !important; }
-    .theme-fantasy .hover\:bg-slate-700:hover { background-color: #424b3d !important; }
-    .theme-fantasy .hover\:bg-cyan-500:hover { background-color: #daa400 !important; }
-    .theme-fantasy .hover\:bg-cyan-400:hover { background-color: #f9c117 !important; }
-    .theme-fantasy .hover\:bg-cyan-900:hover { background-color: #685211 !important; }
-    .theme-fantasy .hover\:bg-cyan-950:hover { background-color: #473705 !important; }
-    .theme-fantasy .hover\:bg-cyan-800:hover { background-color: #7b600f !important; }
-    .theme-fantasy .hover\:text-cyan-400:hover { color: #f9c117 !important; }
-    .theme-fantasy .hover\:text-cyan-300:hover { color: #ffd861 !important; }
-    .theme-fantasy .hover\:text-slate-200:hover { color: #e8ece6 !important; }
-    .theme-fantasy .hover\:border-slate-700:hover { border-color: #424b3d !important; }
-    .theme-fantasy .hover\:border-slate-600:hover { border-color: #556050 !important; }
-    .theme-fantasy .hover\:border-cyan-400:hover { border-color: #f9c117 !important; }
-    .theme-fantasy .hover\:border-cyan-500:hover { border-color: #daa400 !important; }
+    .theme-fantasy .hover\:bg-slate-750:hover { background-color: #2d2340 !important; }
+    .theme-fantasy .hover\:bg-slate-800:hover { background-color: #241c33 !important; }
+    .theme-fantasy .hover\:bg-slate-850:hover { background-color: #11172a !important; }
+    .theme-fantasy .hover\:bg-slate-700:hover { background-color: #362b4d !important; }
+    .theme-fantasy .hover\:bg-cyan-500:hover { background-color: #b38f4d !important; }
+    .theme-fantasy .hover\:bg-cyan-400:hover { background-color: #c5a059 !important; }
+    .theme-fantasy .hover\:bg-cyan-900:hover { background-color: #4a3c20 !important; }
+    .theme-fantasy .hover\:bg-cyan-950:hover { background-color: #362c18 !important; }
+    .theme-fantasy .hover\:bg-cyan-800:hover { background-color: #5c4a28 !important; }
+    .theme-fantasy .hover\:text-cyan-400:hover { color: #c5a059 !important; }
+    .theme-fantasy .hover\:text-cyan-300:hover { color: #e2c88a !important; }
+    .theme-fantasy .hover\:text-slate-200:hover { color: #dcd4e6 !important; }
+    .theme-fantasy .hover\:border-slate-700:hover { border-color: #8b909c !important; }
+    .theme-fantasy .hover\:border-slate-600:hover { border-color: #a7acb8 !important; }
+    .theme-fantasy .hover\:border-cyan-400:hover { border-color: #c5a059 !important; }
+    .theme-fantasy .hover\:border-cyan-500:hover { border-color: #b38f4d !important; }
+
+    /* ---- fantasy: focus-glow, double-border framing, rune watermark (High-Fantasy Celestial redesign) ---- */
+    .theme-fantasy .focus\:border-cyan-400:focus { border-color: #c5a059 !important; }
+    .theme-fantasy .focus-within\:border-cyan-400:focus-within { border-color: #c5a059 !important; box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.35) !important; }
+    .theme-fantasy .border-slate-700.rounded-2xl, .theme-fantasy .border-slate-700.rounded-3xl { outline: 1px solid #b38f4d; outline-offset: 2px; }
+    .theme-fantasy body, .theme-fantasy .bg-slate-900, .theme-fantasy .bg-slate-850 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cg fill='none' stroke='%23c5a059' stroke-width='1' opacity='0.08'%3E%3Ccircle cx='80' cy='80' r='54'/%3E%3Ccircle cx='80' cy='80' r='38'/%3E%3Ccircle cx='80' cy='80' r='4'/%3E%3Cpath d='M80 26 L80 134 M26 80 L134 80'/%3E%3Cpath d='M43 43 L117 117 M117 43 L43 117' stroke='%23c0c5ce'/%3E%3C/g%3E%3C/svg%3E"); background-repeat: repeat; background-size: 160px 160px; }
 
 
     /* ---- superhero ---- */
@@ -389,6 +398,9 @@
     .theme-superhero .hover\:border-slate-600:hover { border-color: #4b5465 !important; }
     .theme-superhero .hover\:border-cyan-400:hover { border-color: #ff3a1b !important; }
     .theme-superhero .hover\:border-cyan-500:hover { border-color: #e41e00 !important; }
+    /* ---- superhero: focus / focus-within accent-glow variants (never covered before) ---- */
+    .theme-superhero .focus\:border-cyan-400:focus { border-color: #ff3a1b !important; }
+    .theme-superhero .focus-within\:border-cyan-400:focus-within { border-color: #ff3a1b !important; box-shadow: 0 0 0 2px rgba(255, 58, 27, 0.35) !important; }
 
 
     /* ---- steampunk ---- */
@@ -486,6 +498,9 @@
     .theme-steampunk .hover\:border-slate-600:hover { border-color: #64534c !important; }
     .theme-steampunk .hover\:border-cyan-400:hover { border-color: #f88818 !important; }
     .theme-steampunk .hover\:border-cyan-500:hover { border-color: #da6d00 !important; }
+    /* ---- steampunk: focus / focus-within accent-glow variants (never covered before) ---- */
+    .theme-steampunk .focus\:border-cyan-400:focus { border-color: #f88818 !important; }
+    .theme-steampunk .focus-within\:border-cyan-400:focus-within { border-color: #f88818 !important; box-shadow: 0 0 0 2px rgba(248, 136, 24, 0.35) !important; }
 
 
     /* ---- pastel ---- */
@@ -657,6 +672,9 @@
     .theme-pastel .text-cyan-400\/90 { color: rgba(204, 13, 118, 0.9) !important; }
     .theme-pastel .text-slate-400\/80 { color: rgba(105, 88, 127, 0.8) !important; }
     .theme-pastel .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(249, 216, 229, 0.6) !important; }
+    /* ---- pastel: focus / focus-within accent-glow variants (never covered before) ---- */
+    .theme-pastel .focus\:border-cyan-400:focus { border-color: #cc0d76 !important; }
+    .theme-pastel .focus-within\:border-cyan-400:focus-within { border-color: #cc0d76 !important; box-shadow: 0 0 0 2px rgba(204, 13, 118, 0.35) !important; }
 
   </style>
 </head>
@@ -1520,7 +1538,7 @@ const VISUAL_THEMES = [
 // theme is selected instead of always showing the world's original swatch.
 const THEME_ACCENT_COLORS = {
   noir: '#ed233a',
-  fantasy: '#f9c117',
+  fantasy: '#c5a059',
   superhero: '#ff3a1b',
   steampunk: '#f88818',
   pastel: '#cc0d76'
