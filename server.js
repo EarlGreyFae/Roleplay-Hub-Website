@@ -711,7 +711,7 @@ const server = http.createServer(async (req, res) => {
   if (reqPath === '/api/worlds' && req.method === 'POST') {
     try {
       const payload = await parseJsonBody(req);
-      const { name, tagline, description, themeAccent, visualTheme, creatorHandle, creatorName, coverUrl } = payload;
+      const { name, tagline, description, visualTheme, creatorHandle, creatorName, coverUrl } = payload;
       if (!name || !creatorHandle) {
         return sendJson(res, 400, { error: 'World name and creator handle required' });
       }
@@ -723,7 +723,6 @@ const server = http.createServer(async (req, res) => {
         genre: payload.genre || 'Roleplay Realm',
         tagline: tagline ? tagline.trim() : 'An unwritten story awaits.',
         description: description ? description.trim() : '',
-        themeAccent: themeAccent || '#38bdf8',
         visualTheme: visualTheme || 'modern',
         coverUrl: coverUrl || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
         creatorHandle: creatorHandle,
@@ -797,7 +796,6 @@ const server = http.createServer(async (req, res) => {
       if (payload.tagline !== undefined) w.tagline = payload.tagline.trim();
       if (payload.description !== undefined) w.description = payload.description.trim();
       if (payload.genre !== undefined) w.genre = payload.genre.trim();
-      if (payload.themeAccent !== undefined) w.themeAccent = payload.themeAccent;
       if (payload.visualTheme !== undefined) w.visualTheme = payload.visualTheme;
       if (payload.coverUrl !== undefined) w.coverUrl = payload.coverUrl;
       if (changingMembers && (role === 'creator' || isAdmin)) w.members = payload.members;

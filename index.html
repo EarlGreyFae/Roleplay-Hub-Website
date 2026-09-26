@@ -1644,15 +1644,13 @@ const VISUAL_THEMES = [
   { id: 'pastel', label: "Sniper's Theme" }
 ];
 
-// Each theme's own accent color (matches its .theme-X .text-cyan-400 CSS rule).
-// A world's "Theme Accent Color" swatch (a per-world hex, independent of Visual
-// Theme) is a separate, older feature - several buttons/tabs apply it via an
-// inline style rather than a themeable class, which a CSS-only override can
-// never reach. Routing those through the active Visual Theme's own accent
-// (falling back to the world's raw swatch only in the 'modern' theme, where
-// it's the only accent in play) keeps those elements in step with whichever
-// theme is selected instead of always showing the world's original swatch.
+// Each theme's own accent color (matches its .theme-X .text-cyan-400 CSS
+// rule). Several buttons/tabs apply the accent via an inline style rather
+// than a themeable class, which a CSS-only override can never reach - this
+// keeps those elements in step with whichever Visual Theme is active instead
+// of needing a per-world custom color (now that full app themes cover this).
 const THEME_ACCENT_COLORS = {
+  modern: '#38bdf8',
   noir: '#ed233a',
   fantasy: '#f9c117',
   fantasydark: '#c5a059',
@@ -1660,11 +1658,8 @@ const THEME_ACCENT_COLORS = {
   steampunk: '#f88818',
   pastel: '#cc0d76'
 };
-function getEffectiveAccentColor(activeWorld, effectiveVisualTheme) {
-  if (effectiveVisualTheme && effectiveVisualTheme !== 'modern' && THEME_ACCENT_COLORS[effectiveVisualTheme]) {
-    return THEME_ACCENT_COLORS[effectiveVisualTheme];
-  }
-  return activeWorld?.themeAccent || '#38bdf8';
+function getEffectiveAccentColor(effectiveVisualTheme) {
+  return THEME_ACCENT_COLORS[effectiveVisualTheme] || THEME_ACCENT_COLORS.modern;
 }
 
 // Shared timestamp format for messages, so scrolling back through history (now
@@ -4856,7 +4851,7 @@ function ChatScreen({
   const [editDraft, setEditDraft] = useState('');
   const scrollRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const accentColor = getEffectiveAccentColor(activeWorld, effectiveVisualTheme);
+  const accentColor = getEffectiveAccentColor(effectiveVisualTheme);
 
   const handleImageSelect = e => {
     const file = e.target.files?.[0];
@@ -6924,7 +6919,6 @@ function WorldSwitcherModal({
   const [tagline, setTagline] = useState('');
   const [desc, setDesc] = useState('');
   const [genre, setGenre] = useState('');
-  const [themeAccent, setThemeAccent] = useState('#38bdf8');
   const [visualTheme, setVisualTheme] = useState('modern');
 
   // Edit World Profile state
@@ -6933,7 +6927,6 @@ function WorldSwitcherModal({
   const [editTagline, setEditTagline] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editGenre, setEditGenre] = useState('');
-  const [editThemeAccent, setEditThemeAccent] = useState('#38bdf8');
   const [editVisualTheme, setEditVisualTheme] = useState('modern');
 
   // Multi-step deletion state
@@ -6949,7 +6942,6 @@ function WorldSwitcherModal({
       tagline: tagline.trim() || 'An unwritten story awaits.',
       description: desc.trim() || '',
       genre: genre.trim() || 'Roleplay Realm',
-      themeAccent: themeAccent || '#38bdf8',
       visualTheme: visualTheme || 'modern',
       creatorHandle: userProfile.handle,
       creatorName: userProfile.name
@@ -6968,7 +6960,6 @@ function WorldSwitcherModal({
     setEditTagline(w.tagline || '');
     setEditDesc(w.description || '');
     setEditGenre(w.genre || '');
-    setEditThemeAccent(w.themeAccent || '#38bdf8');
     setEditVisualTheme(w.visualTheme || 'modern');
   };
 
@@ -6981,7 +6972,6 @@ function WorldSwitcherModal({
       tagline: editTagline.trim(),
       description: editDesc.trim(),
       genre: editGenre.trim() || 'Roleplay Realm',
-      themeAccent: editThemeAccent || '#38bdf8',
       visualTheme: editVisualTheme || 'modern'
     };
     if (onUpdateWorldProfile) {
@@ -7040,7 +7030,7 @@ function WorldSwitcherModal({
     const isCreator = role === 'creator';
     const isEditor = role === 'editor';
     const memberCount = (w.members && Array.isArray(w.members)) ? w.members.length : 1;
-    const worldAccent = w.themeAccent || '#38bdf8';
+    const worldAccent = getEffectiveAccentColor(w.visualTheme);
 
     return React.createElement("div", {
       key: w.id,
@@ -7055,7 +7045,7 @@ function WorldSwitcherModal({
     }, React.createElement("span", {
       style: { backgroundColor: worldAccent },
       className: "w-2.5 h-2.5 rounded-full flex-shrink-0",
-      title: "World Color"
+      title: "Visual Theme"
     }), React.createElement("h4", {
       className: "font-bold text-sm text-slate-100 truncate"
     }, w.name), isCreator ? React.createElement("span", {
@@ -7171,18 +7161,6 @@ function WorldSwitcherModal({
     placeholder: "e.g. Fantasy, Cyberpunk",
     className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100"
   })), React.createElement("div", {
-    className: "space-y-1.5"
-  }, React.createElement("label", {
-    className: "block text-xs font-bold text-slate-300"
-  }, "Theme Accent Color"), React.createElement("div", {
-    className: "flex items-center space-x-2"
-  }, ['#38bdf8', '#a855f7', '#10b981', '#f59e0b', '#f43f5e', '#ec4899', '#64748b'].map(c => React.createElement("button", {
-    key: c,
-    type: "button",
-    onClick: () => setEditThemeAccent(c),
-    style: { backgroundColor: c },
-    className: `w-7 h-7 rounded-full border-2 transition transform ${editThemeAccent === c ? 'scale-110 border-white shadow-md' : 'border-transparent opacity-70 hover:opacity-100'}`
-  })))), React.createElement("div", {
     className: "space-y-1.5"
   }, React.createElement("label", {
     className: "block text-xs font-bold text-slate-300"
@@ -7336,7 +7314,7 @@ function WikiScreen({
 }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const accentColor = getEffectiveAccentColor(activeWorld, effectiveVisualTheme);
+  const accentColor = getEffectiveAccentColor(effectiveVisualTheme);
 
   const currentRole = getUserWorldRole(activeWorld, userProfile, userId);
   const canCreate = currentRole === 'creator' || currentRole === 'editor' || isSuperAdmin(userProfile);
@@ -7963,14 +7941,12 @@ function App() {
   const activeChannel = worldChannels.find(c => c.id === activeChannelId) || visibleWorldChannels[0] || worldChannels[0];
   const channelDropdownList = (activeChannel && activeChannel.archived) ? [activeChannel, ...visibleWorldChannels] : visibleWorldChannels;
 
-  // Dynamic World Theme Accent + Genre Visual Theme. "static" mode means the
-  // user picked one theme for themselves regardless of world; otherwise it
-  // follows whichever world is currently active (falling back to 'modern',
-  // the app's original look, when neither specifies one).
+  // Genre Visual Theme. "static" mode means the user picked one theme for
+  // themselves regardless of world; otherwise it follows whichever world is
+  // currently active (falling back to 'modern', the app's original look,
+  // when neither specifies one).
   const effectiveVisualTheme = (userProfile?.themeMode === 'static' ? userProfile?.staticTheme : activeWorld?.visualTheme) || 'modern';
   useEffect(() => {
-    const accent = activeWorld?.themeAccent || '#38bdf8';
-    document.documentElement.style.setProperty('--world-accent', accent);
     VISUAL_THEMES.forEach(t => document.documentElement.classList.remove(`theme-${t.id}`));
     if (effectiveVisualTheme !== 'modern') {
       document.documentElement.classList.add(`theme-${effectiveVisualTheme}`);
@@ -7985,7 +7961,7 @@ function App() {
     const THEME_BG = { modern: '#090d16', noir: '#0d0c0c', fantasy: '#0b1009', fantasydark: '#0a0812', superhero: '#070b12', steampunk: '#120a07', pastel: '#ffffff' };
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     if (themeColorMeta) themeColorMeta.setAttribute('content', THEME_BG[effectiveVisualTheme] || THEME_BG.modern);
-  }, [activeWorld?.themeAccent, effectiveVisualTheme]);
+  }, [effectiveVisualTheme]);
 
   // Continuous Local Vault Mirror: Always keeps a complete mirror locally
   useEffect(() => {
