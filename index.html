@@ -7574,6 +7574,16 @@ function App() {
     if (effectiveVisualTheme !== 'modern') {
       document.documentElement.classList.add(`theme-${effectiveVisualTheme}`);
     }
+    // <meta name="theme-color"> paints the mobile browser's own chrome (status
+    // bar, and the address bar during its scroll-collapse animation) - it's
+    // read once by the OS/browser shell, entirely outside the page's CSS, so
+    // no .theme-X class or stylesheet override can ever reach it. Left at its
+    // static default this shows up as an unthemed dark bar precisely when
+    // scrolling (the address-bar collapse) or when a dropdown shifts the
+    // viewport, regardless of how correct the in-page CSS is.
+    const THEME_BG = { modern: '#090d16', noir: '#0d0c0c', fantasy: '#0b1009', superhero: '#070b12', steampunk: '#120a07', pastel: '#ffffff' };
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', THEME_BG[effectiveVisualTheme] || THEME_BG.modern);
   }, [activeWorld?.themeAccent, effectiveVisualTheme]);
 
   // Continuous Local Vault Mirror: Always keeps a complete mirror locally
