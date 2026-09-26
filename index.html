@@ -6675,10 +6675,14 @@ function App() {
     };
   }, []);
 
-  // Register the service worker once (enables PWA offline caching and Push)
+  // Register the service worker (required for Web Push to work at all - see sw.js).
+  // The ?v= query string is part of the registration URL itself, so bumping it forces
+  // every visiting browser to fetch-and-install a genuinely new registration instead of
+  // relying on the old byte-comparison update check, which depends on cache freshness we
+  // don't fully control (proxies, browser quirks, etc). Bump it whenever sw.js changes.
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=2').catch(() => {});
     }
   }, []);
 
