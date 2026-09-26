@@ -1747,6 +1747,7 @@ function startServer() {
     console.log('=======================================================');
     console.log(`>>> Roleplay Hub Cloud Server online on port ${PORT} <<<`);
     console.log(`>>> Render Deployment Ready (Persistent DB & WebSockets) <<<`);
+    console.log(`>>> Data directory: ${DATA_DIR}${process.env.DATA_DIR ? ' (from DATA_DIR env var)' : ' (default - NOT a persistent path unless the platform guarantees one)'} <<<`);
     console.log('=======================================================');
   });
 }
