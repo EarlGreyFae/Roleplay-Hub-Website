@@ -921,6 +921,20 @@ function autoResizeTextarea(el) {
   el.style.height = Math.min(el.scrollHeight, 128) + 'px';
 }
 
+// Shared timestamp format for messages, so scrolling back through history (now
+// that data actually persists) always shows which day something was sent, not
+// just the time.
+function formatMessageTimestamp(ts) {
+  try {
+    const d = new Date(ts);
+    const datePart = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const timePart = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${datePart}, ${timePart}`;
+  } catch (e) {
+    return '';
+  }
+}
+
 const PushNotifications = {
   isSupported: () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window,
   getSubscription: async () => {
@@ -4125,13 +4139,7 @@ function ChatScreen({
     handleSend();
   };
 
-  const formatTime = ts => {
-    try {
-      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch (e) {
-      return '';
-    }
-  };
+  const formatTime = formatMessageTimestamp;
 
   const startEditMessage = msg => {
     setEditingMessageId(msg.id);
@@ -4850,7 +4858,7 @@ function DMsScreen({
       className: "font-bold text-xs text-slate-100 truncate"
     }, c.name), c.lastTimestamp && /*#__PURE__*/React.createElement("span", {
       className: "text-[9px] text-slate-500 font-mono"
-    }, new Date(c.lastTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))), /*#__PURE__*/React.createElement("div", {
+    }, formatMessageTimestamp(c.lastTimestamp))), /*#__PURE__*/React.createElement("div", {
       className: "text-[10px] text-cyan-400 font-mono"
     }, c.handle), /*#__PURE__*/React.createElement("div", {
       className: "text-[11px] text-slate-400 truncate mt-0.5"
@@ -4978,7 +4986,7 @@ function DMsScreen({
       className: "mt-2 rounded-xl max-h-60 object-cover border border-slate-700"
     }))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center space-x-1.5 text-[9px] text-slate-500 px-1 font-mono"
-    }, /*#__PURE__*/React.createElement("span", null, new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), msg.edited && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, formatMessageTimestamp(msg.timestamp)), msg.edited && /*#__PURE__*/React.createElement("span", {
       className: "italic"
     }, "(edited)"), isMe && /*#__PURE__*/React.createElement("span", {
       className: `font-bold ${isRead ? 'text-cyan-400' : 'text-slate-400'}`
