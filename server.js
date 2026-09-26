@@ -1735,7 +1735,12 @@ async function sendPushToHandles(handles, payload) {
     try {
       await webpush.sendNotification(s.subscription, JSON.stringify(payload));
     } catch (err) {
-      if (err.statusCode === 404 || err.statusCode === 410) {
+      // 404/410: the push service dropped this subscription (uninstalled, expired).
+      // 401/403: the subscription was created under a VAPID key we no longer hold
+      // (e.g. a wiped database regenerated the keypair) - sending to it will never
+      // succeed again either, so it's just as dead. Drop both rather than retrying
+      // forever on every future notification.
+      if ([401, 403, 404, 410].includes(err.statusCode)) {
         db.pushSubscriptions = db.pushSubscriptions.filter(x => x.subscription.endpoint !== s.subscription.endpoint);
         removedAny = true;
       } else {
