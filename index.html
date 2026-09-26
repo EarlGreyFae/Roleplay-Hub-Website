@@ -1268,6 +1268,28 @@ const VISUAL_THEMES = [
   { id: 'pastel', label: "Sniper's Theme" }
 ];
 
+// Each theme's own accent color (matches its .theme-X .text-cyan-400 CSS rule).
+// A world's "Theme Accent Color" swatch (a per-world hex, independent of Visual
+// Theme) is a separate, older feature - several buttons/tabs apply it via an
+// inline style rather than a themeable class, which a CSS-only override can
+// never reach. Routing those through the active Visual Theme's own accent
+// (falling back to the world's raw swatch only in the 'modern' theme, where
+// it's the only accent in play) keeps those elements in step with whichever
+// theme is selected instead of always showing the world's original swatch.
+const THEME_ACCENT_COLORS = {
+  noir: '#ed233a',
+  fantasy: '#f9c117',
+  superhero: '#ff3a1b',
+  steampunk: '#f88818',
+  pastel: '#cc0d76'
+};
+function getEffectiveAccentColor(activeWorld, effectiveVisualTheme) {
+  if (effectiveVisualTheme && effectiveVisualTheme !== 'modern' && THEME_ACCENT_COLORS[effectiveVisualTheme]) {
+    return THEME_ACCENT_COLORS[effectiveVisualTheme];
+  }
+  return activeWorld?.themeAccent || '#38bdf8';
+}
+
 // Shared timestamp format for messages, so scrolling back through history (now
 // that data actually persists) always shows which day something was sent, not
 // just the time.
@@ -4442,7 +4464,8 @@ function ChatScreen({
   onAddQuickNpc,
   onDeleteQuickNpc,
   highlightedMessageId,
-  onOpenPlayerProfile
+  onOpenPlayerProfile,
+  effectiveVisualTheme
 }) {
   const [inputText, setInputText] = useState('');
   const [attachedImage, setAttachedImage] = useState(null);
@@ -4456,7 +4479,7 @@ function ChatScreen({
   const [editDraft, setEditDraft] = useState('');
   const scrollRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const accentColor = activeWorld?.themeAccent || '#38bdf8';
+  const accentColor = getEffectiveAccentColor(activeWorld, effectiveVisualTheme);
 
   const handleImageSelect = e => {
     const file = e.target.files?.[0];
@@ -6931,11 +6954,12 @@ function WikiScreen({
   onSelectArticle,
   onOpenNewChoice,
   onDeleteEntry,
-  onOpenWikiArchive
+  onOpenWikiArchive,
+  effectiveVisualTheme
 }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const accentColor = activeWorld?.themeAccent || '#38bdf8';
+  const accentColor = getEffectiveAccentColor(activeWorld, effectiveVisualTheme);
 
   const currentRole = getUserWorldRole(activeWorld, userProfile, userId);
   const canCreate = currentRole === 'creator' || currentRole === 'editor' || isSuperAdmin(userProfile);
@@ -8304,7 +8328,8 @@ function App() {
     customNpcs: customNpcs,
     onAddQuickNpc: newTemp => setCustomNpcs(prev => [newTemp, ...prev]),
     onDeleteQuickNpc: tempId => setCustomNpcs(prev => prev.filter(t => (t.id || t.name) !== tempId)),
-    highlightedMessageId: highlightedMessageId
+    highlightedMessageId: highlightedMessageId,
+    effectiveVisualTheme: effectiveVisualTheme
   })), activeTab === 'wiki' && (worlds.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4"
   }, /*#__PURE__*/React.createElement(Icons.Book, {
@@ -8339,7 +8364,8 @@ function App() {
     },
     onOpenNewChoice: () => setIsNewEntryChoiceOpen(true),
     onDeleteEntry: handleDeleteWiki,
-    onOpenWikiArchive: () => setIsWikiArchiveOpen(true)
+    onOpenWikiArchive: () => setIsWikiArchiveOpen(true),
+    effectiveVisualTheme: effectiveVisualTheme
   })), activeTab === 'dms' && /*#__PURE__*/React.createElement(DMsScreen, {
     dmMessages: dmMessages,
     userProfile: userProfile,
