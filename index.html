@@ -401,6 +401,20 @@
     .theme-fantasydark .focus-within\:border-cyan-400:focus-within { border-color: #c5a059 !important; box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.35) !important; }
     .theme-fantasydark .border-slate-700.rounded-2xl, .theme-fantasydark .border-slate-700.rounded-3xl { outline: 1px solid #b38f4d; outline-offset: 2px; }
     .theme-fantasydark body, .theme-fantasydark .bg-slate-900, .theme-fantasydark .bg-slate-850 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cg fill='none' stroke='%23c5a059' stroke-width='1' opacity='0.08'%3E%3Ccircle cx='80' cy='80' r='54'/%3E%3Ccircle cx='80' cy='80' r='38'/%3E%3Ccircle cx='80' cy='80' r='4'/%3E%3Cpath d='M80 26 L80 134 M26 80 L134 80'/%3E%3Cpath d='M43 43 L117 117 M117 43 L43 117' stroke='%23c0c5ce'/%3E%3C/g%3E%3C/svg%3E"); background-repeat: repeat; background-size: 160px 160px; }
+    /* Send button (ChatScreen): overrides the accentColor inline style with a
+       silver-face / gold-icon / mixed-metal-border metallic button, per spec -
+       distinct from every other theme's solid-accent-fill button on purpose. */
+    .theme-fantasydark .rounded-xl.font-bold.shadow-lg.hover\:opacity-90 {
+      background-color: #c0c5ce !important;
+      color: #5c4a28 !important;
+      border: 2px solid #b38f4d !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(197, 160, 89, 0.25) !important;
+    }
+    .theme-fantasydark .rounded-xl.font-bold.shadow-lg.hover\:opacity-90:hover {
+      opacity: 1 !important;
+      background-color: #d8dadc !important;
+      box-shadow: 0 0 0 3px rgba(192, 197, 206, 0.45), 0 0 16px rgba(197, 160, 89, 0.65) !important;
+    }
 
 
     /* ---- superhero ---- */
