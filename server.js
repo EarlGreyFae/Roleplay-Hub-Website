@@ -10,7 +10,10 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 10000;
-const DATA_DIR = path.join(__dirname, 'data');
+// Overridable so a Render persistent disk (or any other host's mounted volume)
+// can be pointed at from outside the app directory, instead of the ephemeral
+// local repo checkout that gets wiped on every redeploy.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 if (!fs.existsSync(DATA_DIR)) {
