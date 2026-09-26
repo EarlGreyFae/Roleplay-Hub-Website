@@ -850,6 +850,111 @@ const SoundFX = {
     } catch (e) {}
   }
 };
+// Makes the browser tab itself "glow/flash" for a notification that arrives
+// while the user isn't looking at this tab: the title blinks between the
+// notification text and the page's real title, and the favicon gets a
+// persistent colored dot badge (matching the active Visual Theme's accent).
+// Both clear the moment the tab regains focus/visibility. No-ops entirely if
+// the tab is already focused and visible - there's nothing to flash toward.
+const TabNotifier = (() => {
+  let originalTitle = document.title;
+  let faviconLinks = null;
+  let originalHrefs = [];
+  let badgeHref = null;
+  let badgeColor = null;
+  let flashTimer = null;
+  let showingAlt = false;
+
+  function captureOriginals() {
+    if (faviconLinks) return;
+    faviconLinks = Array.from(document.querySelectorAll('link[rel="icon"]'));
+    originalHrefs = faviconLinks.map(link => link.href);
+  }
+
+  function setBadgeFavicon(href) {
+    faviconLinks.forEach(link => { link.href = href; });
+  }
+
+  function restoreFavicons() {
+    faviconLinks.forEach((link, i) => { link.href = originalHrefs[i]; });
+  }
+
+  function buildBadge(color, cb) {
+    const baseHref = originalHrefs[0];
+    if (!baseHref) return cb(null);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, size, size);
+        ctx.beginPath();
+        ctx.arc(size - 15, 15, 14, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(size - 15, 15, 11, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        cb(canvas.toDataURL('image/png'));
+      } catch (e) {
+        cb(null);
+      }
+    };
+    img.onerror = () => cb(null);
+    img.src = baseHref;
+  }
+
+  function restore() {
+    if (flashTimer) {
+      clearInterval(flashTimer);
+      flashTimer = null;
+    }
+    showingAlt = false;
+    document.title = originalTitle;
+    if (faviconLinks) restoreFavicons();
+  }
+
+  function notify(message, accentColor) {
+    captureOriginals();
+    if (document.visibilityState === 'visible' && document.hasFocus()) return;
+
+    const applyBadgeAndFlash = () => {
+      if (badgeHref) setBadgeFavicon(badgeHref);
+      if (flashTimer) return;
+      showingAlt = true;
+      document.title = message;
+      flashTimer = setInterval(() => {
+        showingAlt = !showingAlt;
+        document.title = showingAlt ? message : originalTitle;
+      }, 1200);
+    };
+
+    if (badgeHref && badgeColor === accentColor) {
+      applyBadgeAndFlash();
+    } else {
+      badgeColor = accentColor;
+      buildBadge(accentColor || '#38bdf8', dataUrl => {
+        badgeHref = dataUrl;
+        applyBadgeAndFlash();
+      });
+    }
+  }
+
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && document.hasFocus()) restore();
+    });
+  }
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('focus', restore);
+  }
+
+  return { notify };
+})();
 const IconsRaw = {
   Bell: props => /*#__PURE__*/React.createElement(Icon, _extends({}, props, {
     path: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
@@ -7738,6 +7843,7 @@ function App() {
                     return next;
                   });
                   SoundFX.play('pop');
+                  TabNotifier.notify('🔔 New Message - Roleplay Hub', getEffectiveAccentColor(effectiveVisualThemeRef.current));
                 }
               }
             } else if (data.type === 'NEW_DM') {
@@ -7747,6 +7853,7 @@ function App() {
               });
               if ((data.message.recipientHandle || '').toLowerCase() === myHandle) {
                 SoundFX.play('pop');
+                TabNotifier.notify('✉️ New DM - Roleplay Hub', getEffectiveAccentColor(effectiveVisualThemeRef.current));
               }
             } else if (data.type === 'MESSAGE_UPDATED') {
               setMessages(prev => prev.map(m => m.id === data.message.id ? data.message : m));
@@ -7873,6 +7980,7 @@ function App() {
               }
               if ((data.invite.toHandle || '').toLowerCase() === myHandle) {
                 SoundFX.play('join');
+                TabNotifier.notify('🌍 World Invite - Roleplay Hub', getEffectiveAccentColor(effectiveVisualThemeRef.current));
               }
             } else if (data.type === 'INVITE_RESPONDED') {
               // Bootstrap only ever returns pending invites, so a responded one is
@@ -7946,6 +8054,12 @@ function App() {
   // currently active (falling back to 'modern', the app's original look,
   // when neither specifies one).
   const effectiveVisualTheme = (userProfile?.themeMode === 'static' ? userProfile?.staticTheme : activeWorld?.visualTheme) || 'modern';
+  // The long-lived WebSocket handler (set up once, above) needs the current
+  // theme at notification time to color the tab-flash favicon badge, without
+  // reconnecting the socket every time the theme changes - same ref pattern
+  // as worldsRef/activeTabRef/activeChannelIdRef above.
+  const effectiveVisualThemeRef = useRef(effectiveVisualTheme);
+  useEffect(() => { effectiveVisualThemeRef.current = effectiveVisualTheme; }, [effectiveVisualTheme]);
   useEffect(() => {
     VISUAL_THEMES.forEach(t => document.documentElement.classList.remove(`theme-${t.id}`));
     if (effectiveVisualTheme !== 'modern') {
