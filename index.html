@@ -1989,6 +1989,26 @@ const AccountManager = {
     try {
       localStorage.setItem(`rphub_temp_npcs_${handle.toLowerCase()}`, JSON.stringify(list || []));
     } catch (e) {}
+  },
+  // Remembers which world, channel, and speaking persona were active so
+  // opening/refreshing the app returns to where you left off instead of
+  // always resetting to the first world/channel and your own OOC identity.
+  getLastSession: (handle) => {
+    if (!handle) return null;
+    try {
+      const s = localStorage.getItem(`rphub_last_session_${handle.toLowerCase()}`);
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) {}
+    return null;
+  },
+  saveLastSession: (handle, session) => {
+    if (!handle) return;
+    try {
+      localStorage.setItem(`rphub_last_session_${handle.toLowerCase()}`, JSON.stringify(session || {}));
+    } catch (e) {}
   }
 };
 if (typeof window !== "undefined") window.AccountManager = AccountManager;
@@ -7596,9 +7616,9 @@ function App() {
 
   // App data state
   const [worlds, setWorlds] = useState([]);
-  const [activeWorldId, setActiveWorldId] = useState(null);
+  const [activeWorldId, setActiveWorldId] = useState(() => AccountManager.getLastSession(AccountManager.getActiveHandle())?.worldId || null);
   const [channels, setChannels] = useState([]);
-  const [activeChannelId, setActiveChannelId] = useState(null);
+  const [activeChannelId, setActiveChannelId] = useState(() => AccountManager.getLastSession(AccountManager.getActiveHandle())?.channelId || null);
   const [messages, setMessages] = useState([]);
   const [dmMessages, setDmMessages] = useState([]);
   const [wikiEntries, setWikiEntries] = useState([]);
@@ -7610,11 +7630,14 @@ function App() {
   // Private per-account scratch pad notes on wiki/character entries: { [entryId]: content }
   const [scratchpadNotes, setScratchpadNotes] = useState({});
 
-  // Active persona
+  // Active persona - restores whichever persona (self, a character, an NPC...)
+  // was last speaking, so refreshing doesn't silently switch you back to OOC.
   const [activePersona, setActivePersona] = useState(() => {
     const accs = AccountManager.getAccounts();
     const activeHandle = AccountManager.getActiveHandle();
     const profile = (activeHandle && accs[activeHandle.toLowerCase()]) || null;
+    const lastPersona = AccountManager.getLastSession(activeHandle)?.persona;
+    if (lastPersona && lastPersona.id) return lastPersona;
     return {
       id: profile ? 'ooc_' + profile.handle.replace('@', '') : 'ooc_player',
       name: profile?.name || 'Player',
@@ -7736,7 +7759,9 @@ function App() {
         if (data.channels && data.channels.length > 0) {
           const worldChans = data.channels.filter(c => c.worldId === (activeWorldId || data.worlds?.[0]?.id));
           if (worldChans.length > 0) {
-            setActiveChannelId(worldChans[0].id);
+            if (!activeChannelId || !worldChans.some(c => c.id === activeChannelId)) {
+              setActiveChannelId(worldChans[0].id);
+            }
           }
         }
 
@@ -8041,6 +8066,19 @@ function App() {
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, [userProfile?.handle, myHandle]);
+
+  // Remember the active world/channel/persona per-account so opening or
+  // refreshing the app returns to where you left off (see AccountManager
+  // .getLastSession/.saveLastSession, read into these three's initial state
+  // above).
+  useEffect(() => {
+    if (!userProfile?.handle) return;
+    AccountManager.saveLastSession(userProfile.handle, {
+      worldId: activeWorldId,
+      channelId: activeChannelId,
+      persona: activePersona
+    });
+  }, [userProfile?.handle, activeWorldId, activeChannelId, activePersona]);
 
   // Keep activeChannelId aligned with activeWorld
   const activeWorld = worlds.find(w => w.id === activeWorldId) || worlds[0];
