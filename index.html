@@ -944,12 +944,27 @@ const PushNotifications = {
       if (!keyData.publicKey) {
         return { success: false, error: 'Server has not configured push notifications yet.' };
       }
+      const currentKey = urlBase64ToUint8Array(keyData.publicKey);
       const reg = await navigator.serviceWorker.ready;
       let sub = await reg.pushManager.getSubscription();
+      // An existing subscription only receives pushes if it was created against the
+      // server's *current* VAPID key - sending to one made under an old key fails
+      // silently server-side (this happened for real: the DB used to get wiped on
+      // every redeploy before persistence was fixed, regenerating the key each time).
+      // Reusing it here without checking would leave the device permanently unable
+      // to receive pushes despite looking "subscribed".
+      if (sub) {
+        const subKey = sub.options && sub.options.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+        const matches = !!subKey && subKey.length === currentKey.length && subKey.every((b, i) => b === currentKey[i]);
+        if (!matches) {
+          await sub.unsubscribe();
+          sub = null;
+        }
+      }
       if (!sub) {
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+          applicationServerKey: currentKey
         });
       }
       await fetch('/api/push/subscribe', {
@@ -961,6 +976,17 @@ const PushNotifications = {
     } catch (e) {
       return { success: false, error: e.message || 'Could not enable push notifications.' };
     }
+  },
+  // Silently repairs an already-subscribed device whose subscription has gone stale
+  // (see the comment in subscribe() above), without prompting for permission or
+  // opting anyone in who hasn't already granted it - so every returning user with a
+  // previously-broken subscription gets fixed automatically, with no action needed.
+  resyncIfStale: async (handle) => {
+    if (!PushNotifications.isSupported()) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const existing = await PushNotifications.getSubscription();
+    if (!existing) return;
+    await PushNotifications.subscribe(handle);
   },
   unsubscribe: async () => {
     try {
@@ -4094,7 +4120,7 @@ function ChatScreen({
   const handleMessageInputKeyDown = e => {
     if (e.key !== 'Enter') return;
     if (isTouchPrimaryDevice()) return; // mobile: Enter always inserts a newline
-    if (e.ctrlKey || e.metaKey) return; // PC: Ctrl/Cmd+Enter inserts a newline
+    if (e.shiftKey) return; // PC: Shift+Enter inserts a newline
     e.preventDefault();
     handleSend();
   };
@@ -4726,7 +4752,7 @@ function DMsScreen({
   const handleMessageInputKeyDown = e => {
     if (e.key !== 'Enter') return;
     if (isTouchPrimaryDevice()) return; // mobile: Enter always inserts a newline
-    if (e.ctrlKey || e.metaKey) return; // PC: Ctrl/Cmd+Enter inserts a newline
+    if (e.shiftKey) return; // PC: Shift+Enter inserts a newline
     e.preventDefault();
     handleSend();
   };
@@ -6685,6 +6711,13 @@ function App() {
       navigator.serviceWorker.register('./sw.js?v=2').catch(() => {});
     }
   }, []);
+
+  // Repair a push subscription left stale by a VAPID key that changed since it was
+  // created (see PushNotifications.resyncIfStale) - runs once a logged-in handle is
+  // known, with no visible effect for anyone whose subscription is already current.
+  useEffect(() => {
+    if (myHandle) PushNotifications.resyncIfStale(myHandle);
+  }, [myHandle]);
 
   // 2. Fetch Bootstrap data on login or mount
   const fetchBootstrap = async (handle) => {
