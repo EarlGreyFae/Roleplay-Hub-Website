@@ -19,7 +19,7 @@
 <link href="favicon.png" rel="icon" sizes="64x64" type="image/png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Cinzel+Decorative:wght@700&family=Bebas+Neue&family=Bangers&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Cinzel+Decorative:wght@700&family=Bebas+Neue&family=Bangers&family=Quicksand:wght@600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
     tailwind.config = {
@@ -259,6 +259,50 @@
     .theme-steampunk .shadow-cyan-500\/20 { --tw-shadow-color: #da6d0033 !important; }
     .theme-steampunk h1, .theme-steampunk h2, .theme-steampunk h3, .theme-steampunk h4, .theme-steampunk .font-serif { font-family: 'Cinzel Decorative', serif; letter-spacing: 0.02em; }
 
+    /* ---- pastel ---- */
+    .theme-pastel { background-color: #ffffff !important; color: #433655 !important; }
+    .theme-pastel .bg-slate-700 { background-color: #efc8d8 !important; }
+    .theme-pastel .bg-slate-750 { background-color: #d6e5f5 !important; }
+    .theme-pastel .bg-slate-800 { background-color: #fae1eb !important; }
+    .theme-pastel .bg-slate-850 { background-color: #eaf2fb !important; }
+    .theme-pastel .bg-slate-900 { background-color: #fdf2f6 !important; }
+    .theme-pastel .bg-slate-950 { background-color: #ffffff !important; }
+    .theme-pastel .text-slate-100 { color: #433655 !important; }
+    .theme-pastel .text-slate-200 { color: #514267 !important; }
+    .theme-pastel .text-slate-300 { color: #63507e !important; }
+    .theme-pastel .text-slate-400 { color: #73628d !important; }
+    .theme-pastel .text-slate-500 { color: #776491 !important; }
+    .theme-pastel .text-slate-600 { color: #73628d !important; }
+    .theme-pastel .text-slate-700 { color: #63507e !important; }
+    .theme-pastel .text-slate-950 { color: #31273e !important; }
+    .theme-pastel .border-slate-500 { border-color: #d56da1 !important; }
+    .theme-pastel .border-slate-600 { border-color: #cd5390 !important; }
+    .theme-pastel .border-slate-700 { border-color: #d56da1 !important; }
+    .theme-pastel .border-slate-750 { border-color: #6699cc !important; }
+    .theme-pastel .border-slate-800 { border-color: #da9dbc !important; }
+    .theme-pastel .placeholder-slate-500::placeholder { color: #776491 !important; }
+    .theme-pastel .ring-slate-900 { --tw-ring-color: #c52374 !important; }
+    .theme-pastel .bg-cyan-400 { background-color: #c52374 !important; }
+    .theme-pastel .bg-cyan-500 { background-color: #b8216d !important; }
+    .theme-pastel .bg-cyan-600 { background-color: #ab1b63 !important; }
+    .theme-pastel .bg-cyan-800 { background-color: #570f33 !important; }
+    .theme-pastel .bg-cyan-900 { background-color: #380a21 !important; }
+    .theme-pastel .bg-cyan-950 { background-color: #1a050f !important; }
+    .theme-pastel .text-cyan-200 { color: #d92780 !important; }
+    .theme-pastel .text-cyan-300 { color: #d4257d !important; }
+    .theme-pastel .text-cyan-400 { color: #c52374 !important; }
+    .theme-pastel .text-cyan-500 { color: #b8216d !important; }
+    .theme-pastel .border-cyan-400 { border-color: #c52374 !important; }
+    .theme-pastel .border-cyan-500 { border-color: #b8216d !important; }
+    .theme-pastel .border-cyan-700 { border-color: #84154d !important; }
+    .theme-pastel .border-cyan-800 { border-color: #570f33 !important; }
+    .theme-pastel .ring-cyan-400 { --tw-ring-color: #c52374 !important; }
+    .theme-pastel .ring-cyan-500 { --tw-ring-color: #b8216d !important; }
+    .theme-pastel .shadow-cyan-500\/10 { --tw-shadow-color: #b8216d1a !important; }
+    .theme-pastel .shadow-cyan-500\/20 { --tw-shadow-color: #b8216d33 !important; }
+    .theme-pastel h1, .theme-pastel h2, .theme-pastel h3, .theme-pastel h4, .theme-pastel .font-serif { font-family: 'Quicksand', sans-serif; letter-spacing: 0.01em; }
+
+    
     /* ---- noir: opacity-modified variants (headers, nav bars, backdrops) ---- */
     .theme-noir .bg-cyan-500\/10 { background-color: rgba(210, 8, 31, 0.1) !important; }
     .theme-noir .bg-cyan-500\/20 { background-color: rgba(210, 8, 31, 0.2) !important; }
@@ -402,6 +446,41 @@
     .theme-steampunk .text-cyan-400\/90 { color: rgba(248, 136, 24, 0.9) !important; }
     .theme-steampunk .text-slate-400\/80 { color: rgba(179, 161, 153, 0.8) !important; }
     .theme-steampunk .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(53, 41, 36, 0.6) !important; }
+    /* ---- pastel: opacity-modified variants (headers, nav bars, backdrops) ---- */
+    .theme-pastel .bg-cyan-500\/10 { background-color: rgba(184, 33, 109, 0.1) !important; }
+    .theme-pastel .bg-cyan-500\/20 { background-color: rgba(184, 33, 109, 0.2) !important; }
+    .theme-pastel .bg-cyan-950\/40 { background-color: rgba(26, 5, 15, 0.4) !important; }
+    .theme-pastel .bg-cyan-950\/60 { background-color: rgba(26, 5, 15, 0.6) !important; }
+    .theme-pastel .bg-cyan-950\/70 { background-color: rgba(26, 5, 15, 0.7) !important; }
+    .theme-pastel .bg-cyan-950\/80 { background-color: rgba(26, 5, 15, 0.8) !important; }
+    .theme-pastel .bg-slate-800\/80 { background-color: rgba(218, 157, 188, 0.8) !important; }
+    .theme-pastel .bg-slate-800\/90 { background-color: rgba(218, 157, 188, 0.9) !important; }
+    .theme-pastel .bg-slate-850\/40 { background-color: rgba(234, 242, 251, 0.4) !important; }
+    .theme-pastel .bg-slate-850\/60 { background-color: rgba(234, 242, 251, 0.6) !important; }
+    .theme-pastel .bg-slate-850\/80 { background-color: rgba(234, 242, 251, 0.8) !important; }
+    .theme-pastel .bg-slate-850\/90 { background-color: rgba(234, 242, 251, 0.9) !important; }
+    .theme-pastel .bg-slate-850\/95 { background-color: rgba(234, 242, 251, 0.95) !important; }
+    .theme-pastel .bg-slate-900\/60 { background-color: rgba(253, 242, 246, 0.6) !important; }
+    .theme-pastel .bg-slate-900\/95 { background-color: rgba(253, 242, 246, 0.95) !important; }
+    .theme-pastel .bg-slate-950\/50 { background-color: rgba(255, 255, 255, 0.5) !important; }
+    .theme-pastel .bg-slate-950\/70 { background-color: rgba(255, 255, 255, 0.7) !important; }
+    .theme-pastel .bg-slate-950\/80 { background-color: rgba(255, 255, 255, 0.8) !important; }
+    .theme-pastel .bg-slate-950\/90 { background-color: rgba(255, 255, 255, 0.9) !important; }
+    .theme-pastel .border-cyan-500\/30 { border-color: rgba(184, 33, 109, 0.3) !important; }
+    .theme-pastel .border-cyan-500\/40 { border-color: rgba(184, 33, 109, 0.4) !important; }
+    .theme-pastel .border-cyan-500\/50 { border-color: rgba(184, 33, 109, 0.5) !important; }
+    .theme-pastel .border-cyan-500\/60 { border-color: rgba(184, 33, 109, 0.6) !important; }
+    .theme-pastel .border-cyan-700\/50 { border-color: rgba(132, 21, 77, 0.5) !important; }
+    .theme-pastel .border-cyan-800\/40 { border-color: rgba(87, 15, 51, 0.4) !important; }
+    .theme-pastel .border-slate-700\/80 { border-color: rgba(213, 109, 161, 0.8) !important; }
+    .theme-pastel .border-slate-750\/70 { border-color: rgba(102, 153, 204, 0.7) !important; }
+    .theme-pastel .border-slate-800\/80 { border-color: rgba(218, 157, 188, 0.8) !important; }
+    .theme-pastel .ring-cyan-500\/20 { --tw-ring-color: rgba(184, 33, 109, 0.2) !important; }
+    .theme-pastel .text-cyan-200\/90 { color: rgba(217, 39, 128, 0.9) !important; }
+    .theme-pastel .text-cyan-300\/90 { color: rgba(212, 37, 125, 0.9) !important; }
+    .theme-pastel .text-cyan-400\/90 { color: rgba(197, 35, 116, 0.9) !important; }
+    .theme-pastel .text-slate-400\/80 { color: rgba(115, 98, 141, 0.8) !important; }
+    .theme-pastel .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(250, 225, 235, 0.6) !important; }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 antialiased overflow-hidden">
@@ -1250,7 +1329,8 @@ const VISUAL_THEMES = [
   { id: 'fantasy', label: 'Fantasy' },
   { id: 'noir', label: 'Noir' },
   { id: 'superhero', label: 'Superhero' },
-  { id: 'steampunk', label: 'Steampunk' }
+  { id: 'steampunk', label: 'Steampunk' },
+  { id: 'pastel', label: 'Pastel' }
 ];
 
 // Shared timestamp format for messages, so scrolling back through history (now
