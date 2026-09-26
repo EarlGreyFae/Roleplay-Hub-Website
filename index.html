@@ -2556,6 +2556,18 @@ function WikiArticleModal({
 
   if (isOpen === false || !form) return null;
 
+  // Attribute display order follows the object's own key insertion order, so
+  // reordering means rebuilding it from a re-sorted entry list rather than
+  // touching any one value.
+  const moveAttribute = (key, direction) => {
+    const entries = Object.entries(form.attributes || {});
+    const idx = entries.findIndex(([k]) => k === key);
+    const swapWith = idx + direction;
+    if (idx < 0 || swapWith < 0 || swapWith >= entries.length) return;
+    [entries[idx], entries[swapWith]] = [entries[swapWith], entries[idx]];
+    setForm({ ...form, attributes: Object.fromEntries(entries) });
+  };
+
   const insertTag = (prefix, suffix = '', def = 'text') => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -2866,12 +2878,24 @@ function WikiArticleModal({
     className: "block text-xs font-bold text-slate-300 mb-1.5"
   }, "Lore Infobox & Key Attributes"), React.createElement("div", {
     className: "flex flex-wrap gap-1.5 mb-2"
-  }, form.attributes && Object.entries(form.attributes).map(([k, v]) => React.createElement("span", {
+  }, form.attributes && Object.entries(form.attributes).map(([k, v], i, arr) => React.createElement("span", {
     key: k,
     className: "bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-lg text-xs flex items-center space-x-1"
   }, React.createElement("span", {
     className: "text-slate-400 font-medium"
   }, k, ":"), React.createElement("span", null, v), React.createElement("button", {
+    type: "button",
+    disabled: i === 0,
+    onClick: () => moveAttribute(k, -1),
+    title: "Move up",
+    className: `ml-1 ${i === 0 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-400 hover:text-cyan-400'}`
+  }, React.createElement(Icons.ChevronUp, { className: "w-3 h-3" })), React.createElement("button", {
+    type: "button",
+    disabled: i === arr.length - 1,
+    onClick: () => moveAttribute(k, 1),
+    title: "Move down",
+    className: `${i === arr.length - 1 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-400 hover:text-cyan-400'}`
+  }, React.createElement(Icons.ChevronDown, { className: "w-3 h-3" })), React.createElement("button", {
     type: "button",
     onClick: () => {
       const next = { ...form.attributes };
