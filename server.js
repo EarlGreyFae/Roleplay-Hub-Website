@@ -466,7 +466,9 @@ const server = http.createServer(async (req, res) => {
           role: user.role || 'user',
           avatarUrl: user.avatarUrl,
           passkeys: user.passkeys || [],
-          createdAt: user.createdAt
+          createdAt: user.createdAt,
+          themeMode: user.themeMode,
+          staticTheme: user.staticTheme
         }
       });
     } catch (e) {
@@ -534,16 +536,30 @@ const server = http.createServer(async (req, res) => {
 
   if (reqPath === '/api/auth/update-profile' && req.method === 'POST') {
     try {
-      const { handle, name, avatarUrl } = await parseJsonBody(req);
+      const { handle, name, avatarUrl, themeMode, staticTheme } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
       const normKey = handle.trim().toLowerCase();
       const u = db.users[normKey];
       if (!u) return sendJson(res, 404, { error: 'User not found' });
       if (name) u.name = name.trim();
       if (avatarUrl) u.avatarUrl = avatarUrl;
+      if (themeMode === 'per-world' || themeMode === 'static') u.themeMode = themeMode;
+      if (staticTheme) u.staticTheme = staticTheme;
       saveDatabase();
       broadcast({ type: 'PROFILE_UPDATED', user: { handle: u.handle, name: u.name, avatarUrl: u.avatarUrl } });
-      return sendJson(res, 200, { success: true, user: u });
+      return sendJson(res, 200, {
+        success: true,
+        user: {
+          handle: u.handle,
+          name: u.name,
+          role: u.role,
+          avatarUrl: u.avatarUrl,
+          passkeys: u.passkeys || [],
+          createdAt: u.createdAt,
+          themeMode: u.themeMode,
+          staticTheme: u.staticTheme
+        }
+      });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -578,7 +594,9 @@ const server = http.createServer(async (req, res) => {
             role: found.role || 'user',
             avatarUrl: found.avatarUrl,
             passkeys: found.passkeys || [],
-            createdAt: found.createdAt
+            createdAt: found.createdAt,
+            themeMode: found.themeMode,
+            staticTheme: found.staticTheme
           }
         });
       }
@@ -671,7 +689,9 @@ const server = http.createServer(async (req, res) => {
       role: db.users[normKey].role,
       avatarUrl: db.users[normKey].avatarUrl,
       passkeys: db.users[normKey].passkeys || [],
-      createdAt: db.users[normKey].createdAt
+      createdAt: db.users[normKey].createdAt,
+      themeMode: db.users[normKey].themeMode,
+      staticTheme: db.users[normKey].staticTheme
     } : null;
 
     return sendJson(res, 200, {
@@ -691,7 +711,7 @@ const server = http.createServer(async (req, res) => {
   if (reqPath === '/api/worlds' && req.method === 'POST') {
     try {
       const payload = await parseJsonBody(req);
-      const { name, tagline, description, themeAccent, creatorHandle, creatorName, coverUrl } = payload;
+      const { name, tagline, description, themeAccent, visualTheme, creatorHandle, creatorName, coverUrl } = payload;
       if (!name || !creatorHandle) {
         return sendJson(res, 400, { error: 'World name and creator handle required' });
       }
@@ -704,6 +724,7 @@ const server = http.createServer(async (req, res) => {
         tagline: tagline ? tagline.trim() : 'An unwritten story awaits.',
         description: description ? description.trim() : '',
         themeAccent: themeAccent || '#38bdf8',
+        visualTheme: visualTheme || 'modern',
         coverUrl: coverUrl || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
         creatorHandle: creatorHandle,
         createdAt: new Date().toISOString(),
@@ -777,6 +798,7 @@ const server = http.createServer(async (req, res) => {
       if (payload.description !== undefined) w.description = payload.description.trim();
       if (payload.genre !== undefined) w.genre = payload.genre.trim();
       if (payload.themeAccent !== undefined) w.themeAccent = payload.themeAccent;
+      if (payload.visualTheme !== undefined) w.visualTheme = payload.visualTheme;
       if (payload.coverUrl !== undefined) w.coverUrl = payload.coverUrl;
       if (changingMembers && (role === 'creator' || isAdmin)) w.members = payload.members;
       w.updatedAt = new Date().toISOString();
