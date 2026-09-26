@@ -907,6 +907,20 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+// True for a touch-primary device (no mouse/trackpad hover) - phones and tablets,
+// not touch-capable laptops, which still have hover: hover from their trackpad.
+function isTouchPrimaryDevice() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+}
+
+// Grows a message textarea to fit its content up to a max height, then scrolls.
+function autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+}
+
 const PushNotifications = {
   isSupported: () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window,
   getSubscription: async () => {
@@ -4022,6 +4036,7 @@ function ChatScreen({
   const [inputText, setInputText] = useState('');
   const [attachedImage, setAttachedImage] = useState(null);
   const fileInputRef = useRef(null);
+  const messageInputRef = useRef(null);
   const [isPersonaDropdownOpen, setIsPersonaDropdownOpen] = useState(false);
   const [isSpawnModalOpen, setIsSpawnModalOpen] = useState(false);
   const [tempSpawnName, setTempSpawnName] = useState('');
@@ -4073,6 +4088,15 @@ function ChatScreen({
     onSendMessage(text || '', persona, attachedImage);
     setInputText('');
     setAttachedImage(null);
+    if (messageInputRef.current) messageInputRef.current.style.height = 'auto';
+  };
+
+  const handleMessageInputKeyDown = e => {
+    if (e.key !== 'Enter') return;
+    if (isTouchPrimaryDevice()) return; // mobile: Enter always inserts a newline
+    if (e.ctrlKey || e.metaKey) return; // PC: Ctrl/Cmd+Enter inserts a newline
+    e.preventDefault();
+    handleSend();
   };
 
   const formatTime = ts => {
@@ -4405,7 +4429,7 @@ function ChatScreen({
   }, /*#__PURE__*/React.createElement(Icons.X, {
     className: "w-3.5 h-3.5"
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
+    className: "flex items-end space-x-2"
   }, /*#__PURE__*/React.createElement("input", {
     type: "file",
     ref: fileInputRef,
@@ -4420,16 +4444,18 @@ function ChatScreen({
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
     className: "w-4 h-4"
   })), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 bg-slate-800 rounded-xl px-3 py-1.5 border border-slate-700 flex items-center space-x-2 focus-within:border-cyan-400"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "text",
+    className: "flex-1 bg-slate-800 rounded-xl px-3 py-1.5 border border-slate-700 flex items-end space-x-2 focus-within:border-cyan-400"
+  }, /*#__PURE__*/React.createElement("textarea", {
+    ref: messageInputRef,
     value: inputText,
-    onChange: e => setInputText(e.target.value),
-    onKeyDown: e => {
-      if (e.key === 'Enter') handleSend();
+    onChange: e => {
+      setInputText(e.target.value);
+      autoResizeTextarea(e.target);
     },
+    onKeyDown: handleMessageInputKeyDown,
+    rows: 1,
     placeholder: `Message as ${activePersona?.name || 'Persona'}...`,
-    className: "flex-1 bg-transparent text-slate-100 text-xs sm:text-sm focus:outline-none"
+    className: "flex-1 bg-transparent text-slate-100 text-xs sm:text-sm focus:outline-none resize-none overflow-y-auto max-h-32 py-0.5"
   })), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: handleSend,
@@ -4572,6 +4598,7 @@ function DMsScreen({
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const fileInputRef = useRef(null);
+  const messageInputRef = useRef(null);
   const scrollRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
@@ -4693,6 +4720,15 @@ function DMsScreen({
 
     setInputText('');
     setAttachedImage(null);
+    if (messageInputRef.current) messageInputRef.current.style.height = 'auto';
+  };
+
+  const handleMessageInputKeyDown = e => {
+    if (e.key !== 'Enter') return;
+    if (isTouchPrimaryDevice()) return; // mobile: Enter always inserts a newline
+    if (e.ctrlKey || e.metaKey) return; // PC: Ctrl/Cmd+Enter inserts a newline
+    e.preventDefault();
+    handleSend();
   };
 
   const startEditDM = msg => {
@@ -4950,7 +4986,7 @@ function DMsScreen({
   }, /*#__PURE__*/React.createElement(Icons.X, {
     className: "w-3 h-3"
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2"
+    className: "flex items-end space-x-2"
   }, /*#__PURE__*/React.createElement("input", {
     type: "file",
     ref: fileInputRef,
@@ -4964,15 +5000,17 @@ function DMsScreen({
     title: "Attach Image (+)"
   }, /*#__PURE__*/React.createElement(Icons.Plus, {
     className: "w-4 h-4"
-  })), /*#__PURE__*/React.createElement("input", {
-    type: "text",
+  })), /*#__PURE__*/React.createElement("textarea", {
+    ref: messageInputRef,
     value: inputText,
-    onChange: e => setInputText(e.target.value),
-    onKeyDown: e => {
-      if (e.key === 'Enter') handleSend();
+    onChange: e => {
+      setInputText(e.target.value);
+      autoResizeTextarea(e.target);
     },
+    onKeyDown: handleMessageInputKeyDown,
+    rows: 1,
     placeholder: `Direct message to ${activeContact.name}...`,
-    className: "flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-cyan-400"
+    className: "flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-cyan-400 resize-none overflow-y-auto max-h-32"
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: handleSend,
