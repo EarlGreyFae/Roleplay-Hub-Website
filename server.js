@@ -1488,7 +1488,11 @@ const server = http.createServer(async (req, res) => {
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400'
+      // sw.js must never be cached: browsers only detect a new service worker by
+      // byte-comparing a fresh fetch of this exact file, so a stale cached copy
+      // can keep an old service worker (and whatever it intercepts) installed
+      // long after a redeploy ships a fix.
+      'Cache-Control': (ext === '.html' || targetFile === 'sw.js') ? 'no-cache' : 'public, max-age=86400'
     });
     fs.createReadStream(filePath).pipe(res);
   } else {
