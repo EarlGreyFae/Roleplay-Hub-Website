@@ -1512,6 +1512,30 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Removes every stored subscription for an account, regardless of which
+  // device/browser it came from. "Disable on This Device" only ever removes
+  // *this* device's own endpoint - it can't reach a stale entry left behind
+  // by a different browser/device under the same account (e.g. one created
+  // before a subscribe attempt from a new device silently failed to ever
+  // reach the server - see the res.ok check added to the client's
+  // subscribe() - leaving an old, unrelated entry as the only thing on
+  // file). This is the only way to actually clear that out and get every
+  // device subscribing fresh.
+  if (reqPath === '/api/push/unsubscribe-all' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const key = handle.trim().toLowerCase();
+      const before = db.pushSubscriptions.length;
+      db.pushSubscriptions = db.pushSubscriptions.filter(s => (s.handle || '').toLowerCase() !== key);
+      const removed = before - db.pushSubscriptions.length;
+      if (removed > 0) saveDatabase();
+      return sendJson(res, 200, { success: true, removed });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // 9c. Scratch Pad Notes (private, per-account - never shared or broadcast)
   if (reqPath === '/api/scratchpad' && req.method === 'POST') {
     try {
