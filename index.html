@@ -1846,6 +1846,21 @@ function formatMessageTimestamp(ts) {
   }
 }
 
+// iOS (Safari and every other iOS browser, since they're all WebKit under
+// the hood) only exposes the Push API to a web app launched from its own
+// Home Screen icon - a plain Safari tab or bookmark can never receive push
+// notifications there, no matter what the code does; this is an Apple
+// platform restriction, not a bug. Used to surface the "Add to Home Screen"
+// instruction proactively instead of leaving people to find it buried in
+// Settings after wondering why notifications never arrive.
+function isIOSNonStandalone() {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.navigator.standalone === true ||
+    (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches);
+  return isIOS && !isStandalone;
+}
+
 const PushNotifications = {
   isSupported: () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window,
   getSubscription: async () => {
@@ -7717,6 +7732,23 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('chat');
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
+  // Proactively nudges iOS users who opened this as a regular Safari tab/
+  // bookmark toward "Add to Home Screen" - the only way push notifications
+  // can ever work there - instead of leaving them to discover it themselves
+  // in Settings after notifications silently never arrive. Dismissal is
+  // remembered per-device (not per-account): it's a fact about this
+  // browser/OS, not about who's logged in.
+  const [showIosA2hsBanner, setShowIosA2hsBanner] = useState(() => {
+    try {
+      return isIOSNonStandalone() && localStorage.getItem('rphub_ios_a2hs_banner_dismissed') !== '1';
+    } catch (e) {
+      return false;
+    }
+  });
+  const dismissIosA2hsBanner = () => {
+    setShowIosA2hsBanner(false);
+    try { localStorage.setItem('rphub_ios_a2hs_banner_dismissed', '1'); } catch (e) {}
+  };
 
   // App data state
   const [worlds, setWorlds] = useState([]);
@@ -8788,7 +8820,16 @@ function App() {
 
   return /*#__PURE__*/React.createElement("div", {
     className: `fixed inset-0 w-full h-full h-[100dvh] flex flex-col overflow-hidden theme-${theme} bg-slate-950 text-slate-100`
-  }, /*#__PURE__*/React.createElement("header", {
+  }, showIosA2hsBanner && /*#__PURE__*/React.createElement("div", {
+    className: "flex-shrink-0 z-40 bg-cyan-950/90 border-b border-cyan-500/40 text-cyan-100 text-[11px] sm:text-xs px-3 py-2 flex items-center justify-between gap-2 safe-top"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "leading-snug"
+  }, "📲 On iPhone, notifications only work once you ", /*#__PURE__*/React.createElement("strong", { className: "font-bold" }, "Add Roleplay Hub to your Home Screen"), " (tap Share, then \"Add to Home Screen\") and open it from there."), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: dismissIosA2hsBanner,
+    className: "flex-shrink-0 p-1 rounded-lg hover:bg-cyan-800/50 text-cyan-300 transition",
+    title: "Dismiss"
+  }, "✕")), /*#__PURE__*/React.createElement("header", {
     className: "flex-shrink-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 safe-top w-full"
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-4xl mx-auto px-2 sm:px-3 py-1.5 sm:py-2 flex items-center justify-between gap-1 sm:gap-2"
