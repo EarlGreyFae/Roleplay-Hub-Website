@@ -2449,14 +2449,14 @@ function YouTubeEmbedCard({
   })));
 }
 
-// Shared chat/DM inline markdown: **bold**, *italic*, ~~strikethrough~~.
+// Shared chat/DM inline markdown: **bold**, *italic*, ``strikethrough``.
 // Bold is checked before italic in the alternation so "**x**" is never split
 // as a pair of dangling italics around an empty/asterisk-led middle. Used by
 // both EmbedRenderer (ChatScreen) and DMsScreen, which renders its own
 // message text directly rather than through EmbedRenderer.
 function renderChatMarkdown(textStr, keyPrefix) {
   if (!textStr) return textStr;
-  const mdRegex = /(\*\*[\s\S]+?\*\*|\*[^\s*][^*]*?\*|~~[\s\S]+?~~)/g;
+  const mdRegex = /(\*\*[\s\S]+?\*\*|\*[^\s*][^*]*?\*|``[\s\S]+?``)/g;
   const out = [];
   let lastIndex = 0;
   let match;
@@ -2471,7 +2471,7 @@ function renderChatMarkdown(textStr, keyPrefix) {
         key: `${keyPrefix}_md${k++}`,
         className: "font-bold"
       }, token.slice(2, -2)));
-    } else if (token.startsWith('~~')) {
+    } else if (token.startsWith('``')) {
       out.push(/*#__PURE__*/React.createElement("span", {
         key: `${keyPrefix}_md${k++}`,
         style: { textDecoration: 'line-through' }
