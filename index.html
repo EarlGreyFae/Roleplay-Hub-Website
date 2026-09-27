@@ -7043,9 +7043,28 @@ function SettingsScreen({
           }, pushTestBusy ? "Sending test..." : "Send Test Notification"),
           pushTestResult && React.createElement("div", {
             className: `text-xs p-2.5 rounded-xl border whitespace-pre-wrap font-mono ${pushTestResult.success ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/50 text-rose-200'}`
-          }, pushTestResult.success
-            ? "Server accepted the push - if it didn't show up on this device, the issue is between the push service and this device/browser, not this app's server."
-            : (pushTestResult.error || JSON.stringify(pushTestResult.results || pushTestResult)))
+          }, (() => {
+            if (pushTestResult.error && !pushTestResult.results) return pushTestResult.error;
+            const results = pushTestResult.results || [];
+            // Show every stored subscription's own result, not just an
+            // overall success/fail - a single "success" can hide a stale
+            // duplicate subscription (from an old install, a previous
+            // Add to Home Screen, a different browser session) sitting
+            // alongside the real one, which is exactly what it looks like
+            // when the server reports success but nothing ever shows up.
+            const lines = [`${results.length} subscription(s) on file for this account:`];
+            results.forEach((r, i) => {
+              let host = r.endpoint;
+              try { host = new URL(r.endpoint).host; } catch (e) {}
+              lines.push(`${i + 1}. ${host} - ${r.success ? 'accepted' : `FAILED (${r.statusCode || 'no status'}): ${r.error || 'unknown error'}`}`);
+            });
+            if (results.length > 1) {
+              lines.push('', 'More than one subscription is stored - if only one of these is this device, the push may be going to a stale one from an old install instead of the live one.');
+            } else if (pushTestResult.success) {
+              lines.push('', "Server accepted the push - if it didn't show up on this device, the issue is between the push service and this device/browser, not this app's server.");
+            }
+            return lines.join('\n');
+          })())
         )
       )
     ),
