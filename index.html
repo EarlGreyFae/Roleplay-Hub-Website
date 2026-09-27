@@ -8802,6 +8802,21 @@ function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ readerHandle: userProfile.handle, contactHandle: sender })
+        }).then(res => {
+          if (!res.ok) return;
+          // Apply the read state locally right away rather than only ever
+          // waiting for the DMS_READ broadcast to loop back over the
+          // WebSocket - if that connection has dropped or is mid-reconnect
+          // (backgrounding on mobile, a network blip), the server-side read
+          // still succeeds, but the client never finds out and the unread
+          // badge stays stuck until a full reload re-fetches from scratch.
+          const senderKey = (sender || '').toLowerCase();
+          setDmMessages(prev => prev.map(m => {
+            if ((m.recipientHandle || '').toLowerCase() === myHandle && (m.senderHandle || '').toLowerCase() === senderKey && m.status !== 'read') {
+              return { ...m, status: 'read' };
+            }
+            return m;
+          }));
         }).catch(() => {});
       });
     }
