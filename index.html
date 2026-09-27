@@ -2474,7 +2474,7 @@ function renderChatMarkdown(textStr, keyPrefix) {
     } else if (token.startsWith('~~')) {
       out.push(/*#__PURE__*/React.createElement("span", {
         key: `${keyPrefix}_md${k++}`,
-        className: "line-through"
+        style: { textDecoration: 'line-through' }
       }, token.slice(2, -2)));
     } else {
       out.push(/*#__PURE__*/React.createElement("em", {
