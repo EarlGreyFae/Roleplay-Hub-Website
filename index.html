@@ -2449,6 +2449,45 @@ function YouTubeEmbedCard({
   })));
 }
 
+// Shared chat/DM inline markdown: **bold**, *italic*, ~~strikethrough~~.
+// Bold is checked before italic in the alternation so "**x**" is never split
+// as a pair of dangling italics around an empty/asterisk-led middle. Used by
+// both EmbedRenderer (ChatScreen) and DMsScreen, which renders its own
+// message text directly rather than through EmbedRenderer.
+function renderChatMarkdown(textStr, keyPrefix) {
+  if (!textStr) return textStr;
+  const mdRegex = /(\*\*[\s\S]+?\*\*|\*[^\s*][^*]*?\*|~~[\s\S]+?~~)/g;
+  const out = [];
+  let lastIndex = 0;
+  let match;
+  let k = 0;
+  while ((match = mdRegex.exec(textStr)) !== null) {
+    if (match.index > lastIndex) {
+      out.push(textStr.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**')) {
+      out.push(/*#__PURE__*/React.createElement("strong", {
+        key: `${keyPrefix}_md${k++}`,
+        className: "font-bold"
+      }, token.slice(2, -2)));
+    } else if (token.startsWith('~~')) {
+      out.push(/*#__PURE__*/React.createElement("span", {
+        key: `${keyPrefix}_md${k++}`,
+        className: "line-through"
+      }, token.slice(2, -2)));
+    } else {
+      out.push(/*#__PURE__*/React.createElement("em", {
+        key: `${keyPrefix}_md${k++}`,
+        className: "italic"
+      }, token.slice(1, -1)));
+    }
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < textStr.length) out.push(textStr.slice(lastIndex));
+  return out;
+}
+
 // Embeds Renderer (GIFs, Videos, Links, Apps)
 // ==========================================
 
@@ -2660,7 +2699,7 @@ function EmbedRenderer({
         }
         return /*#__PURE__*/React.createElement("span", {
           key: `${pIdx}_${sIdx}`
-        }, seg);
+        }, renderChatMarkdown(seg, `${pIdx}_${sIdx}`));
       });
     });
   };
@@ -5936,7 +5975,7 @@ function DMsScreen({
       className: "px-2.5 py-1 rounded-lg bg-black/20 hover:bg-black/30 text-white text-[10px] font-semibold transition"
     }, "Cancel"))) : /*#__PURE__*/React.createElement(React.Fragment, null, msg.content && /*#__PURE__*/React.createElement("div", {
       className: "whitespace-pre-wrap leading-relaxed"
-    }, msg.content), msg.imageUrl && /*#__PURE__*/React.createElement("img", {
+    }, renderChatMarkdown(msg.content, msg.id)), msg.imageUrl && /*#__PURE__*/React.createElement("img", {
       src: msg.imageUrl,
       alt: "Attached",
       className: "mt-2 rounded-xl max-h-60 object-cover border border-slate-700"
