@@ -101,16 +101,41 @@ function saveDatabase() {
   saveTimeout = setTimeout(saveDatabaseSync, 300);
 }
 
+// Once PG sync fails a few times in a row (typically a stale/incorrect
+// DATABASE_URL, or the Postgres instance itself is gone - e.g. a deleted or
+// expired Render database - so every single retry is doomed the same way),
+// stop hammering it on every save and re-logging the identical error. Back
+// off for a cooldown period instead, then try again once in case it was a
+// transient network blip; local-disk persistence is unaffected either way.
+const PG_FAILURE_THRESHOLD = 3;
+const PG_COOLDOWN_MS = 60000;
+let pgConsecutiveFailures = 0;
+let pgRetryAfter = 0;
+
 function saveDatabaseSync() {
   try {
     const tempFile = DB_FILE + '.tmp';
     fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf8');
     fs.renameSync(tempFile, DB_FILE);
-    if (pgPool) {
+    if (pgPool && Date.now() >= pgRetryAfter) {
       pgPool.query(
         "INSERT INTO roleplay_hub_store (key, value, updated_at) VALUES ('database_state', $1, now()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()",
         [JSON.stringify(db)]
-      ).catch(err => console.error('[DB] PG save error:', err.message));
+      ).then(() => {
+        pgConsecutiveFailures = 0;
+      }).catch(err => {
+        pgConsecutiveFailures++;
+        console.error('[DB] PG save error:', err.message);
+        if (pgConsecutiveFailures >= PG_FAILURE_THRESHOLD) {
+          pgRetryAfter = Date.now() + PG_COOLDOWN_MS;
+          console.error(
+            `[DB] PostgreSQL has failed ${pgConsecutiveFailures} saves in a row - pausing PG sync for ${PG_COOLDOWN_MS / 1000}s ` +
+            `(local disk is still saving normally, so no data is being lost). This usually means DATABASE_URL points at a ` +
+            `database that no longer exists or isn't reachable from here - check the Postgres instance still exists in the ` +
+            `Render dashboard and that DATABASE_URL is its current connection string.`
+          );
+        }
+      });
     }
   } catch (err) {
     console.error('[DB] Error saving database:', err.message);
