@@ -1907,11 +1907,22 @@ const PushNotifications = {
           applicationServerKey: currentKey
         });
       }
-      await fetch('/api/push/subscribe', {
+      // fetch() only rejects on an actual network failure - a server-side
+      // error (4xx/5xx) still resolves normally, so without checking res.ok
+      // this would report "enabled!" to the user even when the server never
+      // actually stored the subscription. That's a real, confirmed way for
+      // this to silently fail: the browser ends up with a live local
+      // subscription (so the UI shows "subscribed"), but the server has
+      // nothing to send pushes to.
+      const subscribeRes = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ handle, subscription: sub.toJSON() })
       });
+      if (!subscribeRes.ok) {
+        const errBody = await subscribeRes.json().catch(() => ({}));
+        return { success: false, error: errBody.error || `Server rejected the subscription (${subscribeRes.status}).` };
+      }
       return { success: true };
     } catch (e) {
       return { success: false, error: e.message || 'Could not enable push notifications.' };
@@ -1954,6 +1965,24 @@ const PushNotifications = {
   sendTest: async (handle) => {
     try {
       const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: data.error || `Server returned ${res.status}` };
+      return data;
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+  // Clears every subscription on file for this account, from any device -
+  // "Disable on This Device" can only ever remove this device's own
+  // endpoint, so it has no way to reach a stale entry left behind by a
+  // different browser/device under the same account.
+  unsubscribeAll: async (handle) => {
+    try {
+      const res = await fetch('/api/push/unsubscribe-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ handle })
@@ -6566,6 +6595,20 @@ function SettingsScreen({
     setPushTestBusy(false);
   };
 
+  const handleResetAllPushDevices = async () => {
+    if (!confirm('This removes push notification subscriptions for every device on this account, including this one. You\'ll need to re-enable it here afterward. Continue?')) return;
+    setPushTestBusy(true);
+    setPushTestResult(null);
+    const result = await PushNotifications.unsubscribeAll(appState.userProfile.handle);
+    if (result.success) {
+      setPushSubscribed(false);
+      setPushTestResult({ success: true, results: [] , resetMessage: `Cleared ${result.removed} stored subscription(s). Tap "Enable on This Device" again to subscribe fresh.` });
+    } else {
+      setPushTestResult(result);
+    }
+    setPushTestBusy(false);
+  };
+
   const myHandle = (appState.userProfile?.handle || '').toLowerCase();
   const createdWorlds = (appState.worlds || []).filter(w => (w.creatorHandle || '').toLowerCase() === myHandle);
 
@@ -7041,9 +7084,17 @@ function SettingsScreen({
             onClick: handleTestPush,
             className: "w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition disabled:opacity-50"
           }, pushTestBusy ? "Sending test..." : "Send Test Notification"),
+          React.createElement("button", {
+            type: "button",
+            disabled: pushTestBusy,
+            onClick: handleResetAllPushDevices,
+            title: "Removes every stored subscription for this account, on any device - use this if Send Test Notification shows a subscription that isn't this device.",
+            className: "w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border border-amber-700/40 transition disabled:opacity-50"
+          }, "Reset All Devices"),
           pushTestResult && React.createElement("div", {
             className: `text-xs p-2.5 rounded-xl border whitespace-pre-wrap font-mono ${pushTestResult.success ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/50 text-rose-200'}`
           }, (() => {
+            if (pushTestResult.resetMessage) return pushTestResult.resetMessage;
             if (pushTestResult.error && !pushTestResult.results) return pushTestResult.error;
             const results = pushTestResult.results || [];
             // Show every stored subscription's own result, not just an
