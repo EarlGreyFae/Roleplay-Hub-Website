@@ -1944,6 +1944,26 @@ const PushNotifications = {
     } catch (e) {
       return { success: false, error: e.message };
     }
+  },
+  // Fires one real push right now and reports back exactly what the server-
+  // side send attempt actually did (which push service, what status code,
+  // what error) - the fastest way to tell "the subscription never reached
+  // the server" apart from "the server tried and the push service itself
+  // rejected or dropped it" apart from "it arrived but the service worker's
+  // notification never displayed."
+  sendTest: async (handle) => {
+    try {
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: data.error || `Server returned ${res.status}` };
+      return data;
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   }
 };
 if (typeof window !== "undefined") window.PushNotifications = PushNotifications;
@@ -6471,6 +6491,8 @@ function SettingsScreen({
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMsg, setPushMsg] = useState(null);
   const [pushSupported] = useState(() => PushNotifications.isSupported());
+  const [pushTestBusy, setPushTestBusy] = useState(false);
+  const [pushTestResult, setPushTestResult] = useState(null);
 
   useEffect(() => {
     PushNotifications.getSubscription().then(sub => setPushSubscribed(!!sub));
@@ -6534,6 +6556,14 @@ function SettingsScreen({
     }
     setPushBusy(false);
     setTimeout(() => setPushMsg(null), 4000);
+  };
+
+  const handleTestPush = async () => {
+    setPushTestBusy(true);
+    setPushTestResult(null);
+    const result = await PushNotifications.sendTest(appState.userProfile.handle);
+    setPushTestResult(result);
+    setPushTestBusy(false);
   };
 
   const myHandle = (appState.userProfile?.handle || '').toLowerCase();
@@ -7003,7 +7033,20 @@ function SettingsScreen({
           onClick: handleTogglePush,
           className: `w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs transition shadow text-center disabled:opacity-50 ${pushSubscribed ? 'bg-slate-800 hover:bg-slate-750 text-rose-300 border border-rose-500/30' : 'bg-cyan-600 hover:bg-cyan-500 text-white'}`
         }, pushBusy ? "Please wait..." : pushSubscribed ? "Disable on This Device" : "Enable on This Device"),
-        pushMsg && React.createElement("p", { className: "text-xs text-cyan-300" }, pushMsg)
+        pushMsg && React.createElement("p", { className: "text-xs text-cyan-300" }, pushMsg),
+        pushSubscribed && React.createElement("div", { className: "pt-2 border-t border-slate-800 space-y-2" },
+          React.createElement("button", {
+            type: "button",
+            disabled: pushTestBusy,
+            onClick: handleTestPush,
+            className: "w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition disabled:opacity-50"
+          }, pushTestBusy ? "Sending test..." : "Send Test Notification"),
+          pushTestResult && React.createElement("div", {
+            className: `text-xs p-2.5 rounded-xl border whitespace-pre-wrap font-mono ${pushTestResult.success ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/50 text-rose-200'}`
+          }, pushTestResult.success
+            ? "Server accepted the push - if it didn't show up on this device, the issue is between the push service and this device/browser, not this app's server."
+            : (pushTestResult.error || JSON.stringify(pushTestResult.results || pushTestResult)))
+        )
       )
     ),
 

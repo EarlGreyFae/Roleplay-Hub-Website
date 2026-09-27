@@ -1465,6 +1465,53 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Sends one real push immediately and reports back exactly what happened,
+  // instead of the fire-and-forget path every other push goes through
+  // (sendPushToHandles only logs non-404/410 errors server-side and never
+  // surfaces them to whoever triggered the notification) - lets someone
+  // whose pushes "just don't arrive" get the actual underlying error
+  // (wrong VAPID key, a malformed subscription, the push service rejecting
+  // the payload, etc.) instead of only ever seeing silence.
+  if (reqPath === '/api/push/test' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      if (!webpush) return sendJson(res, 503, { error: 'The web-push module is not installed on this server.' });
+      if (!db.vapidKeys || !db.vapidKeys.publicKey) return sendJson(res, 503, { error: 'VAPID keys have not been initialized on this server yet.' });
+
+      const key = handle.trim().toLowerCase();
+      const subs = db.pushSubscriptions.filter(s => (s.handle || '').toLowerCase() === key);
+      if (subs.length === 0) {
+        return sendJson(res, 404, { error: 'No push subscription is stored for this account on this server. Try disabling and re-enabling push notifications in Settings first.' });
+      }
+
+      const payload = JSON.stringify({
+        title: 'Test Notification',
+        body: 'If you can see this, push notifications are working end to end.',
+        tag: 'test',
+        url: '/'
+      });
+
+      const results = await Promise.all(subs.map(async s => {
+        try {
+          await webpush.sendNotification(s.subscription, payload);
+          return { endpoint: s.subscription.endpoint, success: true };
+        } catch (err) {
+          return {
+            endpoint: s.subscription.endpoint,
+            success: false,
+            statusCode: err.statusCode || null,
+            error: (err.body && String(err.body)) || err.message || 'Unknown error'
+          };
+        }
+      }));
+
+      return sendJson(res, 200, { success: results.some(r => r.success), results });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // 9c. Scratch Pad Notes (private, per-account - never shared or broadcast)
   if (reqPath === '/api/scratchpad' && req.method === 'POST') {
     try {
