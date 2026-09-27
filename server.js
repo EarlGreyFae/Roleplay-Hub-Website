@@ -1801,6 +1801,14 @@ function pruneRelatedImagesChannels() {
   saveDatabaseSync();
 }
 
+// Apple's web push service validates the VAPID JWT's "sub" claim and rejects
+// a mailto: address on a reserved/non-resolvable TLD (.local, .invalid, .test,
+// .example) with a 403 "BadJwtToken" - confirmed as the actual cause of a real
+// iPhone subscription's test push failing that way. FCM doesn't enforce this,
+// which is why the same subject "worked" (was silently accepted) there. Kept
+// overridable via env var in case a real contact domain is ever configured.
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'https://roleplay-hub.onrender.com';
+
 // Push notifications need a stable VAPID keypair. Generate one on first boot
 // and persist it in the (now-durable) db so every device that subscribes
 // keeps working across restarts instead of silently breaking.
@@ -1811,7 +1819,7 @@ function ensureVapidKeys() {
     saveDatabaseSync();
     console.log('[Push] Generated new VAPID keypair');
   }
-  webpush.setVapidDetails('mailto:admin@roleplay-hub.local', db.vapidKeys.publicKey, db.vapidKeys.privateKey);
+  webpush.setVapidDetails(VAPID_SUBJECT, db.vapidKeys.publicKey, db.vapidKeys.privateKey);
 }
 
 async function sendPushToHandles(handles, payload) {
