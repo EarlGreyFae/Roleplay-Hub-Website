@@ -4180,6 +4180,506 @@
         "amount": 12
       }
     }
+  ],
+  "woods": [
+    {
+      "id": "oak",
+      "name": "Oak",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "spruce",
+      "name": "Spruce",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "birch",
+      "name": "Birch",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "jungle",
+      "name": "Jungle",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "acacia",
+      "name": "Acacia",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "dark-oak",
+      "name": "Dark Oak",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "mangrove",
+      "name": "Mangrove",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "cherry",
+      "name": "Cherry",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "bamboo",
+      "name": "Bamboo",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "crimson",
+      "name": "Crimson",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "warped",
+      "name": "Warped",
+      "free": true,
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "teak",
+      "name": "Teak",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 1
+    },
+    {
+      "id": "cedar",
+      "name": "Cedar",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 2
+    },
+    {
+      "id": "rubberwood",
+      "name": "Rubberwood",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 3
+    },
+    {
+      "id": "walnut",
+      "name": "Walnut",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 4
+    },
+    {
+      "id": "mahogany",
+      "name": "Mahogany",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 5
+    },
+    {
+      "id": "zebrano",
+      "name": "Zebrano",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 6
+    },
+    {
+      "id": "rosewood",
+      "name": "Rosewood",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 7
+    },
+    {
+      "id": "rainbow-gum",
+      "name": "Rainbow Gum",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 8
+    },
+    {
+      "id": "purpleheart",
+      "name": "Purpleheart",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 8
+    },
+    {
+      "id": "ebony",
+      "name": "Ebony",
+      "free": false,
+      "cost": 5000,
+      "unlocksAtRetirement": 8
+    }
+  ],
+  "woodParts": [
+    "hull",
+    "deck",
+    "railing",
+    "mast"
+  ],
+  "sails": [
+    {
+      "id": "white",
+      "name": "White",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "weathered",
+      "name": "Weathered",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "tan",
+      "name": "Tan",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "sea-blue",
+      "name": "Sea Blue",
+      "unlocksAtRetirement": 1
+    },
+    {
+      "id": "crimson-sail",
+      "name": "Crimson",
+      "unlocksAtRetirement": 2
+    },
+    {
+      "id": "midnight",
+      "name": "Midnight",
+      "unlocksAtRetirement": 3
+    },
+    {
+      "id": "sunshine",
+      "name": "Sunshine",
+      "unlocksAtRetirement": 4
+    },
+    {
+      "id": "royal",
+      "name": "Royal",
+      "unlocksAtRetirement": 5
+    },
+    {
+      "id": "sunset",
+      "name": "Sunset",
+      "unlocksAtRetirement": 6
+    },
+    {
+      "id": "lagoon",
+      "name": "Lagoon",
+      "unlocksAtRetirement": 7
+    },
+    {
+      "id": "rose",
+      "name": "Rose",
+      "unlocksAtRetirement": 8
+    }
+  ],
+  "flags": [
+    {
+      "id": "plain-pennant",
+      "name": "Plain Pennant",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "jolly-roger",
+      "name": "Jolly Roger",
+      "unlocksAtRetirement": 1
+    },
+    {
+      "id": "crows-colours",
+      "name": "Crow's Colours",
+      "unlocksAtRetirement": 2
+    },
+    {
+      "id": "harbour-stripes",
+      "name": "Harbour Stripes",
+      "unlocksAtRetirement": 3
+    },
+    {
+      "id": "coral-bloom-flag",
+      "name": "Coral Bloom",
+      "unlocksAtRetirement": 4
+    },
+    {
+      "id": "chartmaker",
+      "name": "Chartmaker",
+      "unlocksAtRetirement": 5
+    },
+    {
+      "id": "lighthouse-beam",
+      "name": "Lighthouse Beam",
+      "unlocksAtRetirement": 6
+    },
+    {
+      "id": "sunset-gradient",
+      "name": "Sunset Gradient",
+      "unlocksAtRetirement": 7
+    },
+    {
+      "id": "the-deep-flag",
+      "name": "The Deep",
+      "unlocksAtRetirement": 8
+    }
+  ],
+  "pets": [
+    {
+      "id": "soot",
+      "name": "Ship's Cat (Soot)",
+      "emoji": "🐱",
+      "unlocksAtRetirement": 1
+    },
+    {
+      "id": "rusty",
+      "name": "Harbour Fox (Rusty)",
+      "emoji": "🦊",
+      "unlocksAtRetirement": 2
+    },
+    {
+      "id": "biscuit",
+      "name": "Deck Rabbit (Biscuit)",
+      "emoji": "🐰",
+      "unlocksAtRetirement": 3
+    },
+    {
+      "id": "marmalade",
+      "name": "Ginger Cat (Marmalade)",
+      "emoji": "🐈",
+      "unlocksAtRetirement": 4
+    },
+    {
+      "id": "shelly",
+      "name": "Baby Sea Turtle (Shelly)",
+      "emoji": "🐢",
+      "unlocksAtRetirement": 5
+    },
+    {
+      "id": "captain",
+      "name": "Captain Parrot (Captain)",
+      "emoji": "🦜",
+      "unlocksAtRetirement": 6
+    },
+    {
+      "id": "frost",
+      "name": "Snow Fox (Frost)",
+      "emoji": "🦊",
+      "unlocksAtRetirement": 7
+    },
+    {
+      "id": "pearl",
+      "name": "Siamese Cat (Pearl)",
+      "emoji": "🐈‍⬛",
+      "unlocksAtRetirement": 8
+    }
+  ],
+  "chatBadges": [
+    {
+      "id": "anchor-badge",
+      "name": "Anchor",
+      "emoji": "⚓",
+      "unlocksAtRetirement": 1
+    },
+    {
+      "id": "sea-spark",
+      "name": "Sea Spark",
+      "emoji": "✨",
+      "unlocksAtRetirement": 2
+    },
+    {
+      "id": "coral-bloom-badge",
+      "name": "Coral Bloom",
+      "emoji": "🪸",
+      "unlocksAtRetirement": 3
+    },
+    {
+      "id": "trident",
+      "name": "Trident",
+      "emoji": "🔱",
+      "unlocksAtRetirement": 4
+    },
+    {
+      "id": "night-moon",
+      "name": "Night Moon",
+      "emoji": "🌙",
+      "unlocksAtRetirement": 5
+    },
+    {
+      "id": "harbour-sun",
+      "name": "Harbour Sun",
+      "emoji": "☀️",
+      "unlocksAtRetirement": 6
+    },
+    {
+      "id": "sea-crown",
+      "name": "Sea Crown",
+      "emoji": "👑",
+      "unlocksAtRetirement": 7
+    },
+    {
+      "id": "legend-star",
+      "name": "Legend Star",
+      "emoji": "⭐",
+      "unlocksAtRetirement": 8
+    }
+  ],
+  "radioTracks": [
+    {
+      "id": "track-1",
+      "name": "Track 1",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "track-2",
+      "name": "Track 2",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "track-3",
+      "name": "Track 3",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "track-4",
+      "name": "Track 4",
+      "unlocksAtRetirement": 0
+    },
+    {
+      "id": "track-5",
+      "name": "Track 5",
+      "unlocksAtRetirement": 1
+    },
+    {
+      "id": "track-6",
+      "name": "Track 6",
+      "unlocksAtRetirement": 1
+    },
+    {
+      "id": "track-7",
+      "name": "Track 7",
+      "unlocksAtRetirement": 2
+    },
+    {
+      "id": "track-8",
+      "name": "Track 8",
+      "unlocksAtRetirement": 2
+    },
+    {
+      "id": "track-9",
+      "name": "Track 9",
+      "unlocksAtRetirement": 3
+    },
+    {
+      "id": "track-10",
+      "name": "Track 10",
+      "unlocksAtRetirement": 3
+    },
+    {
+      "id": "track-11",
+      "name": "Track 11",
+      "unlocksAtRetirement": 4
+    },
+    {
+      "id": "track-12",
+      "name": "Track 12",
+      "unlocksAtRetirement": 4
+    },
+    {
+      "id": "track-13",
+      "name": "Track 13",
+      "unlocksAtRetirement": 5
+    },
+    {
+      "id": "track-14",
+      "name": "Track 14",
+      "unlocksAtRetirement": 5
+    },
+    {
+      "id": "track-15",
+      "name": "Track 15",
+      "unlocksAtRetirement": 6
+    },
+    {
+      "id": "track-16",
+      "name": "Track 16",
+      "unlocksAtRetirement": 6
+    },
+    {
+      "id": "track-17",
+      "name": "Track 17",
+      "unlocksAtRetirement": 7
+    },
+    {
+      "id": "track-18",
+      "name": "Track 18",
+      "unlocksAtRetirement": 7
+    },
+    {
+      "id": "track-19",
+      "name": "Track 19",
+      "unlocksAtRetirement": 8
+    },
+    {
+      "id": "track-20",
+      "name": "Track 20",
+      "unlocksAtRetirement": 8
+    },
+    {
+      "id": "track-21",
+      "name": "Track 21",
+      "unlocksAtRetirement": 9
+    },
+    {
+      "id": "track-22",
+      "name": "Track 22",
+      "unlocksAtRetirement": 9
+    },
+    {
+      "id": "track-23",
+      "name": "Track 23",
+      "unlocksAtRetirement": 10
+    },
+    {
+      "id": "track-24",
+      "name": "Track 24",
+      "unlocksAtRetirement": 10
+    },
+    {
+      "id": "track-25",
+      "name": "Track 25",
+      "unlocksAtRetirement": 11
+    },
+    {
+      "id": "track-26",
+      "name": "Track 26",
+      "unlocksAtRetirement": 11
+    },
+    {
+      "id": "track-27",
+      "name": "Track 27",
+      "unlocksAtRetirement": 12
+    },
+    {
+      "id": "track-28",
+      "name": "Track 28",
+      "unlocksAtRetirement": 12
+    },
+    {
+      "id": "track-29",
+      "name": "Track 29",
+      "unlocksAtRetirement": 13
+    },
+    {
+      "id": "track-30",
+      "name": "Track 30",
+      "unlocksAtRetirement": 13
+    }
   ]
 };
 

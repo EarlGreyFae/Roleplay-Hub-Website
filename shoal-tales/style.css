@@ -508,3 +508,68 @@
   background: var(--shoal-gold-bright);
   box-shadow: 0 0 8px rgba(240, 193, 104, 0.6);
 }
+
+/* The Shipwright (cosmetics) */
+
+.shoal-shipwright-section {
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+  border-top: 1px dashed var(--shoal-card-border);
+}
+.shoal-shipwright-section:first-of-type { padding-top: 0; margin-top: 0.5rem; border-top: none; }
+.shoal-shipwright-subtitle {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--shoal-gold-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.4rem;
+}
+
+.shoal-wood-part-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.shoal-wood-part-label { flex: 0 0 4rem; font-size: 0.72rem; font-weight: 700; }
+.shoal-wood-part-row select {
+  flex: 1;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.4rem;
+  color: var(--shoal-foam);
+  font-size: 0.72rem;
+}
+
+.shoal-buy-wood-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+
+.shoal-look-grid { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.shoal-look-chip {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(0,0,0,0.2);
+  color: var(--shoal-foam);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+.shoal-look-chip-equipped {
+  border-color: var(--shoal-gold-bright);
+  background: rgba(217, 164, 65, 0.2);
+  color: var(--shoal-gold-bright);
+}
+.shoal-look-chip-locked { opacity: 0.55; }
+.shoal-look-lock { font-size: 0.6rem; font-style: italic; }
+
+.shoal-preview-banner {
+  margin: 0.4rem 0;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 209, 102, 0.15);
+  border: 1px solid #ffd166;
+  border-radius: 0.5rem;
+  font-size: 0.7rem;
+  color: #ffd166;
+  font-weight: 700;
+}

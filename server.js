@@ -319,6 +319,30 @@ function defaultShoalTalesSave(handle) {
       activePuzzle: null,
       workOrders: [],
       counterCustomers: []
+    },
+    // Cosmetics / the Shipwright (docs/shoal-tales-spec/12-cosmetics.md).
+    // Free woods/sails/flags are owned from the start; exotic woods and all
+    // sails/flags/pets/badges past the free set are granted (sails/flags/
+    // pets/badges, for free) or made buyable (exotic woods, 5,000 coins
+    // each) by shoalGrantRetirementCosmetics() on each retirement. Premium
+    // (Seal Token) looks and Season Champion/event-set looks are NOT
+    // modeled here at all - see the comment on EMPORIUM note below; this is
+    // a deliberate scope cut, not an oversight.
+    cosmetics: {
+      unlockedWoods: ShoalTalesData.woods.filter(w => w.free).map(w => w.id),
+      equippedWood: { hull: 'oak', deck: 'oak', railing: 'oak', mast: 'oak' },
+      unlockedSails: ShoalTalesData.sails.filter(s => s.unlocksAtRetirement === 0).map(s => s.id),
+      equippedSail: 'white',
+      unlockedFlags: ShoalTalesData.flags.filter(f => f.unlocksAtRetirement === 0).map(f => f.id),
+      equippedFlag: 'plain-pennant',
+      unlockedPets: [],
+      equippedPet: null,
+      unlockedBadges: [],
+      equippedBadge: null,
+      unlockedTracks: ShoalTalesData.radioTracks.filter(t => t.unlocksAtRetirement === 0).map(t => t.id),
+      equippedTrack: null,
+      petPattedDate: null,
+      petTreatExpiresAt: null
     }
   };
 }
@@ -466,7 +490,17 @@ function shoalNewTrayId(i) {
 // bonuses capped at 50% total" per retirement. Luck is endgame-only (past
 // the 8th retirement, +3% per further retirement) - see 09-economy.md.
 function shoalPayoutBonus(save) {
-  return Math.min(0.5, (save.retirements || 0) * 0.10);
+  const retireBonus = (save.retirements || 0) * 0.10;
+  const petBonus = shoalPetTreatActive(save) ? 0.05 : 0;
+  return Math.min(0.5, retireBonus + petBonus);
+}
+
+// "The owner's first pat each real-world day gives a treat: +5% value for
+// 10 minutes" (12-cosmetics.md) - petting other players' pets is a Visits
+// feature (task 24, not built yet), so this only covers patting your own.
+function shoalPetTreatActive(save) {
+  const until = save.cosmetics && save.cosmetics.petTreatExpiresAt;
+  return !!until && Date.now() < new Date(until).getTime();
 }
 function shoalTimeBonus(save) {
   return Math.min(0.5, (save.retirements || 0) * 0.03);
@@ -511,8 +545,22 @@ function shoalApplyRetire(save) {
   save.retirements += 1;
   save.unlockedAreas = ShoalTalesData.mapAreas.filter(a => a.opensAtRetirement <= save.retirements).map(a => a.id);
   save.unlockedDepths = ShoalTalesData.depths.filter(d => d.opensAtRetirement <= save.retirements).map(d => d.level);
+  shoalGrantRetirementCosmetics(save);
 
   return shoalRetirementTitle(save.retirements);
+}
+
+// Sails/flags/pets/chat badges are granted free the moment their retirement
+// is reached; radio tracks the same. Exotic woods only become BUYABLE at
+// their retirement (see defaultShoalTalesSave's cosmetics comment) - they
+// are never auto-added to unlockedWoods, so nothing to grant for them here.
+function shoalGrantRetirementCosmetics(save) {
+  const c = save.cosmetics;
+  ShoalTalesData.sails.forEach(s => { if (s.unlocksAtRetirement === save.retirements && c.unlockedSails.indexOf(s.id) === -1) c.unlockedSails.push(s.id); });
+  ShoalTalesData.flags.forEach(f => { if (f.unlocksAtRetirement === save.retirements && c.unlockedFlags.indexOf(f.id) === -1) c.unlockedFlags.push(f.id); });
+  ShoalTalesData.pets.forEach(p => { if (p.unlocksAtRetirement === save.retirements && c.unlockedPets.indexOf(p.id) === -1) c.unlockedPets.push(p.id); });
+  ShoalTalesData.chatBadges.forEach(b => { if (b.unlocksAtRetirement === save.retirements && c.unlockedBadges.indexOf(b.id) === -1) c.unlockedBadges.push(b.id); });
+  ShoalTalesData.radioTracks.forEach(t => { if (t.unlocksAtRetirement === save.retirements && c.unlockedTracks.indexOf(t.id) === -1) c.unlockedTracks.push(t.id); });
 }
 
 // --- The Emporium (docs/shoal-tales-spec/10-emporium.md) ---
@@ -3187,6 +3235,142 @@ const server = http.createServer(async (req, res) => {
         newArea: newArea ? shoalAreaById(newArea).name : null,
         newDepth: newDepth != null ? ShoalTalesData.depths.find(d => d.level === newDepth).name : null
       });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Cosmetics / the Shipwright (docs/shoal-tales-spec/12-cosmetics.md) ---
+  // Premium (Seal Token) looks, the Season Champion flag, and event sets are
+  // NOT implemented - Seal Tokens are an explicitly-flagged real-money-
+  // adjacent currency decision for the site owner, not something to build by
+  // default, and Season/events need a leaderboard this build doesn't have
+  // (Social, task 24). "Try It On" previews need no endpoint at all - it's a
+  // client-only, never-persisted 30s timer per the spec.
+
+  if (reqPath === '/api/shoal-tales/cosmetics/equip-wood' && req.method === 'POST') {
+    try {
+      const { handle, part, woodId } = await parseJsonBody(req);
+      if (!handle || !part || !woodId) return sendJson(res, 400, { error: 'Missing handle, part or woodId' });
+      if (!ShoalTalesData.woodParts.includes(part)) return sendJson(res, 400, { error: 'Not a real ship part.' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.cosmetics.unlockedWoods.indexOf(woodId) === -1) return sendJson(res, 400, { error: 'That wood is not unlocked yet.' });
+      save.cosmetics.equippedWood[part] = woodId;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, equippedWood: save.cosmetics.equippedWood });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/cosmetics/buy-exotic-wood' && req.method === 'POST') {
+    try {
+      const { handle, woodId } = await parseJsonBody(req);
+      if (!handle || !woodId) return sendJson(res, 400, { error: 'Missing handle or woodId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const wood = ShoalTalesData.woods.find(w => w.id === woodId);
+      if (!wood || wood.free) return sendJson(res, 400, { error: 'Not a purchasable exotic wood.' });
+      if (save.cosmetics.unlockedWoods.indexOf(woodId) !== -1) return sendJson(res, 400, { error: 'Already owned.' });
+      if (save.retirements < wood.unlocksAtRetirement) return sendJson(res, 400, { error: 'Not unlocked yet.' });
+      if (save.coins < wood.cost) return sendJson(res, 400, { error: `Not enough coins (need ${wood.cost}, have ${Math.floor(save.coins)}).` });
+      save.coins -= wood.cost;
+      save.cosmetics.unlockedWoods.push(woodId);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, coinsSpent: wood.cost });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/cosmetics/equip-sail' && req.method === 'POST') {
+    try {
+      const { handle, sailId } = await parseJsonBody(req);
+      if (!handle || !sailId) return sendJson(res, 400, { error: 'Missing handle or sailId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.cosmetics.unlockedSails.indexOf(sailId) === -1) return sendJson(res, 400, { error: 'That sail is not unlocked yet.' });
+      save.cosmetics.equippedSail = sailId;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, equippedSail: sailId });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/cosmetics/equip-flag' && req.method === 'POST') {
+    try {
+      const { handle, flagId } = await parseJsonBody(req);
+      if (!handle || !flagId) return sendJson(res, 400, { error: 'Missing handle or flagId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.cosmetics.unlockedFlags.indexOf(flagId) === -1) return sendJson(res, 400, { error: 'That flag is not unlocked yet.' });
+      save.cosmetics.equippedFlag = flagId;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, equippedFlag: flagId });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // petId may be null, to go pet-less (equip nothing).
+  if (reqPath === '/api/shoal-tales/cosmetics/equip-pet' && req.method === 'POST') {
+    try {
+      const { handle, petId } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (petId && save.cosmetics.unlockedPets.indexOf(petId) === -1) return sendJson(res, 400, { error: 'That pet is not unlocked yet.' });
+      save.cosmetics.equippedPet = petId || null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, equippedPet: save.cosmetics.equippedPet });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // badgeId may be null, to show no badge.
+  if (reqPath === '/api/shoal-tales/cosmetics/equip-badge' && req.method === 'POST') {
+    try {
+      const { handle, badgeId } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (badgeId && save.cosmetics.unlockedBadges.indexOf(badgeId) === -1) return sendJson(res, 400, { error: 'That badge is not unlocked yet.' });
+      save.cosmetics.equippedBadge = badgeId || null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, equippedBadge: save.cosmetics.equippedBadge });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Once per real-world day, patting your own equipped pet grants "+5% value
+  // for 10 minutes" (folded into shoalPayoutBonus via shoalPetTreatActive).
+  // Petting OTHER players' pets needs Visits (task 24) - not built yet.
+  if (reqPath === '/api/shoal-tales/cosmetics/pat-pet' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.cosmetics.equippedPet) return sendJson(res, 400, { error: 'You have no pet equipped.' });
+      const today = new Date().toISOString().slice(0, 10);
+      if (save.cosmetics.petPattedDate === today) {
+        return sendJson(res, 400, { error: "Already patted your pet's treat today." });
+      }
+      save.cosmetics.petPattedDate = today;
+      save.cosmetics.petTreatExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      saveDatabase();
+      return sendJson(res, 200, { success: true, petTreatExpiresAt: save.cosmetics.petTreatExpiresAt });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/cosmetics/select-track' && req.method === 'POST') {
+    try {
+      const { handle, trackId } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (trackId && save.cosmetics.unlockedTracks.indexOf(trackId) === -1) return sendJson(res, 400, { error: 'That track is not unlocked yet.' });
+      save.cosmetics.equippedTrack = trackId || null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, equippedTrack: save.cosmetics.equippedTrack });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
