@@ -292,7 +292,18 @@ function defaultShoalTalesSave(handle) {
     storyRequestIndex: { walt: 0, dot: 0, rosalind: 0, hank: 0, priya: 0 },
     standingOrdersFilled: { walt: 0, dot: 0, rosalind: 0, hank: 0, priya: 0 },
     dailyRequestsDate: null,
-    dailyRequestsDone: []
+    dailyRequestsDone: [],
+    // Stations & economy (docs/shoal-tales-spec/08-stations-upgrades.md).
+    // Stations arrive one at a time, strictly in ShoalTalesData.stations
+    // order; stationProgress tracks "amount handled" toward whichever
+    // station is next (index stationsInstalled.length) and resets to 0 once
+    // that station is installed. Knick-knacks/ingots/materials are produced
+    // from stored junk at Carpentry/Crucible/Recycling and sold like sorted
+    // goods - {units, value} mirrors the sortedGoods bin shape.
+    stationProgress: 0,
+    knickKnacks: { units: 0, value: 0 },
+    ingots: { units: 0, value: 0 },
+    materials: { units: 0, value: 0 }
   };
 }
 
@@ -354,26 +365,23 @@ function shoalCurrentRequestFor(save, personId) {
   return { kind: 'standing', standing, amount };
 }
 
-// How many units of `requires.type` the player currently has on hand -
-// several types (meals/knickKnacks/ingots/materials) aren't producible until
-// later phases (Stations/Economy) and always read 0 until then, so their
-// requests simply can't be fulfilled yet rather than erroring.
+// How many units of `requires.type` the player currently has on hand.
 function shoalAvailableFor(save, requires) {
   if (requires.type === 'rawFish') return save.cooler.filter(f => f.stage === 'raw').length;
   if (requires.type === 'dressedFish') return save.cooler.filter(f => f.stage === 'dressed').length;
   if (requires.type === 'sortedBin') return save.sortedGoods[requires.bin] ? save.sortedGoods[requires.bin].units : 0;
   if (requires.type === 'meals') return save.cooler.filter(f => f.stage === 'meal').length;
-  if (requires.type === 'knickKnacks') return save.knickKnacks || 0;
-  if (requires.type === 'ingots') return save.ingots || 0;
-  if (requires.type === 'materials') return save.materials || 0;
+  if (requires.type === 'knickKnacks') return save.knickKnacks ? save.knickKnacks.units : 0;
+  if (requires.type === 'ingots') return save.ingots ? save.ingots.units : 0;
+  if (requires.type === 'materials') return save.materials ? save.materials.units : 0;
   return 0;
 }
 
 // Consumes `amount` units of `requires.type` from the player's holdings.
 // Caller must have already checked shoalAvailableFor(...) >= amount.
 function shoalConsume(save, requires, amount) {
-  if (requires.type === 'rawFish' || requires.type === 'dressedFish') {
-    const stage = requires.type === 'rawFish' ? 'raw' : 'dressed';
+  if (requires.type === 'rawFish' || requires.type === 'dressedFish' || requires.type === 'meals') {
+    const stage = requires.type === 'rawFish' ? 'raw' : requires.type === 'dressedFish' ? 'dressed' : 'meal';
     let left = amount;
     save.cooler = save.cooler.filter(f => {
       if (left > 0 && f.stage === stage) { left--; return false; }
@@ -388,7 +396,49 @@ function shoalConsume(save, requires, amount) {
     bin.value = Math.max(0, bin.value - perUnit * amount);
     return;
   }
-  // meals/knickKnacks/ingots/materials: not producible yet, nothing to consume.
+  if (requires.type === 'knickKnacks' || requires.type === 'ingots' || requires.type === 'materials') {
+    const store = save[requires.type];
+    const perUnit = store.units > 0 ? store.value / store.units : 0;
+    store.units = Math.max(0, store.units - amount);
+    store.value = Math.max(0, store.value - perUnit * amount);
+    return;
+  }
+}
+
+// Which station (if any) is next in line (strictly in ShoalTalesData.stations
+// order), and the progress-type it's waiting on. Null once all 4 are in.
+function shoalNextStationDef(save) {
+  return ShoalTalesData.stations[save.stationsInstalled.length] || null;
+}
+
+// Adds to stationProgress only when the handled amount matches what the
+// *currently pending* station is waiting on - progress toward a station
+// that isn't next yet (or no longer exists) simply doesn't count.
+function shoalTrackStationProgress(save, type, amount, bin) {
+  const station = shoalNextStationDef(save);
+  if (!station || station.requiresType !== type) return;
+  if (type === 'sortedBin' && station.requiresBin !== bin) return;
+  save.stationProgress = (save.stationProgress || 0) + amount;
+}
+
+// Vague progress hint for the pending station, never exact numbers (per
+// 08-stations-upgrades.md) - once requiresAmount is met the real cost is
+// shown instead, ready to install.
+function shoalNextStationInfo(save) {
+  const station = shoalNextStationDef(save);
+  if (!station) return null;
+  const progress = save.stationProgress || 0;
+  const unlocked = progress >= station.requiresAmount;
+  if (unlocked) {
+    const unlockScale = ShoalTalesEngine.retireGoalForRun(save.retirements + 1).unlockScale;
+    return { id: station.id, name: station.name, unlocked: true, cost: ShoalTalesEngine.stationCost(station.cost, unlockScale) };
+  }
+  const frac = Math.min(1, progress / station.requiresAmount);
+  const hint = frac < 0.25 ? 'It feels a long way off.'
+    : frac < 0.5 ? "You're getting somewhere."
+    : frac < 0.75 ? 'More than halfway there.'
+    : 'Almost there!';
+  return { id: station.id, name: station.name, unlocked: false, hint };
 }
 
 function shoalNewTrayId(i) {
@@ -1826,7 +1876,10 @@ const server = http.createServer(async (req, res) => {
       const handle = query.get('handle') || '';
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
       const save = getOrCreateShoalTalesSave(handle);
-      return sendJson(res, 200, { success: true, save });
+      // nextStation is derived (never persisted) so the stored save stays
+      // clean - it's recomputed fresh on every GET.
+      const withDerived = Object.assign({}, save, { nextStation: shoalNextStationInfo(save) });
+      return sendJson(res, 200, { success: true, save: withDerived });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -1922,6 +1975,7 @@ const server = http.createServer(async (req, res) => {
       save.sortedGoods[bin].units += (1 + item.weight);
       save.sortedGoods[bin].value += value;
       save.allTimeStats.junkSorted += 1;
+      if (correct) shoalTrackStationProgress(save, 'sortedBin', 1 + item.weight, bin);
       save.tray.splice(itemIndex, 1);
       saveDatabase();
       return sendJson(res, 200, { success: true, correct, kind: 'junk', value, newStreak: save.streak, effectiveCorrectBin, bin });
@@ -1953,6 +2007,12 @@ const server = http.createServer(async (req, res) => {
         save.cooler.forEach(f => { coinsEarned += f.value; });
         save.cooler = [];
       }
+      ['knickKnacks', 'ingots', 'materials'].forEach(key => {
+        if (sellWhat === key || sellWhat === 'all') {
+          coinsEarned += save[key].value;
+          save[key] = { units: 0, value: 0 };
+        }
+      });
       coinsEarned = Math.round(coinsEarned);
       save.coins += coinsEarned;
       save.lifetimeCoinsThisRun += coinsEarned;
@@ -2236,20 +2296,30 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Dress a raw fish at the Cutting Board (always free/available, unlike the
-  // 4 paid stations - 05-fish.md): x1.6 value. The very first fish ever
-  // dressed brings Crow's first letter and opens the Town (07-story.md's
-  // opening sequence).
+  // 4 paid stations - 05-fish.md): x1.6 value, or x1.6*1.3 with Limes (Priya's
+  // only Cutting Board supply - Sushi Rice was dropped so every station keeps
+  // exactly one upgrade material). The very first fish ever dressed brings
+  // Crow's first letter and opens the Town (07-story.md's opening sequence).
   if (reqPath === '/api/shoal-tales/dress' && req.method === 'POST') {
     try {
-      const { handle, coolerItemId } = await parseJsonBody(req);
+      const { handle, coolerItemId, useLimes } = await parseJsonBody(req);
       if (!handle || !coolerItemId) return sendJson(res, 400, { error: 'Missing handle or coolerItemId' });
       const save = getOrCreateShoalTalesSave(handle);
       const fish = save.cooler.find(f => f.id === coolerItemId);
       if (!fish) return sendJson(res, 404, { error: 'That fish is not in your cooler.' });
       if (fish.stage !== 'raw') return sendJson(res, 400, { error: 'That fish is already dressed.' });
 
-      fish.value = fish.value * 1.6;
+      let mult = 1;
+      if (useLimes) {
+        if (save.coins < 1) return sendJson(res, 400, { error: 'Not enough coins for Limes (need 1).' });
+        save.coins -= 1;
+        mult = 1.3;
+      }
+      const rawValue = fish.rawValue != null ? fish.rawValue : fish.value;
+      fish.rawValue = rawValue;
+      fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'dressed', mult);
       fish.stage = 'dressed';
+      shoalTrackStationProgress(save, 'fishDressed', 1);
 
       let newLetter = null;
       if (!save.anyFishDressed) {
@@ -2258,6 +2328,109 @@ const server = http.createServer(async (req, res) => {
       }
       saveDatabase();
       return sendJson(res, 200, { success: true, fish, newLetter, townOpen: save.townOpen });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Make a meal from a dressed fish at the Oven (x1.5 of the dressed value,
+  // or x1.5*1.4 with Herb Butter), once the Oven station is installed.
+  if (reqPath === '/api/shoal-tales/make-meal' && req.method === 'POST') {
+    try {
+      const { handle, coolerItemId, useHerbButter } = await parseJsonBody(req);
+      if (!handle || !coolerItemId) return sendJson(res, 400, { error: 'Missing handle or coolerItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.stationsInstalled.includes('oven')) return sendJson(res, 400, { error: 'The Oven is not installed yet.' });
+      const fish = save.cooler.find(f => f.id === coolerItemId);
+      if (!fish) return sendJson(res, 404, { error: 'That fish is not in your cooler.' });
+      if (fish.stage !== 'dressed') return sendJson(res, 400, { error: 'Only dressed fish can be made into a meal.' });
+
+      let mult = 1;
+      if (useHerbButter) {
+        if (save.coins < 2) return sendJson(res, 400, { error: 'Not enough coins for Herb Butter (need 2).' });
+        save.coins -= 2;
+        mult = 1.4;
+      }
+      const rawValue = fish.rawValue != null ? fish.rawValue : fish.value;
+      fish.rawValue = rawValue;
+      fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'meal', mult);
+      fish.stage = 'meal';
+      saveDatabase();
+      return sendJson(res, 200, { success: true, fish });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Process a whole stored-junk bin at its station (Carpentry/Crucible/
+  // Recycling) into knick-knacks/ingots/materials - base value x the
+  // station's factor, optionally x its one Priya add-in. Whole stacks only,
+  // same as selling (07-story.md's "Selling is by whole stacks").
+  if (reqPath === '/api/shoal-tales/process-junk' && req.method === 'POST') {
+    try {
+      const { handle, bin, useAddIn } = await parseJsonBody(req);
+      if (!handle || !bin) return sendJson(res, 400, { error: 'Missing handle or bin' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const STATION_FOR_BIN = { Wood: 'carpentry', Metal: 'crucible', Mixed: 'recycling' };
+      const RESOURCE_FOR_BIN = { Wood: 'knickKnacks', Metal: 'ingots', Mixed: 'materials' };
+      const ADDIN_FOR_BIN = {
+        Wood: { name: 'Furniture Polish', cost: 2, mult: 1.5 },
+        Metal: { name: 'Borax Flux', cost: 2, mult: 1.4 },
+        Mixed: { name: 'Binding Resin', cost: 2, mult: 1.4 }
+      };
+      const stationId = STATION_FOR_BIN[bin];
+      if (!stationId) return sendJson(res, 400, { error: 'That bin cannot be processed.' });
+      if (!save.stationsInstalled.includes(stationId)) return sendJson(res, 400, { error: 'That station is not installed yet.' });
+      const stack = save.sortedGoods[bin];
+      if (!stack || stack.units <= 0) return sendJson(res, 400, { error: 'Nothing stored in that bin to process.' });
+
+      let mult = 1;
+      const addIn = ADDIN_FOR_BIN[bin];
+      if (useAddIn) {
+        if (save.coins < addIn.cost) return sendJson(res, 400, { error: `Not enough coins for ${addIn.name} (need ${addIn.cost}).` });
+        save.coins -= addIn.cost;
+        mult = addIn.mult;
+      }
+      const station = ShoalTalesData.stations.find(s => s.id === stationId);
+      const producedUnits = stack.units;
+      const producedValue = ShoalTalesEngine.processedJunkValue(stack.value, station.valueFactor, 1, mult);
+      const resourceKey = RESOURCE_FOR_BIN[bin];
+      save[resourceKey].units += producedUnits;
+      save[resourceKey].value += producedValue;
+      save.sortedGoods[bin] = { units: 0, value: 0 };
+      saveDatabase();
+      return sendJson(res, 200, { success: true, bin, resource: resourceKey, producedUnits, producedValue });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Install the next pending station (strictly in order - 08-stations-
+  // upgrades.md), once its hidden requirement is met. Resets stationProgress,
+  // opens that station's Town buyer (via shoalTownspersonAppears's
+  // stationsInstalled check) and brings a Crow letter (first run only).
+  if (reqPath === '/api/shoal-tales/install-station' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const station = shoalNextStationDef(save);
+      if (!station) return sendJson(res, 400, { error: 'All stations are already installed.' });
+      const progress = save.stationProgress || 0;
+      if (progress < station.requiresAmount) {
+        return sendJson(res, 400, { error: 'This station is not ready to install yet.' });
+      }
+      const unlockScale = ShoalTalesEngine.retireGoalForRun(save.retirements + 1).unlockScale;
+      const cost = ShoalTalesEngine.stationCost(station.cost, unlockScale);
+      if (save.coins < cost) return sendJson(res, 400, { error: `Not enough coins (need ${cost}, have ${Math.floor(save.coins)}).` });
+
+      save.coins -= cost;
+      save.stationsInstalled.push(station.id);
+      save.stationProgress = 0;
+      const letterId = { oven: 'something-warm', carpentry: 'good-hands', crucible: 'fire-and-iron', recycling: 'nothing-wasted' }[station.id];
+      const newLetter = letterId ? shoalDeliverCrowLetter(save, letterId) : null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, stationId: station.id, coinsSpent: cost, newLetter });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

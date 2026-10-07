@@ -136,9 +136,9 @@
     if (requires.type === 'dressedFish') return save.cooler.filter(function (f) { return f.stage === 'dressed'; }).length;
     if (requires.type === 'sortedBin') return save.sortedGoods[requires.bin] ? save.sortedGoods[requires.bin].units : 0;
     if (requires.type === 'meals') return save.cooler.filter(function (f) { return f.stage === 'meal'; }).length;
-    if (requires.type === 'knickKnacks') return save.knickKnacks || 0;
-    if (requires.type === 'ingots') return save.ingots || 0;
-    if (requires.type === 'materials') return save.materials || 0;
+    if (requires.type === 'knickKnacks') return save.knickKnacks ? save.knickKnacks.units : 0;
+    if (requires.type === 'ingots') return save.ingots ? save.ingots.units : 0;
+    if (requires.type === 'materials') return save.materials ? save.materials.units : 0;
     return 0;
   }
 
@@ -302,18 +302,24 @@
     );
   }
 
+  var RESOURCE_LABEL = { knickKnacks: 'Knick-knacks', ingots: 'Ingots', materials: 'Materials' };
+
   function GoodsAndCoolerPanel(props) {
     var save = props.save;
     var onSell = props.onSell;
     var onDress = props.onDress;
+    var onMakeMeal = props.onMakeMeal;
     var busy = props.busy;
 
+    var ovenInstalled = save.stationsInstalled.indexOf('oven') !== -1;
     var goodsValue = ENGINE.BINS.reduce(function (sum, b) { return sum + save.sortedGoods[b].value; }, 0);
     var rawFish = save.cooler.filter(function (f) { return f.stage === 'raw'; });
     var dressedFish = save.cooler.filter(function (f) { return f.stage === 'dressed'; });
-    var rawValue = rawFish.reduce(function (sum, f) { return sum + f.value; }, 0);
-    var dressedValue = dressedFish.reduce(function (sum, f) { return sum + f.value; }, 0);
-    var totalValue = goodsValue + rawValue + dressedValue;
+    var mealFish = save.cooler.filter(function (f) { return f.stage === 'meal'; });
+    var mealValue = mealFish.reduce(function (sum, f) { return sum + f.value; }, 0);
+    var resourceValue = ['knickKnacks', 'ingots', 'materials'].reduce(function (sum, k) { return sum + save[k].value; }, 0);
+    var totalValue = goodsValue + rawFish.reduce(function (s, f) { return s + f.value; }, 0)
+      + dressedFish.reduce(function (s, f) { return s + f.value; }, 0) + mealValue + resourceValue;
 
     if (totalValue <= 0 && save.cooler.length === 0) return null;
 
@@ -325,17 +331,31 @@
             h('span', null, 'Sorted ', b), h('span', null, save.sortedGoods[b].units, ' units — ', formatCoins(save.sortedGoods[b].value), 'c')
           );
         }),
-        dressedFish.length > 0 && h('div', { className: 'shoal-goods-row' },
-          h('span', null, 'Dressed fish'), h('span', null, dressedFish.length, ' — ', formatCoins(dressedValue), 'c')
+        ['knickKnacks', 'ingots', 'materials'].filter(function (k) { return save[k].units > 0; }).map(function (k) {
+          return h('div', { key: k, className: 'shoal-goods-row' },
+            h('span', null, RESOURCE_LABEL[k]), h('span', null, save[k].units, ' — ', formatCoins(save[k].value), 'c')
+          );
+        }),
+        mealFish.length > 0 && h('div', { className: 'shoal-goods-row' },
+          h('span', null, 'Meals'), h('span', null, mealFish.length, ' — ', formatCoins(mealValue), 'c')
         )
       ),
-      // Dressing is a deliberate one-click-per-fish step at the Cutting Board
-      // (05-fish.md), not a bulk action - each raw fish gets its own row.
+      // Dressing (and meal-making) is a deliberate one-click-per-fish step at
+      // the Cutting Board/Oven (05-fish.md), not a bulk action - each fish
+      // gets its own row and button.
       rawFish.length > 0 && h('div', { className: 'shoal-cooler-list' },
         rawFish.map(function (f) {
           return h('div', { key: f.id, className: 'shoal-cooler-row' },
             h('span', { className: 'shoal-cooler-name' }, f.name, f.golden ? ' ✨' : '', ' (', formatCoins(f.value), 'c)'),
             h('button', { type: 'button', disabled: busy, onClick: function () { onDress(f.id); }, className: 'shoal-dress-btn' }, 'Dress')
+          );
+        })
+      ),
+      dressedFish.length > 0 && h('div', { className: 'shoal-cooler-list' },
+        dressedFish.map(function (f) {
+          return h('div', { key: f.id, className: 'shoal-cooler-row' },
+            h('span', { className: 'shoal-cooler-name' }, f.name, ' (dressed, ', formatCoins(f.value), 'c)'),
+            ovenInstalled && h('button', { type: 'button', disabled: busy, onClick: function () { onMakeMeal(f.id); }, className: 'shoal-dress-btn' }, 'Make Meal')
           );
         })
       ),
@@ -407,6 +427,47 @@
     );
   }
 
+  var PROCESS_STATION_FOR_BIN = { Wood: 'carpentry', Metal: 'crucible', Mixed: 'recycling' };
+  var RESOURCE_FOR_BIN = { Wood: 'knickKnacks', Metal: 'ingots', Mixed: 'materials' };
+
+  // --- Stations: installed list, the next pending station (vague hint, or
+  // Install once unlocked - never exact progress numbers, per 08-stations-
+  // upgrades.md), and a Process button for each installed station with
+  // stock on hand to convert. ---
+  function StationsPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onInstall = props.onInstall;
+    var onProcessJunk = props.onProcessJunk;
+    var next = save.nextStation;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Stations'),
+      save.stationsInstalled.length > 0 && h('div', { className: 'shoal-stations-installed' },
+        save.stationsInstalled.map(function (id) {
+          var st = DATA.stations.find(function (s) { return s.id === id; });
+          return h('div', { key: id, className: 'shoal-station-row' },
+            h('span', null, st ? st.name : id), h('span', { className: 'shoal-station-tag' }, 'Installed')
+          );
+        })
+      ),
+      next ? h('div', { className: 'shoal-station-row' },
+        h('span', null, next.name),
+        next.unlocked
+          ? h('button', { type: 'button', disabled: busy, onClick: onInstall, className: 'shoal-action-btn' }, 'Install (', formatCoins(next.cost), 'c)')
+          : h('span', { className: 'shoal-station-hint' }, next.hint)
+      ) : h('p', { className: 'shoal-hint' }, 'All stations installed.'),
+      Object.keys(PROCESS_STATION_FOR_BIN).filter(function (bin) {
+        return save.stationsInstalled.indexOf(PROCESS_STATION_FOR_BIN[bin]) !== -1 && save.sortedGoods[bin].units > 0;
+      }).map(function (bin) {
+        return h('button', {
+          key: bin, type: 'button', disabled: busy, onClick: function () { onProcessJunk(bin); },
+          className: 'shoal-action-btn'
+        }, 'Process ', save.sortedGoods[bin].units, ' ', bin, ' into ', RESOURCE_LABEL[RESOURCE_FOR_BIN[bin]]);
+      })
+    );
+  }
+
   function DredgeControls(props) {
     var save = props.save;
     var onDredge = props.onDredge;
@@ -456,7 +517,9 @@
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Work Table'),
       h('div', { className: 'shoal-upgrade-list' },
-        DATA.upgrades.map(function (u) {
+        // "Each upgrade appears once the basket (bought levels only) reaches
+        // the listed size" (08-stations-upgrades.md).
+        DATA.upgrades.filter(function (u) { return save.basketLevel >= u.appearsAtBasket; }).map(function (u) {
           var level = save[LEVEL_FIELD[u.id]];
           var maxed = level >= u.levels;
           var cost = maxed ? null : Math.round(ENGINE.upgradeCost(u.id, level, unlockScale));
@@ -643,6 +706,28 @@
       });
     }
 
+    function handleMakeMeal(coolerItemId) {
+      runAction(apiPost('/api/shoal-tales/make-meal', { handle: handle, coolerItemId: coolerItemId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Meal made: +' + formatCoins(data.fish.value) + ' coins worth' });
+      });
+    }
+
+    function handleProcessJunk(bin) {
+      runAction(apiPost('/api/shoal-tales/process-junk', { handle: handle, bin: bin })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Made ' + data.producedUnits + ' ' + RESOURCE_LABEL[data.resource] + ' worth ' + formatCoins(data.producedValue) + ' coins' });
+      });
+    }
+
+    function handleInstallStation() {
+      runAction(apiPost('/api/shoal-tales/install-station', { handle: handle })).then(function (data) {
+        if (!data) return;
+        var message = 'Station installed for ' + formatCoins(data.coinsSpent) + ' coins!' + (data.newLetter ? (' A crow drops a letter: "' + data.newLetter.title + '"') : '');
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
     if (loading) {
       return h('div', { className: 'shoal-tales-screen shoal-loading' }, 'Loading Shoal Tales...');
     }
@@ -665,8 +750,9 @@
           onScrub: handleScrub, onPry: handlePry, onUncork: handleUncork, onRelease: handleRelease,
           onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort
         }),
-        h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, busy: busy }),
+        h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
         h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
+        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
         h(CollectorsLogSummary, { save: save }),
         h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy })
       )
@@ -682,6 +768,7 @@
     TrayPanel: TrayPanel,
     GoodsAndCoolerPanel: GoodsAndCoolerPanel,
     TownPanel: TownPanel,
+    StationsPanel: StationsPanel,
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,

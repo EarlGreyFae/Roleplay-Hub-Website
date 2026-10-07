@@ -399,3 +399,27 @@
 }
 .shoal-town-request span, .shoal-town-daily span { min-width: 0; }
 .shoal-town-request .shoal-action-btn, .shoal-town-daily .shoal-action-btn { flex: 0 0 auto; min-width: 0; }
+
+/* Stations & economy */
+
+.shoal-stations-installed { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.5rem; }
+.shoal-station-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.6rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+.shoal-station-tag {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--shoal-good);
+}
+.shoal-station-hint { font-size: 0.68rem; color: rgba(232, 244, 248, 0.6); font-style: italic; }

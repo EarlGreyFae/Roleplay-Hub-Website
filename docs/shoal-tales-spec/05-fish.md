@@ -11,7 +11,10 @@ Raw fish can be processed for more value once Walt's relevant station is install
 |---|---|---|---|---|
 | Raw fish | Cooler | its cooler value | - | Walt |
 | Dressed fish | Cutting Board, 1 click | x1.6 | Limes: x1.3 more | Walt |
-| Sushi | Cutting Board with Sushi Rice on | x1.6, x1.6 more | Sushi Rice replaces dressing | Walt |
 | Meal | Oven, 1 click per dressed fish | x1.5 of the dressed fish | Herb Butter: x1.4 more | Walt |
 
 Add-ins are consumable supplies bought from Priya (see Priya's Commissions, 08-stations-upgrades.md) that multiply the processing step's output further.
+
+(Simplified from the original design bible: Sushi/Sushi Rice was dropped so
+each station keeps exactly one upgrade material - Limes is the Cutting
+Board's.)

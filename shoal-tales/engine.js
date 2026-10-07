@@ -234,13 +234,14 @@
     return Math.round(baseCost * (unlockScale || 1));
   }
 
-  // Fish processing chain (05-fish.md): raw -> dressed (x1.6) -> sushi (x1.6 more)
-  // or meal (x1.5 of dressed), each optionally boosted by a Priya add-in.
+  // Fish processing chain (05-fish.md): raw -> dressed (x1.6) -> meal (x1.5 of
+  // dressed), each optionally boosted by a Priya add-in. (Sushi/Sushi Rice
+  // was dropped - each station keeps exactly one upgrade material, and
+  // Limes is the Cutting Board's.)
   function processedFishValue(rawValue, step, addInMultiplier) {
     var mult = addInMultiplier || 1;
     if (step === 'raw') return rawValue;
     if (step === 'dressed') return rawValue * 1.6 * mult;
-    if (step === 'sushi') return rawValue * 1.6 * 1.6 * mult;
     if (step === 'meal') return rawValue * 1.6 * 1.5 * mult;
     throw new Error('Unknown processing step: ' + step);
   }

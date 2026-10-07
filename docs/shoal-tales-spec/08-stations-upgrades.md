@@ -34,10 +34,12 @@ Once the requirement is met, the station is bought for coins with two clicks. In
 
 ## Priya's Commissions (processing add-ins)
 
+Simplified from the original design bible: Sushi Rice was dropped so each
+station keeps exactly one upgrade material.
+
 | Supply | Price | Station | Effect |
 |---|---|---|---|
 | Limes | 1 | Cutting Board | x1.3 (dressed fish) |
-| Sushi Rice | 3 | Cutting Board | Makes sushi instead, x1.6 |
 | Herb Butter | 2 | Oven | x1.4 (meals) |
 | Furniture Polish | 2 | Carpentry Bench | x1.5 (knick-knacks) |
 | Borax Flux | 2 | Crucible | x1.4 (ingots) |

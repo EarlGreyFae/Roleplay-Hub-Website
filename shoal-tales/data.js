@@ -3721,6 +3721,8 @@
       "name": "Oven",
       "cost": 400,
       "hiddenRequirement": "25 fish dressed",
+      "requiresType": "fishDressed",
+      "requiresAmount": 25,
       "makes": "Meals from dressed fish",
       "valueFactor": 1.5,
       "buyer": "Walt"
@@ -3730,6 +3732,9 @@
       "name": "Carpentry Bench",
       "cost": 1200,
       "hiddenRequirement": "60 units of wood",
+      "requiresType": "sortedBin",
+      "requiresBin": "Wood",
+      "requiresAmount": 60,
       "makes": "Knick-knacks from stored wood junk",
       "valueFactor": 2,
       "buyer": "Rosalind"
@@ -3739,6 +3744,9 @@
       "name": "Crucible",
       "cost": 2500,
       "hiddenRequirement": "80 units of metal",
+      "requiresType": "sortedBin",
+      "requiresBin": "Metal",
+      "requiresAmount": 80,
       "makes": "Ingots from stored metal junk",
       "valueFactor": 2,
       "buyer": "Hank"
@@ -3748,6 +3756,9 @@
       "name": "Recycling Machine",
       "cost": 3000,
       "hiddenRequirement": "20 units of mixed",
+      "requiresType": "sortedBin",
+      "requiresBin": "Mixed",
+      "requiresAmount": 20,
       "makes": "Materials from stored mixed junk",
       "valueFactor": 2.2,
       "buyer": "Priya"
@@ -3792,7 +3803,7 @@
       "id": "walt",
       "name": "Walt",
       "place": "Low Tide Diner",
-      "buys": "Raw fish, dressed fish, sushi, meals",
+      "buys": "Raw fish, dressed fish, meals",
       "appearsWhen": "townOpen"
     },
     {

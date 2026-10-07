@@ -24,7 +24,7 @@ Until the Town opens there is no selling, no requests, no Crow's letters.
 
 | Person | Place | Buys | Appears |
 |---|---|---|---|
-| Walt | Low Tide Diner | Raw fish, dressed fish, sushi, meals | When the Town opens |
+| Walt | Low Tide Diner | Raw fish, dressed fish, meals | When the Town opens |
 | Dot | Dot's Salvage Yard | Sorted goods (all 7 bins) | When the Town opens |
 | Rosalind | Rosalind's Antiques | Knick-knacks | With the Carpentry Bench |
 | Hank | Hank's Hardware | Ingots | With the Crucible |
