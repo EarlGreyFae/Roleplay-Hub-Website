@@ -15,6 +15,12 @@ const ShoalTalesEngine = require('./shoal-tales/engine.js');
 const ShoalTalesData = require('./shoal-tales/data.js');
 
 const PORT = process.env.PORT || 10000;
+// Changes on every process start (so on every deploy/restart) - lets the
+// client detect "a newer version shipped while I was open" and reload, for
+// PWAs/mobile browsers that resume an already-loaded page from a suspended
+// background tab instead of doing a fresh navigation (where no request,
+// and so no Cache-Control header, would ever come into play at all).
+const BUILD_ID = String(Date.now()) + '-' + crypto.randomBytes(4).toString('hex');
 // Overridable so a Render persistent disk (or any other host's mounted volume)
 // can be pointed at from outside the app directory, instead of the ephemeral
 // local repo checkout that gets wiped on every redeploy.
@@ -1547,6 +1553,14 @@ const server = http.createServer(async (req, res) => {
 
   const [reqPath, queryString] = (req.url || '/').split('?');
   const query = new URLSearchParams(queryString || '');
+
+  // Lets the client (see index.html's build-id check) notice a new deploy
+  // happened while it was open/backgrounded and reload itself.
+  if (reqPath === '/api/build-id' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ buildId: BUILD_ID }));
+    return;
+  }
 
   // Auto-Sync endpoint for zero-button seamless restore upon redeployment
   if (reqPath === '/api/sync/auto-sync' && req.method === 'POST') {

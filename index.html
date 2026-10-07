@@ -7956,6 +7956,42 @@ function App() {
     }
   }, []);
 
+  // Detect "a new version deployed while this tab was open" and reload.
+  // On mobile especially, switching back to an installed PWA (or even a
+  // regular backgrounded tab) often *resumes* the already-running page
+  // instead of doing a fresh navigation - no request is made at all, so no
+  // Cache-Control header ever comes into play, no matter how it's set.
+  // Checking a build id on resume is the only way to actually notice.
+  useEffect(() => {
+    const knownBuildId = { current: null };
+    async function checkBuildId() {
+      try {
+        const res = await fetch('/api/build-id', { cache: 'no-store' });
+        const data = await res.json();
+        if (knownBuildId.current === null) {
+          knownBuildId.current = data.buildId;
+        } else if (data.buildId !== knownBuildId.current) {
+          window.location.reload();
+        }
+      } catch (e) { /* offline or transient - just skip this check */ }
+    }
+    checkBuildId();
+    function onVisible() {
+      if (document.visibilityState === 'visible') checkBuildId();
+    }
+    function onPageShow(event) {
+      if (event.persisted) checkBuildId();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('focus', checkBuildId);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('focus', checkBuildId);
+    };
+  }, []);
+
   // Repair a push subscription left stale by a VAPID key that changed since it was
   // created (see PushNotifications.resyncIfStale) - runs once a logged-in handle is
   // known, with no visible effect for anyone whose subscription is already current.
