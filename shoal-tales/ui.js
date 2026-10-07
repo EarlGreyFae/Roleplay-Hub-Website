@@ -500,6 +500,7 @@
     var onDress = props.onDress;
     var onMakeMeal = props.onMakeMeal;
     var busy = props.busy;
+    var _confirmSell = useState(false); var confirmingSell = _confirmSell[0]; var setConfirmingSell = _confirmSell[1];
 
     var ovenInstalled = save.stationsInstalled.indexOf('oven') !== -1;
     var goodsValue = ENGINE.BINS.reduce(function (sum, b) { return sum + save.sortedGoods[b].value; }, 0);
@@ -512,6 +513,19 @@
       + dressedFish.reduce(function (s, f) { return s + f.value; }, 0) + mealValue + resourceValue;
 
     if (totalValue <= 0 && save.cooler.length === 0) return null;
+
+    // "It warns when a current request needs some of those goods"
+    // (07-story.md) - Sell Everything wipes every sortedGoods bin, the
+    // whole cooler, and all 3 resources, so any townsperson whose current
+    // request/standing order draws on one of those and who has stock
+    // toward it right now gets named before the sell actually happens.
+    var sellWarnings = DATA.townsfolk.map(function (p) {
+      var current = shoalCurrentRequestFor(save, p.id);
+      if (!current) return null;
+      var have = shoalHaveFor(save, current.requires);
+      if (have <= 0) return null;
+      return p.name + ' (' + describeRequires(current.requires) + ')';
+    }).filter(Boolean);
 
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Held Goods'),
@@ -550,10 +564,23 @@
         })
       ),
       !save.townOpen && h('p', { className: 'shoal-hint' }, 'Dress a fish to open the Town before you can sell.'),
-      h('button', {
-        type: 'button', disabled: busy || totalValue <= 0 || !save.townOpen, onClick: function () { onSell('all'); },
-        className: 'shoal-sell-btn'
-      }, 'Sell Everything for ', formatCoins(totalValue), ' coins')
+      sellWarnings.length > 0 && h('p', { className: 'shoal-hint shoal-sell-warning' },
+        '⚠ Selling everything will use up stock a current request needs: ', sellWarnings.join(', '), '.'),
+      confirmingSell
+        ? [
+            h('button', {
+              key: 'confirm', type: 'button', disabled: busy, className: 'shoal-sell-btn',
+              onClick: function () { setConfirmingSell(false); onSell('all'); }
+            }, 'Confirm: Sell All for ', formatCoins(totalValue)),
+            h('button', {
+              key: 'cancel', type: 'button', disabled: busy, className: 'shoal-action-btn',
+              onClick: function () { setConfirmingSell(false); }
+            }, 'Cancel')
+          ]
+        : h('button', {
+            type: 'button', disabled: busy || totalValue <= 0 || !save.townOpen, onClick: function () { setConfirmingSell(true); },
+            className: 'shoal-sell-btn'
+          }, 'Sell Everything for ', formatCoins(totalValue), ' coins')
     );
   }
 

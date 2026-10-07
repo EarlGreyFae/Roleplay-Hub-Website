@@ -255,6 +255,7 @@
   font-size: 0.78rem;
 }
 .shoal-sell-btn:disabled { opacity: 0.45; }
+.shoal-sell-warning { color: #ffb3b3; }
 
 .shoal-upgrade-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .shoal-upgrade-row {
