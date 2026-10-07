@@ -50,7 +50,9 @@ const defaultDb = {
   shoalTalesParties: {},
   shoalTalesGuilds: {},
   shoalTalesBottleLetters: {},
-  shoalTalesSeasonState: { lastProcessedMonth: new Date().toISOString().slice(0, 7) }
+  shoalTalesSeasonState: { lastProcessedMonth: new Date().toISOString().slice(0, 7) },
+  shoalTalesActiveTide: null,
+  shoalTalesActiveEvent: null
 };
 
 let db = { ...defaultDb };
@@ -96,7 +98,9 @@ function loadDatabaseFromFile() {
         shoalTalesParties: parsed.shoalTalesParties || {},
         shoalTalesGuilds: parsed.shoalTalesGuilds || {},
         shoalTalesBottleLetters: parsed.shoalTalesBottleLetters || {},
-        shoalTalesSeasonState: parsed.shoalTalesSeasonState || { lastProcessedMonth: new Date().toISOString().slice(0, 7) }
+        shoalTalesSeasonState: parsed.shoalTalesSeasonState || { lastProcessedMonth: new Date().toISOString().slice(0, 7) },
+        shoalTalesActiveTide: parsed.shoalTalesActiveTide || null,
+        shoalTalesActiveEvent: parsed.shoalTalesActiveEvent || null
       };
       if (!db.users['@earlgreyfae']) {
         db.users['@earlgreyfae'] = defaultDb.users['@earlgreyfae'];
@@ -190,7 +194,9 @@ async function initializeDatabase() {
           shoalTalesParties: pgData.shoalTalesParties || {},
           shoalTalesGuilds: pgData.shoalTalesGuilds || {},
           shoalTalesBottleLetters: pgData.shoalTalesBottleLetters || {},
-          shoalTalesSeasonState: pgData.shoalTalesSeasonState || { lastProcessedMonth: new Date().toISOString().slice(0, 7) }
+          shoalTalesSeasonState: pgData.shoalTalesSeasonState || { lastProcessedMonth: new Date().toISOString().slice(0, 7) },
+          shoalTalesActiveTide: pgData.shoalTalesActiveTide || null,
+          shoalTalesActiveEvent: pgData.shoalTalesActiveEvent || null
         };
         console.log('[DB] Restored database state from PostgreSQL (source of truth)');
         saveDatabaseSync();
@@ -283,7 +289,11 @@ function defaultShoalTalesSave(handle) {
     unlockedDepths: [0],
     retirements: 0,
     lastHaulDate: null,
-    allTimeStats: { hauls: 0, junkSorted: 0, fishOnIce: 0, coinsEarned: 0, bestStreak: 0, curiosScrubbed: 0, cratesOpened: 0, creaturesReleased: 0 },
+    allTimeStats: {
+      hauls: 0, junkSorted: 0, fishOnIce: 0, coinsEarned: 0, bestStreak: 0, curiosScrubbed: 0, cratesOpened: 0, creaturesReleased: 0,
+      // Added for The Desk's Profile / feat titles (14-extras.md).
+      goodsMade: 0, customersServed: 0, perfectDrinksServed: 0, unitsSold: 0, secondsAtSea: 0
+    },
     // Kept for good across retiring (docs/shoal-tales-spec/11-retiring.md) -
     // shoalApplyRetire() never touches these.
     collectorsLog: { curios: {}, fish: {} },
@@ -386,7 +396,29 @@ function defaultShoalTalesSave(handle) {
     emptyBottlesKept: 0,
     writingKits: 0,
     heartedLetterIds: [],
-    pendingLetterReplies: []
+    pendingLetterReplies: [],
+    // Feat titles (14-extras.md): earned once, permanent; featTitleChosen
+    // (the ARCHITECTURE.md field name) shows instead of the retirement
+    // title when set.
+    unlockedFeatTitles: [],
+    featTitleChosen: null,
+    // Collector's Log sets whose every item was logged golden (Golden
+    // Touch feat) - tracked separately from completedSetIds since a set can
+    // be completed non-golden first and golden later.
+    goldenSetIds: [],
+    // Events (14-extras.md): sets from a past/running event the player has
+    // fully logged, each granting a permanent +2% payout bonus.
+    completedEventIds: [],
+    // The quest book - which quests have already paid out their reward.
+    // Progress itself is derived live from the rest of the save (hauls,
+    // coins, sets, etc.) rather than duplicated here.
+    claimedQuestIds: [],
+    // New-player guide (14-extras.md): each deck fixture's sparkle hint
+    // clears the first time it's used, and never reappears once retired.
+    newPlayerHintsSeen: [],
+    // Settings (14-extras.md) not already covered by the flat
+    // visitorsEnabled/announcementsEnabled fields from task 24.
+    settings: { seaSounds: true, dredgeChatLine: true, sparkles: true, titleDisplay: true }
   };
 }
 
@@ -538,7 +570,127 @@ function shoalPayoutBonus(save) {
   const petBonus = shoalPetTreatActive(save) ? 0.05 : 0;
   const partyBonus = shoalPartyDredgeBonus(save);
   const guildBonus = shoalGuildPayoutBonus(save);
-  return Math.min(0.5, retireBonus + petBonus + partyBonus + guildBonus);
+  const tide = shoalActiveTide();
+  // "Silver Tide: +25% value on everything sorted and made" (14-extras.md).
+  const tideBonus = (tide && tide.type === 'silver') ? 0.25 : 0;
+  // Completing an event's Collector's Log set "gives a small lasting bonus
+  // of about +2%" - stacks per event completed, like a guild set.
+  const eventBonus = (save.completedEventIds || []).length * 0.02;
+  return Math.min(0.5, retireBonus + petBonus + partyBonus + guildBonus + tideBonus + eventBonus);
+}
+
+// --- Extras (docs/shoal-tales-spec/14-extras.md): Tides, Events ---
+
+// Tides are "short server-wide events (1-240 minutes, default 10) started
+// by staff by hand, never at random" (16-minecraft-to-web.md) - lazily
+// expired, like the season rollover: nothing resets on a timer, a tide
+// simply stops counting as active once its endsAt has passed.
+function shoalActiveTide() {
+  const t = db.shoalTalesActiveTide;
+  if (!t) return null;
+  if (Date.now() >= new Date(t.endsAt).getTime()) return null;
+  return t;
+}
+
+// Events are "longer, dated" - staff-scheduled, with their own Collector's
+// Log set (existing curios/fish repurposed into a temporary event pool,
+// since the design bible explicitly leaves real event content for the
+// owner to author later - 17-open-items.md).
+function shoalActiveEvent() {
+  const e = db.shoalTalesActiveEvent;
+  if (!e) return null;
+  if (Date.now() >= new Date(e.endsAt).getTime()) return null;
+  return e;
+}
+
+// --- The Quest Book (14-extras.md): "the tutorial - there is deliberately
+// no separate handbook. 2 chapters, 22 quests (a placeholder set the owner
+// will rewrite)." Progress is derived live from the rest of the save
+// rather than duplicated into its own counters - claimedQuestIds is the
+// only thing actually stored. ---
+
+function shoalQuestUnlocked(save, quest) {
+  if (!quest.requires) return true;
+  return (save.claimedQuestIds || []).indexOf(quest.requires) !== -1;
+}
+
+function shoalQuestProgress(save, quest) {
+  const t = quest.task;
+  switch (t.type) {
+    case 'hauls': return { have: save.allTimeStats.hauls || 0, need: t.amount };
+    case 'coinsOnHand': return { have: save.coins || 0, need: t.amount };
+    case 'coinsEarnedThisRun': return { have: save.lifetimeCoinsThisRun || 0, need: t.amount };
+    case 'basketSize': return { have: ShoalTalesEngine.basketSize(save.basketLevel, 0), need: t.amount };
+    case 'upgradeLevel': {
+      const field = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' }[t.target];
+      return { have: field ? save[field] : 0, need: t.amount };
+    }
+    case 'stationInstalled': return { have: save.stationsInstalled.length, need: t.amount };
+    case 'emporiumOpened': return { have: save.emporiumOpen ? 1 : 0, need: 1 };
+    case 'retirements': return { have: save.retirements || 0, need: t.amount };
+    case 'fishSpeciesCaught': return { have: Object.keys(save.collectorsLog.fish).length, need: t.amount };
+    case 'particularFish': {
+      const f = ShoalTalesData.fish.find(x => x.id === t.target);
+      return { have: (f && save.collectorsLog.fish[f.id]) ? 1 : 0, need: 1 };
+    }
+    case 'curiosLogged': return { have: Object.keys(save.collectorsLog.curios).length, need: t.amount };
+    case 'particularSet': return { have: shoalCountCompletedSets(save).indexOf(t.target) !== -1 ? 1 : 0, need: 1 };
+    case 'setsCompleted': return { have: shoalCountCompletedSets(save).length, need: t.amount };
+    case 'areaUnlocked': return { have: save.unlockedAreas.indexOf(t.target) !== -1 ? 1 : 0, need: 1 };
+    case 'townspersonMet': return { have: shoalTownspersonAppears(save, t.target) ? 1 : 0, need: 1 };
+    case 'storyRequestsDone': {
+      const done = Object.values(save.storyRequestIndex || {}).reduce((s, v) => s + v, 0);
+      return { have: done, need: t.amount || 1 };
+    }
+    case 'goodsHeld': {
+      const held = ShoalTalesEngine.BINS.reduce((s, b) => s + (save.sortedGoods[b] ? save.sortedGoods[b].units : 0), 0);
+      return { have: held, need: t.amount };
+    }
+    case 'goodsHandedIn': return { have: save.allTimeStats.unitsSold || 0, need: t.amount };
+    case 'message': return { have: 1, need: 1 };
+    default: return { have: 0, need: 1 };
+  }
+}
+
+// Grants a quest's reward. "look" rewards unlock a specific cosmetic id
+// outright, bypassing its usual retirement gate - a nice bonus for
+// following the quest book. "supplies" has no dedicated inventory to grant
+// into (Limes/Herb Butter/etc. are bought with coins at point of use, not
+// stocked anywhere) - granted as an equivalent coin value instead, flagged
+// in the response rather than silently dropped.
+function shoalGrantQuestReward(save, reward) {
+  switch (reward.type) {
+    case 'coins':
+      save.coins += reward.amount;
+      save.allTimeStats.coinsEarned += reward.amount;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + reward.amount;
+      return { type: 'coins', amount: reward.amount };
+    case 'tickets':
+      save.emporium.tickets += reward.amount;
+      return { type: 'tickets', amount: reward.amount };
+    case 'supplies': {
+      const coinValue = reward.amount * 2;
+      save.coins += coinValue;
+      save.allTimeStats.coinsEarned += coinValue;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coinValue;
+      return { type: 'coins', amount: coinValue, note: `${reward.amount}x ${reward.item} (as coins - no supplies inventory yet)` };
+    }
+    case 'decoration':
+      return { type: 'decoration', decoration: shoalGrantRandomDecoration(save, reward.rarity) };
+    case 'rareMaterial':
+      save.rareMaterials[reward.item] = (save.rareMaterials[reward.item] || 0) + reward.amount;
+      return { type: 'rareMaterial', item: reward.item, amount: reward.amount };
+    case 'look': {
+      const fieldByCategory = { badge: 'unlockedBadges', sail: 'unlockedSails', flag: 'unlockedFlags', pet: 'unlockedPets', track: 'unlockedTracks' };
+      const field = fieldByCategory[reward.category];
+      if (field && save.cosmetics[field].indexOf(reward.id) === -1) save.cosmetics[field].push(reward.id);
+      return { type: 'look', category: reward.category, id: reward.id };
+    }
+    case 'message':
+      return { type: 'message', text: reward.text };
+    default:
+      return null;
+  }
 }
 
 // "The owner's first pat each real-world day gives a treat: +5% value for
@@ -685,6 +837,10 @@ function shoalCountCompletedSets(save) {
 // flags "golden sets" (every item in the set logged golden) for the
 // Golden Touch feat. Called right after every collectorsLog mutation.
 function shoalUpdateCompletedSets(save, handle) {
+  // Checked unconditionally (not gated on a whole SET completing) - an
+  // event's own set can be satisfied by ordinary fish/curio logging well
+  // before/without ever completing one of the 30 area sets.
+  shoalCheckEventCompletion(save, handle);
   const current = shoalCountCompletedSets(save);
   const previous = save.completedSetIds || [];
   const newlyCompleted = current.filter(id => previous.indexOf(id) === -1);
@@ -703,10 +859,63 @@ function shoalUpdateCompletedSets(save, handle) {
       const f = ShoalTalesData.fish.find(x => x.name === n);
       return f && save.collectorsLog.fish[f.id] && save.collectorsLog.fish[f.id].golden;
     });
-    if (allGolden) shoalBroadcastAnnouncement(`${handle} completed a GOLDEN ${set.name} set!`);
+    if (allGolden) {
+      shoalBroadcastAnnouncement(`${handle} completed a GOLDEN ${set.name} set!`);
+      if (!save.goldenSetIds) save.goldenSetIds = [];
+      if (save.goldenSetIds.indexOf(setId) === -1) save.goldenSetIds.push(setId);
+    }
   });
   if (!wasWholeLogDone && current.length === ShoalTalesData.sets.length) {
     shoalBroadcastAnnouncement(`${handle} completed the entire Collector's Log!`);
+  }
+  shoalCheckFeatTitles(save);
+}
+
+// Feat titles (14-extras.md): earned once, permanent. Cheap enough to
+// recompute fully each time rather than tracking per-condition dirty
+// flags - called after dredging, sorting, releasing a creature, serving a
+// drink, and completing a set (the only actions that can cross one of
+// these thresholds). "Letter Writer" is checked separately (see
+// shoalCheckLetterWriterFeat) since it depends on the shared letters
+// collection, not just this save.
+function shoalCheckFeatTitles(save) {
+  if (!save.unlockedFeatTitles) save.unlockedFeatTitles = [];
+  const unlock = id => { if (save.unlockedFeatTitles.indexOf(id) === -1) save.unlockedFeatTitles.push(id); };
+  if ((save.bestStreakEver || 0) >= 100) unlock('streak-master');
+  if ((save.allTimeStats.hauls || 0) >= 1000) unlock('deep-dredger');
+  if ((save.allTimeStats.perfectDrinksServed || 0) >= 100) unlock('barista');
+  if ((save.creaturesSeen || []).length >= ShoalTalesData.creaturesSeen.length) unlock('naturalist');
+  if ((save.completedSetIds || []).length >= ShoalTalesData.sets.length) unlock('completionist');
+  if ((save.goldenSetIds || []).length >= 1) unlock('golden-touch');
+}
+
+// "Letter Writer: 10 of your letters out at sea" - read literally as 10
+// currently-approved letters by this author at once (not a lifetime
+// cumulative count, since a report can pull one back out of circulation -
+// but once earned, the title stays per "earned once").
+function shoalCheckLetterWriterFeat(save) {
+  const count = Object.values(db.shoalTalesBottleLetters).filter(l => l.authorHandle === save.handle && l.status === 'approved').length;
+  if (count >= 10) {
+    if (!save.unlockedFeatTitles) save.unlockedFeatTitles = [];
+    if (save.unlockedFeatTitles.indexOf('letter-writer') === -1) save.unlockedFeatTitles.push('letter-writer');
+  }
+}
+
+// Events (14-extras.md): "completing it gives a small lasting bonus of
+// about +2% plus looks" - detects the player's Collector's Log now covers
+// every curio/fish in the event's set (same mirrors-ui.js-exactly caveat
+// as shoalCountCompletedSets). The event may have already ended by the
+// time this is satisfied; completedEventIds don't require it still running.
+function shoalCheckEventCompletion(save, handle) {
+  const event = shoalActiveEvent();
+  if (!event) return;
+  if (!save.completedEventIds) save.completedEventIds = [];
+  if (save.completedEventIds.indexOf(event.id) !== -1) return;
+  const curiosDone = (event.curioIds || []).every(id => !!save.collectorsLog.curios[id]);
+  const fishDone = (event.fishIds || []).every(id => !!save.collectorsLog.fish[id]);
+  if (((event.curioIds || []).length > 0 || (event.fishIds || []).length > 0) && curiosDone && fishDone) {
+    save.completedEventIds.push(event.id);
+    shoalBroadcastAnnouncement(`${handle} completed the ${event.name} event set!`);
   }
 }
 
@@ -791,6 +1000,14 @@ function shoalPerformCounterServe(save, customerId, drink, coolerItemId) {
   save.coins += pay;
   save.allTimeStats.coinsEarned += pay;
   save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + pay;
+  save.allTimeStats.customersServed = (save.allTimeStats.customersServed || 0) + 1;
+  if (correctDrink) {
+    // "Barista: 100 perfect drinks served" (14-extras.md) - counted on
+    // whoever's Counter this is, even when a Visit helper served it (same
+    // "it's still the host's" rule as Help Sort).
+    save.allTimeStats.perfectDrinksServed = (save.allTimeStats.perfectDrinksServed || 0) + 1;
+    shoalCheckFeatTitles(save);
+  }
   emp.counterCustomers.splice(idx, 1);
   return { status: 200, body: { success: true, correctDrink, mealGiven, coinsEarned: pay } };
 }
@@ -848,6 +1065,7 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
         }
       }
     }
+    shoalCheckFeatTitles(save);
     return { status: 200, body: { success: true, correct: true, kind: 'fish', value, newStreak: save.streak, golden, newlyLogged } };
   }
 
@@ -882,6 +1100,7 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
     shoalContributeToGuildQuests(save, 'sortedUnits', 1 + item.weight);
   }
   save.tray.splice(itemIndex, 1);
+  shoalCheckFeatTitles(save);
   return { status: 200, body: { success: true, correct, kind: 'junk', value, newStreak: save.streak, effectiveCorrectBin, bin } };
 }
 
@@ -925,6 +1144,19 @@ function shoalLuckBonus(save) {
 function shoalRetirementTitle(retirements) {
   const titles = ShoalTalesData.retirementTitles;
   return titles[Math.min(retirements, titles.length - 1)];
+}
+
+// "Feat titles... shown instead of the retirement title if chosen"
+// (14-extras.md). Respects the "own title display" setting (14-extras.md's
+// Settings list) - callers showing a title to OTHER players should use
+// this (not shoalRetirementTitle directly) so a null means "show nothing."
+function shoalDisplayTitle(save) {
+  if (save.settings && save.settings.titleDisplay === false) return null;
+  if (save.featTitleChosen) {
+    const feat = ShoalTalesData.featTitles.find(f => f.id === save.featTitleChosen);
+    if (feat) return feat.name;
+  }
+  return shoalRetirementTitle(save.retirements);
 }
 
 // Resets "this run only" state and grants the next area/depth/title, per
@@ -1082,21 +1314,31 @@ function generateShoalHaul(save) {
   const area = shoalAreaById(save.area);
   const isFirstHaulOfDay = save.lastHaulDate !== new Date().toISOString().slice(0, 10);
   const isVeryFirstHaul = save.allTimeStats.hauls === 0;
-  const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, 0, { isFirstHaulOfDay: isFirstHaulOfDay });
+  const tide = shoalActiveTide();
+  const event = shoalActiveEvent();
+  const springTideActive = tide && tide.type === 'spring';
+  const glassTideActive = tide && tide.type === 'glass';
+  const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, 0, { isFirstHaulOfDay: isFirstHaulOfDay, springTideActive: springTideActive });
   // Luck is endgame-only: "+3% luck" per retirement past the 8th (09-economy.md).
   // Other luck sources (sets/magic curios/upgrades) aren't wired in yet.
   const luck = shoalLuckBonus(save);
 
   const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
-  const fishPool = ShoalTalesData.fish.filter(f => {
+  let fishPool = ShoalTalesData.fish.filter(f => {
     if (f.area !== area.name) return false;
     const range = shoalDepthRangeFromString(f.depths);
     return save.depth >= range[0] && save.depth <= range[1];
   });
+  // Event fish turn up everywhere the event is running, ignoring the usual
+  // area/depth gating - it's "its own set", not tied to a map area.
+  if (event && event.fishIds && event.fishIds.length > 0) {
+    const eventFish = ShoalTalesData.fish.filter(f => event.fishIds.indexOf(f.id) !== -1);
+    fishPool = fishPool.concat(eventFish);
+  }
   const curioPool = ShoalTalesData.curios.filter(c => c.area === area.name);
   const magicCuriosRemaining = ShoalTalesData.magicCurios.filter(m => save.magicCurios.indexOf(m.id) === -1);
 
-  const catchWeights = ShoalTalesEngine.catchTypeWeights(save.depth, luck, false);
+  const catchWeights = ShoalTalesEngine.catchTypeWeights(save.depth, luck, glassTideActive);
   const tray = [];
   let forcedFishUsed = false;
   let forcedCurioUsed = false;
@@ -1138,7 +1380,10 @@ function generateShoalHaul(save) {
       // (which specific curio) is still resolved lazily at /scrub time;
       // this just tags which pool to scrub from.
       const curioItem = { id, kind: 'curio', name: 'Encrusted Curio', identified: false, areaMultiplier };
-      if (save.partyId && Math.random() < 0.15) curioItem.curioSource = 'party';
+      // "Each curio roll has a 20% chance of coming from [the event's set]
+      // while it runs" (14-extras.md).
+      if (event && event.curioIds && event.curioIds.length > 0 && Math.random() < 0.20) curioItem.curioSource = 'event';
+      else if (save.partyId && Math.random() < 0.15) curioItem.curioSource = 'party';
       else if (save.guildId && Math.random() < 0.15) curioItem.curioSource = 'guild';
       tray.push(curioItem);
     } else if (kind === 'crate') {
@@ -2517,7 +2762,7 @@ const server = http.createServer(async (req, res) => {
       const save = getOrCreateShoalTalesSave(handle);
       // nextStation/title are derived (never persisted) so the stored save
       // stays clean - both are recomputed fresh on every GET.
-      const withDerived = Object.assign({}, save, { nextStation: shoalNextStationInfo(save), title: shoalRetirementTitle(save.retirements) });
+      const withDerived = Object.assign({}, save, { nextStation: shoalNextStationInfo(save), title: shoalDisplayTitle(save) });
       return sendJson(res, 200, { success: true, save: withDerived });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
@@ -2538,6 +2783,7 @@ const server = http.createServer(async (req, res) => {
       save.lastHaulDate = new Date().toISOString().slice(0, 10);
       save.lastDredgeAt = new Date().toISOString();
       save.allTimeStats.hauls += 1;
+      save.allTimeStats.secondsAtSea = (save.allTimeStats.secondsAtSea || 0) + dredgeTimeSeconds;
       shoalContributeToGuildQuests(save, 'hauls', 1);
       // A written reply to one of this player's bottle letters is delivered
       // on their next haul (13-social.md step 5) - same forcing mechanism as
@@ -2546,6 +2792,7 @@ const server = http.createServer(async (req, res) => {
       if (save.pendingLetterReplies.length > 0) {
         deliveredReply = save.pendingLetterReplies.shift();
       }
+      shoalCheckFeatTitles(save);
       saveDatabase();
       return sendJson(res, 200, { success: true, tray, dredgeTimeSeconds, deliveredReply });
     } catch (e) {
@@ -2578,20 +2825,23 @@ const server = http.createServer(async (req, res) => {
       }
       const sellWhat = what || 'all';
       let coinsEarned = 0;
+      let unitsSold = 0;
 
       if (sellWhat === 'goods' || sellWhat === 'all') {
         ShoalTalesEngine.BINS.forEach(b => {
           coinsEarned += save.sortedGoods[b].value;
+          unitsSold += save.sortedGoods[b].units;
           save.sortedGoods[b] = { units: 0, value: 0 };
         });
       }
       if (sellWhat === 'fish' || sellWhat === 'all') {
-        save.cooler.forEach(f => { coinsEarned += f.value; });
+        save.cooler.forEach(f => { coinsEarned += f.value; unitsSold += 1; });
         save.cooler = [];
       }
       ['knickKnacks', 'ingots', 'materials'].forEach(key => {
         if (sellWhat === key || sellWhat === 'all') {
           coinsEarned += save[key].value;
+          unitsSold += save[key].units;
           save[key] = { units: 0, value: 0 };
         }
       });
@@ -2599,6 +2849,7 @@ const server = http.createServer(async (req, res) => {
       save.coins += coinsEarned;
       save.lifetimeCoinsThisRun += coinsEarned;
       save.allTimeStats.coinsEarned += coinsEarned;
+      save.allTimeStats.unitsSold = (save.allTimeStats.unitsSold || 0) + unitsSold;
       save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coinsEarned;
       shoalContributeToGuildQuests(save, 'coinsEarnedSelling', coinsEarned);
       saveDatabase();
@@ -2695,9 +2946,14 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: 'Nothing to scrub here.' });
       }
       const area = shoalAreaById(save.area);
-      const curioPool = item.curioSource === 'party' ? ShoalTalesData.curios.filter(c => c.set === 'Party Favours')
+      const activeEventForScrub = shoalActiveEvent();
+      let curioPool = item.curioSource === 'party' ? ShoalTalesData.curios.filter(c => c.set === 'Party Favours')
         : item.curioSource === 'guild' ? ShoalTalesData.curios.filter(c => c.set === 'Guild Keepsakes')
+        : (item.curioSource === 'event' && activeEventForScrub) ? ShoalTalesData.curios.filter(c => activeEventForScrub.curioIds.indexOf(c.id) !== -1)
         : ShoalTalesData.curios.filter(c => c.area === area.name);
+      // The event may have ended between haul and scrub - fall back to the
+      // area pool rather than erroring on a now-empty event pool.
+      if (curioPool.length === 0) curioPool = ShoalTalesData.curios.filter(c => c.area === area.name);
       if (curioPool.length === 0) return sendJson(res, 500, { error: 'No curios available to identify in this area.' });
       const picked = curioPool[Math.floor(Math.random() * curioPool.length)];
       const goldenEligible = save.retirements >= 8;
@@ -2838,6 +3094,7 @@ const server = http.createServer(async (req, res) => {
       const newlySeen = save.creaturesSeen.indexOf(item.creatureId) === -1;
       if (newlySeen) save.creaturesSeen.push(item.creatureId);
       save.tray.splice(itemIndex, 1);
+      if (newlySeen) shoalCheckFeatTitles(save);
       saveDatabase();
       return sendJson(res, 200, { success: true, coins, newlySeen, allFiveSeen: save.creaturesSeen.length >= 5 });
     } catch (e) {
@@ -3028,6 +3285,7 @@ const server = http.createServer(async (req, res) => {
       save[resourceKey].units += producedUnits;
       save[resourceKey].value += producedValue;
       save.sortedGoods[bin] = { units: 0, value: 0 };
+      save.allTimeStats.goodsMade = (save.allTimeStats.goodsMade || 0) + producedUnits;
       shoalContributeToGuildQuests(save, 'goodsMade', producedUnits);
       saveDatabase();
       return sendJson(res, 200, { success: true, bin, resource: resourceKey, producedUnits, producedValue });
@@ -3817,7 +4075,7 @@ const server = http.createServer(async (req, res) => {
       const members = party.members.map(h => {
         const s = db.shoalTalesSaves[h];
         return {
-          handle: h, title: s ? shoalRetirementTitle(s.retirements) : null, active: s ? shoalIsRecentlyActive(s, SHOAL_ACTIVITY_WINDOW_MS) : false,
+          handle: h, title: s ? shoalDisplayTitle(s) : null, active: s ? shoalIsRecentlyActive(s, SHOAL_ACTIVITY_WINDOW_MS) : false,
           // A member's own tray is exposed to the rest of the party (and only
           // the party) so Help Sort has something to show - fair game inside
           // a trusted group of up to 4.
@@ -3973,7 +4231,7 @@ const server = http.createServer(async (req, res) => {
       shoalRollGuildDailyQuests(guild);
       const members = guild.members.map(h => {
         const s = db.shoalTalesSaves[h];
-        return { handle: h, role: guild.memberRoles[h] || 'member', title: s ? shoalRetirementTitle(s.retirements) : null, active: s ? shoalIsRecentlyActive(s, SHOAL_GUILD_ACTIVITY_WINDOW_MS) : false };
+        return { handle: h, role: guild.memberRoles[h] || 'member', title: s ? shoalDisplayTitle(s) : null, active: s ? shoalIsRecentlyActive(s, SHOAL_GUILD_ACTIVITY_WINDOW_MS) : false };
       });
       saveDatabase();
       return sendJson(res, 200, {
@@ -4267,7 +4525,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         success: true,
         boat: {
-          handle: ownerHandle, title: shoalRetirementTitle(ownerSave.retirements), retirements: ownerSave.retirements,
+          handle: ownerHandle, title: shoalDisplayTitle(ownerSave), retirements: ownerSave.retirements,
           cosmetics: ownerSave.cosmetics, bestStreakEver: ownerSave.bestStreakEver,
           setsCompleted: shoalCountCompletedSets(ownerSave).length,
           emporiumOpen: ownerSave.emporiumOpen,
@@ -4434,6 +4692,7 @@ const server = http.createServer(async (req, res) => {
       const letter = db.shoalTalesBottleLetters[letterId];
       if (!letter) return sendJson(res, 404, { error: 'No such letter.' });
       letter.status = 'approved';
+      shoalCheckLetterWriterFeat(getOrCreateShoalTalesSave(letter.authorHandle));
       saveDatabase();
       return sendJson(res, 200, { success: true });
     } catch (e) {
@@ -4528,11 +4787,258 @@ const server = http.createServer(async (req, res) => {
       const valueFn = valueFns[type];
       if (!valueFn) return sendJson(res, 400, { error: 'Unknown leaderboard type.' });
       const rows = Object.values(db.shoalTalesSaves)
-        .map(s => ({ handle: s.handle, title: shoalRetirementTitle(s.retirements), value: valueFn(s) }))
+        .map(s => ({ handle: s.handle, title: shoalDisplayTitle(s), value: valueFn(s) }))
         .filter(r => r.value > 0)
         .sort((a, b) => b.value - a.value)
         .slice(0, 20);
       return sendJson(res, 200, { success: true, type, rows });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Tides (14-extras.md): "short server-wide events (1-240 minutes,
+  // default 10) started by staff by hand, never at random" - maps to a
+  // superadmin-triggered action, per 16-minecraft-to-web.md's mechanics note. ---
+
+  if (reqPath === '/api/shoal-tales/tide/status' && req.method === 'GET') {
+    try {
+      const tide = shoalActiveTide();
+      const def = tide ? ShoalTalesData.tides.find(t => t.id === tide.type) : null;
+      return sendJson(res, 200, { success: true, tide: tide ? { type: tide.type, name: def ? def.name : tide.type, effect: def ? def.effect : null, endsAt: tide.endsAt } : null });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/tide/start' && req.method === 'POST') {
+    try {
+      const { handle, type, minutes } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      const def = ShoalTalesData.tides.find(t => t.id === type);
+      if (!def) return sendJson(res, 400, { error: 'Unknown tide type.' });
+      const mins = Math.min(240, Math.max(1, Number(minutes) || 10));
+      const endsAt = new Date(Date.now() + mins * 60000).toISOString();
+      db.shoalTalesActiveTide = { type, startedAt: new Date().toISOString(), endsAt, startedBy: handle };
+      shoalBroadcastAnnouncement(`${def.name} has begun! (${def.effect}, ${mins} min)`);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, tide: db.shoalTalesActiveTide });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/tide/stop' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      const wasActive = shoalActiveTide();
+      db.shoalTalesActiveTide = null;
+      if (wasActive) {
+        const def = ShoalTalesData.tides.find(t => t.id === wasActive.type);
+        shoalBroadcastAnnouncement(`${def ? def.name : 'The tide'} has ended.`);
+      }
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Events (14-extras.md): "longer, dated" - staff-scheduled, reusing
+  // existing curios/fish as a temporary event set rather than inventing new
+  // content (17-open-items.md: "the owner designs real events after launch"). ---
+
+  if (reqPath === '/api/shoal-tales/event/status' && req.method === 'GET') {
+    try {
+      const event = shoalActiveEvent();
+      return sendJson(res, 200, { success: true, event: event ? { id: event.id, name: event.name, endsAt: event.endsAt } : null });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/event/start' && req.method === 'POST') {
+    try {
+      const { handle, id, name, curioIds, fishIds, minutes } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      if (!id || !name) return sendJson(res, 400, { error: 'Missing id or name' });
+      const mins = Math.max(1, Number(minutes) || 1440);
+      const endsAt = new Date(Date.now() + mins * 60000).toISOString();
+      // "Reusing an event's id next year brings it back" - restarting the
+      // same id just overwrites the run (start/end dates), nothing about
+      // past completions needs resetting.
+      db.shoalTalesActiveEvent = { id, name, curioIds: curioIds || [], fishIds: fishIds || [], startsAt: new Date().toISOString(), endsAt, startedBy: handle };
+      shoalBroadcastAnnouncement(`The ${name} event has begun!`);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, event: db.shoalTalesActiveEvent });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/event/end' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      const wasActive = shoalActiveEvent();
+      db.shoalTalesActiveEvent = null;
+      if (wasActive) shoalBroadcastAnnouncement(`The ${wasActive.name} event has ended.`);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Stats: The Desk's Profile (14-extras.md) ---
+
+  if (reqPath === '/api/shoal-tales/stats' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const lettersFound = save.bottleLettersFound.length
+        + Object.values(db.shoalTalesBottleLetters).filter(l => l.foundBy.indexOf(handle) !== -1).length;
+      return sendJson(res, 200, {
+        success: true,
+        stats: {
+          allTime: Object.assign({}, save.allTimeStats, {
+            setsCompleted: shoalCountCompletedSets(save).length,
+            goldenSets: (save.goldenSetIds || []).length,
+            creaturesSeen: save.creaturesSeen.length,
+            lettersFound: lettersFound,
+            retirements: save.retirements
+          }),
+          thisRun: { coinsEarned: save.lifetimeCoinsThisRun, bestStreak: save.bestStreakThisRun },
+          unlockedFeatTitles: save.unlockedFeatTitles || [],
+          featTitleChosen: save.featTitleChosen
+        }
+      });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Feat titles (14-extras.md) ---
+
+  if (reqPath === '/api/shoal-tales/cosmetics/equip-feat-title' && req.method === 'POST') {
+    try {
+      const { handle, featTitleId } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (featTitleId === null || featTitleId === undefined) {
+        save.featTitleChosen = null;
+      } else {
+        if ((save.unlockedFeatTitles || []).indexOf(featTitleId) === -1) return sendJson(res, 400, { error: 'That feat title is not unlocked yet.' });
+        save.featTitleChosen = featTitleId;
+      }
+      saveDatabase();
+      return sendJson(res, 200, { success: true, featTitleChosen: save.featTitleChosen });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- The Quest Book (14-extras.md) ---
+
+  if (reqPath === '/api/shoal-tales/quest-book' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const quests = ShoalTalesData.questBook.map(q => {
+        const unlocked = shoalQuestUnlocked(save, q);
+        const claimed = (save.claimedQuestIds || []).indexOf(q.id) !== -1;
+        const progress = unlocked ? shoalQuestProgress(save, q) : null;
+        return {
+          id: q.id, chapter: q.chapter, order: q.order, title: q.title, description: q.description, reward: q.reward,
+          unlocked, claimed, done: !!progress && progress.have >= progress.need, progress
+        };
+      });
+      return sendJson(res, 200, { success: true, quests });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/quest-book/claim' && req.method === 'POST') {
+    try {
+      const { handle, questId } = await parseJsonBody(req);
+      if (!handle || !questId) return sendJson(res, 400, { error: 'Missing handle or questId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const quest = ShoalTalesData.questBook.find(q => q.id === questId);
+      if (!quest) return sendJson(res, 404, { error: 'No such quest.' });
+      if (!save.claimedQuestIds) save.claimedQuestIds = [];
+      if (save.claimedQuestIds.indexOf(questId) !== -1) return sendJson(res, 400, { error: 'Already claimed.' });
+      if (!shoalQuestUnlocked(save, quest)) return sendJson(res, 400, { error: 'Complete the previous quest first.' });
+      const progress = shoalQuestProgress(save, quest);
+      if (progress.have < progress.need) return sendJson(res, 400, { error: `Not finished yet (${progress.have}/${progress.need}).` });
+      save.claimedQuestIds.push(questId);
+      const granted = shoalGrantQuestReward(save, quest.reward);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, granted });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Settings (14-extras.md) not already covered by visitorsEnabled/
+  // announcementsEnabled (task 24). Sea sounds/sparkles/the dredge-is-up
+  // chat line are stored preferences the UI reads; there's no licensed
+  // audio to gate (same scope note as the radio tracks in 12-cosmetics.md). ---
+
+  if (reqPath === '/api/shoal-tales/settings/sea-sounds' && req.method === 'POST') {
+    try {
+      const { handle, enabled } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.settings) save.settings = { seaSounds: true, dredgeChatLine: true, sparkles: true, titleDisplay: true };
+      save.settings.seaSounds = !!enabled;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, settings: save.settings });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/settings/dredge-chat-line' && req.method === 'POST') {
+    try {
+      const { handle, enabled } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.settings) save.settings = { seaSounds: true, dredgeChatLine: true, sparkles: true, titleDisplay: true };
+      save.settings.dredgeChatLine = !!enabled;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, settings: save.settings });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/settings/sparkles' && req.method === 'POST') {
+    try {
+      const { handle, enabled } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.settings) save.settings = { seaSounds: true, dredgeChatLine: true, sparkles: true, titleDisplay: true };
+      save.settings.sparkles = !!enabled;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, settings: save.settings });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/settings/title-display' && req.method === 'POST') {
+    try {
+      const { handle, enabled } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.settings) save.settings = { seaSounds: true, dredgeChatLine: true, sparkles: true, titleDisplay: true };
+      save.settings.titleDisplay = !!enabled;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, settings: save.settings });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

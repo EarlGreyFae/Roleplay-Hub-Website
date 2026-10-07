@@ -4685,6 +4685,39 @@
       "name": "Track 30",
       "unlocksAtRetirement": 13
     }
+  ],
+  "tides": [
+    { "id": "spring", "name": "Spring Tide", "effect": "+25% items in every haul" },
+    { "id": "glass", "name": "Glass Tide", "effect": "Twice the chance of curios" },
+    { "id": "silver", "name": "Silver Tide", "effect": "+25% value on everything sorted and made" }
+  ],
+  // The quest book (14-extras.md): "a placeholder set the owner will
+  // rewrite" - 2 chapters, 22 quests, each locked behind the previous quest
+  // in its chapter (chapter 2's first quest behind chapter 1's last).
+  // Covers every task type and reward type the spec lists, at least once.
+  "questBook": [
+    { "id": "q1-1", "chapter": 1, "order": 0, "title": "Drop the Dredge", "description": "Haul up your very first catch.", "requires": null, "task": { "type": "hauls", "amount": 1 }, "reward": { "type": "coins", "amount": 20 } },
+    { "id": "q1-2", "chapter": 1, "order": 1, "title": "Fill the Tray", "description": "Haul 5 times in total.", "requires": "q1-1", "task": { "type": "hauls", "amount": 5 }, "reward": { "type": "coins", "amount": 50 } },
+    { "id": "q1-3", "chapter": 1, "order": 2, "title": "A Little Nest Egg", "description": "Have 100 coins on hand.", "requires": "q1-2", "task": { "type": "coinsOnHand", "amount": 100 }, "reward": { "type": "coins", "amount": 30 } },
+    { "id": "q1-4", "chapter": 1, "order": 3, "title": "Bigger Basket", "description": "Grow your basket to hold 5 items.", "requires": "q1-3", "task": { "type": "basketSize", "amount": 5 }, "reward": { "type": "tickets", "amount": 5 } },
+    { "id": "q1-5", "chapter": 1, "order": 4, "title": "First Catch", "description": "Catch your first fish species.", "requires": "q1-4", "task": { "type": "fishSpeciesCaught", "amount": 1 }, "reward": { "type": "coins", "amount": 40 } },
+    { "id": "q1-6", "chapter": 1, "order": 5, "title": "A Favour for a Friend", "description": "Fulfil a townsperson's story request.", "requires": "q1-5", "task": { "type": "storyRequestsDone", "amount": 1 }, "reward": { "type": "coins", "amount": 60 } },
+    { "id": "q1-7", "chapter": 1, "order": 6, "title": "Open the Books", "description": "Log 3 curios in the Collector's Log.", "requires": "q1-6", "task": { "type": "curiosLogged", "amount": 3 }, "reward": { "type": "supplies", "item": "Limes", "amount": 5 } },
+    { "id": "q1-8", "chapter": 1, "order": 7, "title": "Meet the Neighbours", "description": "Meet Dot down at the Salvage Yard.", "requires": "q1-7", "task": { "type": "townspersonMet", "target": "dot" }, "reward": { "type": "look", "category": "badge", "id": "anchor-badge" } },
+    { "id": "q1-9", "chapter": 1, "order": 8, "title": "Hand It In", "description": "Sell 40 units of sorted goods in total.", "requires": "q1-8", "task": { "type": "goodsHandedIn", "amount": 40 }, "reward": { "type": "coins", "amount": 70 } },
+    { "id": "q1-10", "chapter": 1, "order": 9, "title": "First Station", "description": "Install your first station.", "requires": "q1-9", "task": { "type": "stationInstalled", "amount": 1 }, "reward": { "type": "tickets", "amount": 10 } },
+    { "id": "q1-11", "chapter": 1, "order": 10, "title": "Open for Business", "description": "Open the Emporium.", "requires": "q1-10", "task": { "type": "emporiumOpened" }, "reward": { "type": "decoration", "rarity": "Common" } },
+    { "id": "q2-1", "chapter": 2, "order": 0, "title": "A Set of Your Own", "description": "Complete any one Collector's Log set.", "requires": "q1-11", "task": { "type": "setsCompleted", "amount": 1 }, "reward": { "type": "coins", "amount": 100 } },
+    { "id": "q2-2", "chapter": 2, "order": 1, "title": "A Taste of Home", "description": "Complete the Seaside Holiday set.", "requires": "q2-1", "task": { "type": "particularSet", "target": "seaside-holiday" }, "reward": { "type": "coins", "amount": 120 } },
+    { "id": "q2-3", "chapter": 2, "order": 2, "title": "New Horizons", "description": "Unlock the Coral Gardens.", "requires": "q2-2", "task": { "type": "areaUnlocked", "target": "coralgardens" }, "reward": { "type": "rareMaterial", "item": "Stained Glass Panel", "amount": 1 } },
+    { "id": "q2-4", "chapter": 2, "order": 3, "title": "Deeper Pockets", "description": "Earn 1,000 coins this run.", "requires": "q2-3", "task": { "type": "coinsEarnedThisRun", "amount": 1000 }, "reward": { "type": "tickets", "amount": 15 } },
+    { "id": "q2-5", "chapter": 2, "order": 4, "title": "Retire in Style", "description": "Retire for the first time.", "requires": "q2-4", "task": { "type": "retirements", "amount": 1 }, "reward": { "type": "coins", "amount": 200 } },
+    { "id": "q2-6", "chapter": 2, "order": 5, "title": "The Classic Catch", "description": "Catch a Mackerel.", "requires": "q2-5", "task": { "type": "particularFish", "target": "mackerel" }, "reward": { "type": "coins", "amount": 80 } },
+    { "id": "q2-7", "chapter": 2, "order": 6, "title": "Many Sets", "description": "Complete 3 Collector's Log sets.", "requires": "q2-6", "task": { "type": "setsCompleted", "amount": 3 }, "reward": { "type": "decoration", "rarity": "Uncommon" } },
+    { "id": "q2-8", "chapter": 2, "order": 7, "title": "Goods on Hand", "description": "Hold 100 units of sorted goods at once.", "requires": "q2-7", "task": { "type": "goodsHeld", "amount": 100 }, "reward": { "type": "coins", "amount": 150 } },
+    { "id": "q2-9", "chapter": 2, "order": 8, "title": "Upgrade Master", "description": "Get the Faster Winch to level 5.", "requires": "q2-8", "task": { "type": "upgradeLevel", "target": "faster-winch", "amount": 5 }, "reward": { "type": "tickets", "amount": 20 } },
+    { "id": "q2-10", "chapter": 2, "order": 9, "title": "All Stations Running", "description": "Install all 4 stations.", "requires": "q2-9", "task": { "type": "stationInstalled", "amount": 4 }, "reward": { "type": "coins", "amount": 250 } },
+    { "id": "q2-11", "chapter": 2, "order": 10, "title": "A Word From the Crew", "description": "Finish the quest book - for now.", "requires": "q2-10", "task": { "type": "message" }, "reward": { "type": "message", "text": "Thanks for playing through the quest book! More to come." } }
   ]
 };
 

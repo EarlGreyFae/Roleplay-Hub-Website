@@ -104,6 +104,25 @@
     },
     Heart: function (props) {
       return Icon([h('path', { key: 'p', d: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8Z' })], props);
+    },
+    Book: function (props) {
+      return Icon([
+        h('path', { key: 'p1', d: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20' }),
+        h('path', { key: 'p2', d: 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z' })
+      ], props);
+    },
+    Settings: function (props) {
+      return Icon([
+        h('circle', { key: 'c', cx: '12', cy: '12', r: '3' }),
+        h('path', { key: 'p', d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z' })
+      ], props);
+    },
+    BarChart: function (props) {
+      return Icon([
+        h('line', { key: 'l1', x1: '12', y1: '20', x2: '12', y2: '10' }),
+        h('line', { key: 'l2', x1: '18', y1: '20', x2: '18', y2: '4' }),
+        h('line', { key: 'l3', x1: '6', y1: '20', x2: '6', y2: '16' })
+      ], props);
     }
   };
 
@@ -1508,6 +1527,214 @@
     );
   }
 
+  // --- Extras (14-extras.md): Tides/Events banner, Stats (The Desk's
+  // Profile), Feat Titles, the Quest Book, and Settings. Same
+  // self-contained-tab approach as SocialPanel. ---
+
+  function TideEventBanner() {
+    var _tide = useState(null); var tide = _tide[0]; var setTide = _tide[1];
+    var _event = useState(null); var event = _event[0]; var setEvent = _event[1];
+
+    useEffect(function () {
+      apiGet('/api/shoal-tales/tide/status').then(function (d) { setTide(d.tide); }).catch(function () {});
+      apiGet('/api/shoal-tales/event/status').then(function (d) { setEvent(d.event); }).catch(function () {});
+    }, []);
+
+    if (!tide && !event) return null;
+    return h('div', { className: 'shoal-tide-event-banner' },
+      tide && h('span', { className: 'shoal-tide-chip' }, h(Icons.Zap, { className: 'shoal-social-tab-icon' }), tide.name, ': ', tide.effect),
+      event && h('span', { className: 'shoal-event-chip' }, h(Icons.Sparkle, { className: 'shoal-social-tab-icon' }), event.name, ' is running!')
+    );
+  }
+
+  var EXTRAS_TABS = [
+    { id: 'stats', label: 'Stats', icon: 'BarChart' },
+    { id: 'feats', label: 'Feat Titles', icon: 'Trophy' },
+    { id: 'quests', label: 'Quest Book', icon: 'Book' },
+    { id: 'settings', label: 'Settings', icon: 'Settings' }
+  ];
+
+  function ExtrasPanel(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+
+    var _tab = useState('stats'); var tab = _tab[0]; var setTab = _tab[1];
+
+    return h('div', { className: 'shoal-card shoal-social-card' },
+      h('div', { className: 'shoal-card-title' }, 'The Desk'),
+      h('div', { className: 'shoal-social-tabs' },
+        EXTRAS_TABS.map(function (t) {
+          return h('button', {
+            key: t.id, type: 'button',
+            className: 'shoal-social-tab' + (tab === t.id ? ' shoal-social-tab-active' : ''),
+            onClick: function () { setTab(t.id); }
+          }, h(Icons[t.icon], { className: 'shoal-social-tab-icon' }), t.label);
+        })
+      ),
+      tab === 'stats' && h(StatsTab, { key: 'stats-' + handle, handle: handle }),
+      tab === 'feats' && h(FeatsTab, { key: 'feats-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
+      tab === 'quests' && h(QuestBookTab, { key: 'quests-' + handle, handle: handle, onRefreshSave: onRefreshSave }),
+      tab === 'settings' && h(SettingsTab, { key: 'settings-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave })
+    );
+  }
+
+  var STAT_LABELS = {
+    hauls: 'Hauls', junkSorted: 'Junk Sorted', fishOnIce: 'Fish on Ice', curiosScrubbed: 'Curios Scrubbed',
+    goodsMade: 'Goods Made', customersServed: 'Customers Served', perfectDrinksServed: 'Perfect Drinks',
+    unitsSold: 'Units Sold', secondsAtSea: 'Minutes at Sea', coinsEarned: 'Coins Earned', bestStreak: 'Best Streak',
+    retirements: 'Retirements', setsCompleted: 'Sets Completed', goldenSets: 'Golden Sets', creaturesSeen: 'Creatures Seen',
+    lettersFound: 'Letters Found', cratesOpened: 'Crates Opened', creaturesReleased: 'Creatures Released'
+  };
+  var STAT_ORDER = ['hauls', 'secondsAtSea', 'junkSorted', 'fishOnIce', 'curiosScrubbed', 'goodsMade', 'customersServed', 'perfectDrinksServed', 'unitsSold', 'coinsEarned', 'bestStreak', 'retirements', 'setsCompleted', 'goldenSets', 'creaturesSeen', 'lettersFound'];
+
+  function StatsTab(props) {
+    var handle = props.handle;
+    var _stats = useState(null); var stats = _stats[0]; var setStats = _stats[1];
+
+    useEffect(function () {
+      apiGet('/api/shoal-tales/stats?handle=' + encodeURIComponent(handle)).then(function (d) { setStats(d.stats); }).catch(function () {});
+    }, [handle]);
+
+    if (!stats) return h('div', { className: 'shoal-social-tab-body' }, h('p', { className: 'shoal-hint' }, 'Loading...'));
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-subtitle' }, 'All Time'),
+      h('div', { className: 'shoal-log-grid' },
+        STAT_ORDER.map(function (key) {
+          var value = key === 'secondsAtSea' ? Math.round((stats.allTime[key] || 0) / 60) : stats.allTime[key];
+          return h('div', { key: key, className: 'shoal-log-stat' },
+            h('span', { className: 'shoal-log-num' }, formatCoins(value || 0)),
+            h('span', null, STAT_LABELS[key])
+          );
+        })
+      ),
+      h('div', { className: 'shoal-subtitle' }, 'This Run'),
+      h('div', { className: 'shoal-log-grid' },
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, formatCoins(stats.thisRun.coinsEarned)), h('span', null, 'Coins Earned')),
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, stats.thisRun.bestStreak), h('span', null, 'Best Streak'))
+      )
+    );
+  }
+
+  function FeatsTab(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+
+    function equip(id) {
+      setBusy(true);
+      apiPost('/api/shoal-tales/cosmetics/equip-feat-title', { handle: handle, featTitleId: id })
+        .then(function () { return onRefreshSave(); })
+        .catch(function () {}).finally(function () { setBusy(false); });
+    }
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('p', { className: 'shoal-hint' }, 'Earned once, shown instead of your retirement title if chosen.'),
+      h('div', { className: 'shoal-member-row' },
+        h('span', null, 'Retirement title (', shoalRetirementTitleName(save), ')'),
+        h('button', { type: 'button', disabled: busy || !save.featTitleChosen, onClick: function () { equip(null); } }, save.featTitleChosen ? 'Use This' : 'In Use')
+      ),
+      DATA.featTitles.map(function (f) {
+        var unlocked = (save.unlockedFeatTitles || []).indexOf(f.id) !== -1;
+        var equipped = save.featTitleChosen === f.id;
+        return h('div', { key: f.id, className: 'shoal-member-row' },
+          h('span', null, f.name, h('span', { className: 'shoal-member-title' }, f.earnedBy)),
+          unlocked
+            ? h('button', { type: 'button', disabled: busy || equipped, onClick: function () { equip(f.id); } }, equipped ? 'In Use' : 'Use This')
+            : h('span', { className: 'shoal-look-lock' }, 'Locked')
+        );
+      })
+    );
+  }
+  // ARCHITECTURE note: the retirement title itself isn't in ShoalTalesData
+  // by index lookup helper client-side, so mirror server.js's
+  // shoalRetirementTitle exactly (same clamp-to-last-title rule).
+  function shoalRetirementTitleName(save) {
+    var titles = DATA.retirementTitles;
+    return titles[Math.min(save.retirements, titles.length - 1)];
+  }
+
+  function QuestBookTab(props) {
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+    var _quests = useState([]); var quests = _quests[0]; var setQuests = _quests[1];
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
+    var _chapter = useState(1); var chapter = _chapter[0]; var setChapter = _chapter[1];
+
+    var refresh = useCallback(function () {
+      return apiGet('/api/shoal-tales/quest-book?handle=' + encodeURIComponent(handle)).then(function (d) { setQuests(d.quests); }).catch(function () {});
+    }, [handle]);
+    useEffect(function () { refresh(); }, [handle]);
+
+    function claim(questId) {
+      setBusy(true); setMsg(null);
+      apiPost('/api/shoal-tales/quest-book/claim', { handle: handle, questId: questId }).then(function (d) {
+        setMsg('Claimed: ' + (d.granted ? (d.granted.type === 'coins' ? ('+' + formatCoins(d.granted.amount) + ' coins') : d.granted.type) : ''));
+        return Promise.all([refresh(), onRefreshSave()]);
+      }).catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
+    }
+
+    var chapterQuests = quests.filter(function (q) { return q.chapter === chapter; }).sort(function (a, b) { return a.order - b.order; });
+    var chapters = Array.from(new Set(quests.map(function (q) { return q.chapter; })));
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-social-tabs' },
+        chapters.map(function (c) {
+          return h('button', {
+            key: c, type: 'button', className: 'shoal-social-tab' + (chapter === c ? ' shoal-social-tab-active' : ''),
+            onClick: function () { setChapter(c); }
+          }, 'Chapter ', c);
+        })
+      ),
+      h('div', { className: 'shoal-quest-list' },
+        chapterQuests.map(function (q) {
+          return h('div', { key: q.id, className: 'shoal-quest-row' + (!q.unlocked ? ' shoal-quest-row-locked' : '') },
+            h('div', { className: 'shoal-quest-label' }, q.title, q.claimed && ' ✓'),
+            h('div', { className: 'shoal-hint' }, q.unlocked ? q.description : 'Locked - complete the previous quest first.'),
+            q.unlocked && q.progress && !q.claimed && h('div', { className: 'shoal-quest-bar' }, h('div', { className: 'shoal-quest-bar-fill', style: { width: Math.min(100, Math.round(q.progress.have / q.progress.need * 100)) + '%' } })),
+            q.unlocked && q.progress && !q.claimed && h('div', { className: 'shoal-quest-progress' }, q.progress.have, '/', q.progress.need),
+            q.unlocked && !q.claimed && h('button', { type: 'button', disabled: busy || !q.done, onClick: function () { claim(q.id); } }, 'Claim')
+          );
+        })
+      ),
+      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
+  function SettingsTab(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+
+    function toggle(path, value) {
+      setBusy(true);
+      apiPost(path, { handle: handle, enabled: value }).then(function () { return onRefreshSave(); }).catch(function () {}).finally(function () { setBusy(false); });
+    }
+
+    var settings = save.settings || { seaSounds: true, dredgeChatLine: true, sparkles: true, titleDisplay: true };
+    var rows = [
+      { key: 'visitorsEnabled', label: 'Allow visitors to your boat', value: save.visitorsEnabled, path: '/api/shoal-tales/settings/visitors' },
+      { key: 'announcementsEnabled', label: 'Show announcements (retirements, sets, etc.)', value: save.announcementsEnabled, path: '/api/shoal-tales/settings/announcements' },
+      { key: 'seaSounds', label: 'Sea sounds', value: settings.seaSounds, path: '/api/shoal-tales/settings/sea-sounds' },
+      { key: 'dredgeChatLine', label: '"Dredge is up" chat line', value: settings.dredgeChatLine, path: '/api/shoal-tales/settings/dredge-chat-line' },
+      { key: 'sparkles', label: 'New-player sparkles', value: settings.sparkles, path: '/api/shoal-tales/settings/sparkles' },
+      { key: 'titleDisplay', label: 'Show my title to others', value: settings.titleDisplay, path: '/api/shoal-tales/settings/title-display' }
+    ];
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      rows.map(function (r) {
+        return h('div', { key: r.key, className: 'shoal-member-row' },
+          h('span', null, r.label),
+          h('button', { type: 'button', disabled: busy, onClick: function () { toggle(r.path, !r.value); } }, r.value ? 'On' : 'Off')
+        );
+      })
+    );
+  }
+
   function ShoalTalesScreen(props) {
     var handle = props.userProfile && props.userProfile.handle;
     var _save = useState(null); var save = _save[0]; var setSave = _save[1];
@@ -1896,6 +2123,7 @@
         save.streak > 0 && h('div', { className: 'shoal-header-streak' }, h(Icons.Zap, { className: 'shoal-streak-icon' }), 'x', save.streak)
       ),
       error && h('div', { className: 'shoal-error-banner' }, error),
+      h(TideEventBanner, { key: 'tide-event' }),
       h('div', { className: 'shoal-body' },
         h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
         h(TrayPanel, {
@@ -1919,7 +2147,8 @@
         h(SocialPanel, {
           save: save, handle: handle, onRefreshSave: refresh,
           lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
-        })
+        }),
+        h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh })
       )
     );
   }
@@ -1954,6 +2183,12 @@
     VisitTab: VisitTab,
     LeaderboardTab: LeaderboardTab,
     LettersTab: LettersTab,
+    ExtrasPanel: ExtrasPanel,
+    TideEventBanner: TideEventBanner,
+    StatsTab: StatsTab,
+    FeatsTab: FeatsTab,
+    QuestBookTab: QuestBookTab,
+    SettingsTab: SettingsTab,
     formatCoins: formatCoins
   };
 })(typeof window !== 'undefined' ? window : this);

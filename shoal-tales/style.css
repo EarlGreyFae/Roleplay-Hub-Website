@@ -801,3 +801,26 @@
   font-size: 0.72rem;
   resize: vertical;
 }
+
+/* --- Extras (14-extras.md): Tides/Events banner, Stats, Feat Titles, the
+   Quest Book, Settings --- */
+
+.shoal-tide-event-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.shoal-tide-chip, .shoal-event-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.shoal-tide-chip { background: rgba(45, 143, 196, 0.2); border: 1px solid #2d8fc4; color: #8fd4f7; }
+.shoal-event-chip { background: rgba(255, 209, 102, 0.15); border: 1px solid #ffd166; color: #ffd166; }
+
+.shoal-quest-row-locked { opacity: 0.55; }
