@@ -8,6 +8,11 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+// Same files the browser loads via <script src="shoal-tales/*.js"> - required
+// directly here so the server computes every paying roll with the identical
+// formulas/data the client previews with. See docs/shoal-tales-spec/ARCHITECTURE.md.
+const ShoalTalesEngine = require('./shoal-tales/engine.js');
+const ShoalTalesData = require('./shoal-tales/data.js');
 
 const PORT = process.env.PORT || 10000;
 // Overridable so a Render persistent disk (or any other host's mounted volume)
@@ -40,7 +45,8 @@ const defaultDb = {
   invites: [],
   pushSubscriptions: [],
   vapidKeys: null,
-  scratchpadNotes: []
+  scratchpadNotes: [],
+  shoalTalesSaves: {}
 };
 
 let db = { ...defaultDb };
@@ -81,7 +87,8 @@ function loadDatabaseFromFile() {
         invites: parsed.invites || [],
         pushSubscriptions: parsed.pushSubscriptions || [],
         vapidKeys: parsed.vapidKeys || null,
-        scratchpadNotes: parsed.scratchpadNotes || []
+        scratchpadNotes: parsed.scratchpadNotes || [],
+        shoalTalesSaves: parsed.shoalTalesSaves || {}
       };
       if (!db.users['@earlgreyfae']) {
         db.users['@earlgreyfae'] = defaultDb.users['@earlgreyfae'];
@@ -170,7 +177,8 @@ async function initializeDatabase() {
           invites: pgData.invites || [],
           pushSubscriptions: pgData.pushSubscriptions || [],
           vapidKeys: pgData.vapidKeys || null,
-          scratchpadNotes: pgData.scratchpadNotes || []
+          scratchpadNotes: pgData.scratchpadNotes || [],
+          shoalTalesSaves: pgData.shoalTalesSaves || {}
         };
         console.log('[DB] Restored database state from PostgreSQL (source of truth)');
         saveDatabaseSync();
@@ -217,6 +225,109 @@ function parseJsonBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+// =========================================================================
+// Shoal Tales - helper functions (core loop: dredging + sorting)
+// See docs/shoal-tales-spec/ for the full design and ARCHITECTURE.md for why
+// every paying roll (haul contents, curio rarity, etc.) is computed HERE,
+// server-side, using the exact same shoal-tales/engine.js the client previews
+// with - never trust a client-submitted haul or sort outcome.
+// =========================================================================
+
+const SHOAL_DEPTH_NAMES = ['Shallows', 'Reef Depth', 'The Deep', 'The Abyss'];
+
+function shoalDepthRangeFromString(depthsStr) {
+  // "Shallows to The Deep" -> [0, 2]. Single-depth strings aren't used in the
+  // data, but handled for safety.
+  const parts = (depthsStr || '').split(' to ').map(s => s.trim());
+  const start = SHOAL_DEPTH_NAMES.indexOf(parts[0]);
+  const end = parts.length > 1 ? SHOAL_DEPTH_NAMES.indexOf(parts[1]) : start;
+  return [start < 0 ? 0 : start, end < 0 ? 3 : end];
+}
+
+function defaultShoalTalesSave(handle) {
+  const bins = {};
+  ShoalTalesEngine.BINS.forEach(b => { bins[b] = { units: 0, value: 0 }; });
+  return {
+    handle,
+    createdAt: new Date().toISOString(),
+    coins: 0,
+    lifetimeCoinsThisRun: 0,
+    tray: [],
+    basketLevel: 0,
+    winchLevel: 0,
+    brushLevel: 0,
+    charmLevel: 0,
+    stationsInstalled: [],
+    sortedGoods: bins,
+    cooler: [],
+    streak: 0,
+    bestStreakThisRun: 0,
+    bestStreakEver: 0,
+    depth: 0,
+    area: 'shoalbay',
+    unlockedAreas: ['shoalbay'],
+    unlockedDepths: [0],
+    retirements: 0,
+    lastHaulDate: null,
+    allTimeStats: { hauls: 0, junkSorted: 0, fishOnIce: 0, coinsEarned: 0, bestStreak: 0 }
+  };
+}
+
+function getOrCreateShoalTalesSave(handle) {
+  const key = (handle || '').trim();
+  if (!key) return null;
+  if (!db.shoalTalesSaves[key]) {
+    db.shoalTalesSaves[key] = defaultShoalTalesSave(key);
+    saveDatabase();
+  }
+  return db.shoalTalesSaves[key];
+}
+
+function shoalAreaById(id) {
+  return ShoalTalesData.mapAreas.find(a => a.id === id) || ShoalTalesData.mapAreas[0];
+}
+
+// Produces the N items for one haul. Scope note: this phase (the core
+// dredge/sort loop) generates junk and fish only - curios, crates, messages
+// in bottles, sea creatures and magic curios are deferred to the Collector's
+// Log phase (docs/shoal-tales-spec/06-curios.md), which builds their
+// identify/scrub/pry-open interactions alongside adding them to the haul, so
+// the tray is never left holding an item the player has no way to clear.
+function generateShoalHaul(save) {
+  const area = shoalAreaById(save.area);
+  const isFirstHaulOfDay = save.lastHaulDate !== new Date().toISOString().slice(0, 10);
+  const isVeryFirstHaul = save.allTimeStats.hauls === 0;
+  const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, 0, { isFirstHaulOfDay: isFirstHaulOfDay });
+
+  const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
+  const fishPool = ShoalTalesData.fish.filter(f => {
+    if (f.area !== area.name) return false;
+    const range = shoalDepthRangeFromString(f.depths);
+    return save.depth >= range[0] && save.depth <= range[1];
+  });
+
+  const weights = { junk: ShoalTalesEngine.junkCatchWeight(save.depth), fish: 22 };
+  const tray = [];
+  for (let i = 0; i < count; i++) {
+    let kind = ShoalTalesEngine.weightedPick(weights);
+    if (isVeryFirstHaul && i === 0) kind = 'fish'; // "the very first haul of a save always contains a fish"
+    if (kind === 'fish' && fishPool.length === 0) kind = 'junk'; // area/depth has no fish available right now
+    const id = 'tray_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
+    // Locked in at haul time, not re-read at sort time: "each item remembers
+    // the value multiplier of the area it was hauled in, so moving before
+    // sorting doesn't change its worth" (03-dredging.md).
+    const areaMultiplier = area.valueMultiplier;
+    if (kind === 'fish') {
+      const f = fishPool[Math.floor(Math.random() * fishPool.length)];
+      tray.push({ id, kind: 'fish', name: f.name, baseCoins: f.baseCoins, weight: f.weight, description: f.description, areaMultiplier: areaMultiplier });
+    } else {
+      const j = junkPool[Math.floor(Math.random() * junkPool.length)];
+      tray.push({ id, kind: 'junk', name: j.name, bin: j.bin, baseCoins: j.baseCoins, weight: j.weight, description: j.description, areaMultiplier: areaMultiplier });
+    }
+  }
+  return tray;
 }
 
 function getRoleForWorld(world, handle) {
@@ -1565,6 +1676,189 @@ const server = http.createServer(async (req, res) => {
       saveDatabase();
       // Intentionally no broadcast: scratch pad notes are private to the author.
       return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // 11b. Shoal Tales (minigame) - core loop: dredging, sorting, selling, upgrades.
+  // Account-level, not World-scoped. See docs/shoal-tales-spec/ for the design
+  // and ARCHITECTURE.md for the server-authoritative-RNG rationale.
+  if (reqPath === '/api/shoal-tales/save' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      return sendJson(res, 200, { success: true, save });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/dredge' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.tray.length > 0) {
+        return sendJson(res, 400, { error: 'Clear your tray before dropping the dredge again.' });
+      }
+      const dredgeTimeSeconds = ShoalTalesEngine.dredgeTimeSeconds(save.depth, save.winchLevel, 0);
+      const tray = generateShoalHaul(save);
+      save.tray = tray;
+      save.lastHaulDate = new Date().toISOString().slice(0, 10);
+      save.allTimeStats.hauls += 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, tray, dredgeTimeSeconds });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/sort' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId, bin } = await parseJsonBody(req);
+      if (!handle || !trayItemId || !bin) return sendJson(res, 400, { error: 'Missing handle, trayItemId or bin' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      const item = save.tray[itemIndex];
+
+      if (item.kind === 'fish') {
+        if (bin !== 'cooler') {
+          return sendJson(res, 400, { error: 'Fish can only go in the cooler.' });
+        }
+        const value = ShoalTalesEngine.fishValue({
+          base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: 0, bFish: 0, golden: false
+        });
+        save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, caughtAt: new Date().toISOString() });
+        save.streak += 1;
+        save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
+        save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
+        save.allTimeStats.fishOnIce += 1;
+        save.allTimeStats.bestStreak = Math.max(save.allTimeStats.bestStreak, save.streak);
+        save.tray.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, correct: true, kind: 'fish', value, newStreak: save.streak });
+      }
+
+      // Junk: validate the target is one of the 7 real bins (never 'cooler').
+      if (!ShoalTalesEngine.BINS.includes(bin)) {
+        return sendJson(res, 400, { error: 'Not a real bin.' });
+      }
+      const move = ShoalTalesEngine.stationMoveFor(item.name);
+      const stationInstalled = !!(move && save.stationsInstalled.includes(move.station));
+      const effectiveCorrectBin = stationInstalled ? move.newBin : item.bin;
+      const correct = bin === effectiveCorrectBin;
+      const movedByStation = correct && stationInstalled;
+
+      let value;
+      if (correct) {
+        value = ShoalTalesEngine.correctSortValue({
+          base: item.baseCoins, streakCount: save.streak, bPayout: 0, bBin: 0, movedByStation: movedByStation, area: item.areaMultiplier
+        });
+        save.streak += 1;
+      } else {
+        value = ShoalTalesEngine.wrongSortValue(item.baseCoins, 0, item.areaMultiplier);
+        save.streak = 0;
+      }
+      save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
+      save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
+      save.allTimeStats.bestStreak = Math.max(save.allTimeStats.bestStreak, save.streak);
+      save.sortedGoods[bin].units += (1 + item.weight);
+      save.sortedGoods[bin].value += value;
+      save.allTimeStats.junkSorted += 1;
+      save.tray.splice(itemIndex, 1);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, correct, kind: 'junk', value, newStreak: save.streak, effectiveCorrectBin, bin });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/sell' && req.method === 'POST') {
+    try {
+      const { handle, what } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const sellWhat = what || 'all';
+      let coinsEarned = 0;
+
+      if (sellWhat === 'goods' || sellWhat === 'all') {
+        ShoalTalesEngine.BINS.forEach(b => {
+          coinsEarned += save.sortedGoods[b].value;
+          save.sortedGoods[b] = { units: 0, value: 0 };
+        });
+      }
+      if (sellWhat === 'fish' || sellWhat === 'all') {
+        save.cooler.forEach(f => { coinsEarned += f.value; });
+        save.cooler = [];
+      }
+      coinsEarned = Math.round(coinsEarned);
+      save.coins += coinsEarned;
+      save.lifetimeCoinsThisRun += coinsEarned;
+      save.allTimeStats.coinsEarned += coinsEarned;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, coinsEarned, coins: save.coins });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/upgrade' && req.method === 'POST') {
+    try {
+      const { handle, upgradeId } = await parseJsonBody(req);
+      if (!handle || !upgradeId) return sendJson(res, 400, { error: 'Missing handle or upgradeId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const LEVEL_FIELD = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' };
+      const MAX_LEVEL = { 'bigger-basket': 29, 'faster-winch': 12, 'soft-brush': 3, 'lucky-charm': 10 };
+      const field = LEVEL_FIELD[upgradeId];
+      if (!field) return sendJson(res, 400, { error: 'Unknown upgrade.' });
+      const currentLevel = save[field];
+      if (currentLevel >= MAX_LEVEL[upgradeId]) {
+        return sendJson(res, 400, { error: 'Already at max level.' });
+      }
+      const unlockScale = ShoalTalesEngine.retireGoalForRun(save.retirements + 1).unlockScale;
+      const cost = ShoalTalesEngine.upgradeCost(upgradeId, currentLevel, unlockScale);
+      if (save.coins < cost) {
+        return sendJson(res, 400, { error: `Not enough coins (need ${cost}, have ${save.coins}).` });
+      }
+      save.coins -= cost;
+      save[field] = currentLevel + 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, upgradeId, newLevel: save[field], coinsSpent: cost, coins: save.coins });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/depth' && req.method === 'POST') {
+    try {
+      const { handle, depth } = await parseJsonBody(req);
+      if (!handle || depth === undefined) return sendJson(res, 400, { error: 'Missing handle or depth' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.unlockedDepths.includes(depth)) {
+        return sendJson(res, 400, { error: 'That depth is not unlocked yet.' });
+      }
+      save.depth = depth;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, depth: save.depth });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/area' && req.method === 'POST') {
+    try {
+      const { handle, area } = await parseJsonBody(req);
+      if (!handle || !area) return sendJson(res, 400, { error: 'Missing handle or area' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.unlockedAreas.includes(area)) {
+        return sendJson(res, 400, { error: 'That area is not unlocked yet.' });
+      }
+      save.area = area;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, area: save.area });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

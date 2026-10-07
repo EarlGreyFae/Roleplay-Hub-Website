@@ -1,0 +1,284 @@
+/* Shoal Tales - its own nautical visual theme, deliberately independent of the
+   active World's Visual Theme (this feature is account-level, not World-scoped
+   - see docs/shoal-tales-spec/ARCHITECTURE.md). Scoped entirely under
+   .shoal-tales-screen so it never leaks into the rest of the app. */
+
+.shoal-tales-screen {
+  --shoal-deep: #0b2a3a;
+  --shoal-sea: #11456b;
+  --shoal-foam: #e8f4f8;
+  --shoal-gold: #d9a441;
+  --shoal-gold-bright: #f0c168;
+  --shoal-coral: #e8714a;
+  --shoal-good: #3fb97f;
+  --shoal-bad: #e05a5a;
+  --shoal-card-bg: #0e3550;
+  --shoal-card-border: #1e5a82;
+
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--shoal-deep) 0%, #082233 100%);
+  color: var(--shoal-foam);
+  font-size: 0.875rem;
+}
+
+.shoal-loading {
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: var(--shoal-foam);
+  opacity: 0.8;
+}
+
+.shoal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(8, 34, 51, 0.9);
+  border-bottom: 1px solid var(--shoal-card-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.shoal-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--shoal-gold-bright);
+  flex: 1;
+  min-width: 0;
+}
+
+.shoal-header-icon { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+
+.shoal-header-coins, .shoal-header-streak {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  flex-shrink: 0;
+}
+
+.shoal-header-coins { color: var(--shoal-gold-bright); }
+.shoal-coin-icon { width: 0.9rem; height: 0.9rem; }
+
+.shoal-header-streak { color: #ffd166; }
+.shoal-streak-icon { width: 0.85rem; height: 0.85rem; }
+
+.shoal-error-banner {
+  margin: 0.5rem 1rem 0;
+  padding: 0.5rem 0.75rem;
+  background: rgba(224, 90, 90, 0.15);
+  border: 1px solid var(--shoal-bad);
+  border-radius: 0.75rem;
+  color: #ffb3b3;
+  font-size: 0.75rem;
+}
+
+.shoal-body {
+  flex: 1;
+  padding: 0.75rem 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.shoal-card {
+  background: var(--shoal-card-bg);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 1rem;
+  padding: 0.85rem;
+}
+
+.shoal-card-title {
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--shoal-gold-bright);
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.shoal-hint {
+  font-size: 0.7rem;
+  color: rgba(232, 244, 248, 0.6);
+  margin: 0 0 0.5rem;
+}
+
+.shoal-controls-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.shoal-select-wrap { flex: 1; min-width: 0; }
+.shoal-select-wrap label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(232, 244, 248, 0.55);
+  margin-bottom: 0.2rem;
+}
+.shoal-select-wrap select {
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  color: var(--shoal-foam);
+  font-size: 0.75rem;
+}
+.shoal-select-wrap select:disabled { opacity: 0.5; }
+
+.shoal-dredge-btn {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: linear-gradient(180deg, var(--shoal-gold-bright), var(--shoal-gold));
+  color: #1a1203;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 0 #8a661f, 0 4px 10px rgba(0,0,0,0.3);
+  transition: transform 0.1s;
+}
+.shoal-dredge-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 #8a661f; }
+.shoal-dredge-btn:disabled { opacity: 0.6; }
+
+.shoal-tray-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.shoal-tray-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.3rem;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.65rem;
+  color: var(--shoal-foam);
+  text-align: center;
+}
+.shoal-tray-item:disabled { opacity: 0.5; }
+.shoal-tray-item-fish { border-color: #2d8fc4; }
+.shoal-tray-item-selected {
+  border-color: var(--shoal-gold-bright);
+  box-shadow: 0 0 0 2px rgba(240, 193, 104, 0.4);
+  background: rgba(217, 164, 65, 0.15);
+}
+
+.shoal-tray-icon { width: 1.4rem; height: 1.4rem; opacity: 0.85; }
+.shoal-tray-name { font-size: 0.62rem; font-weight: 600; line-height: 1.1; }
+
+.shoal-bin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--shoal-card-border);
+}
+
+.shoal-bin-btn {
+  flex: 1 1 calc(33.333% - 0.3rem);
+  min-width: 80px;
+  padding: 0.5rem 0.3rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(17, 69, 107, 0.6);
+  color: var(--shoal-foam);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.shoal-bin-btn:disabled { opacity: 0.5; }
+.shoal-bin-btn-cooler {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  flex: 1 1 100%;
+  background: rgba(45, 143, 196, 0.25);
+  border-color: #2d8fc4;
+}
+.shoal-bin-icon { width: 1rem; height: 1rem; }
+
+.shoal-sort-feedback {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.shoal-sort-correct { background: rgba(63, 185, 127, 0.18); border: 1px solid var(--shoal-good); color: #9ae6b4; }
+.shoal-sort-wrong { background: rgba(224, 90, 90, 0.18); border: 1px solid var(--shoal-bad); color: #ffb3b3; }
+
+.shoal-goods-grid { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.65rem; }
+.shoal-goods-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: rgba(232, 244, 248, 0.85);
+}
+
+.shoal-sell-btn {
+  width: 100%;
+  padding: 0.6rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--shoal-good);
+  background: rgba(63, 185, 127, 0.15);
+  color: #9ae6b4;
+  font-weight: 800;
+  font-size: 0.78rem;
+}
+.shoal-sell-btn:disabled { opacity: 0.45; }
+
+.shoal-upgrade-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.shoal-upgrade-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.65rem;
+}
+.shoal-upgrade-info { min-width: 0; }
+.shoal-upgrade-name { font-weight: 700; font-size: 0.75rem; }
+.shoal-upgrade-level { color: var(--shoal-gold-bright); font-weight: 600; font-size: 0.68rem; margin-left: 0.3rem; }
+.shoal-upgrade-effect { font-size: 0.65rem; color: rgba(232, 244, 248, 0.6); margin-top: 0.1rem; }
+.shoal-upgrade-btn {
+  flex-shrink: 0;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--shoal-gold);
+  background: rgba(217, 164, 65, 0.18);
+  color: var(--shoal-gold-bright);
+  font-weight: 800;
+  font-size: 0.72rem;
+}
+.shoal-upgrade-btn:disabled { opacity: 0.4; border-color: var(--shoal-card-border); color: var(--shoal-foam); }

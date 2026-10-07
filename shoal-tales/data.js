@@ -4,8 +4,13 @@
 // edit the source CSVs instead and regenerate. The hand-authored constants (mapAreas, depths, bins,
 // magicCurios, stations, upgrades, etc.) are small fixed-rule tables transcribed directly from the
 // design spec and are fine to edit here.
+//
+// Loaded as a plain <script> in the browser (assigns window.ShoalTalesData) and required() directly
+// in server.js (assigns module.exports) - same UMD pattern as shoal-tales/engine.js.
 
-window.ShoalTalesData = {
+(function (root) {
+  'use strict';
+  var ShoalTalesData = {
   "junk": [
     {
       "id": "flip-flop",
@@ -3852,3 +3857,10 @@ window.ShoalTalesData = {
     }
   ]
 };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ShoalTalesData;
+  } else {
+    root.ShoalTalesData = ShoalTalesData;
+  }
+})(typeof window !== 'undefined' ? window : this);
