@@ -888,6 +888,7 @@
   function shoalLookUnlockHint(item) {
     if (item.unlocksAtRetirement > 0) return 'Unlocks at retirement ' + item.unlocksAtRetirement;
     if (item.id === 'season-champion') return "This month's top 3 coin earners";
+    if (item.eventReward) return 'Complete the ' + (item.eventRewardName || 'event') + ' at the Shipwright';
     return null;
   }
 
@@ -1831,6 +1832,7 @@
     var _tideMinutes = useState(10); var tideMinutes = _tideMinutes[0]; var setTideMinutes = _tideMinutes[1];
     var _eventForm = useState({ id: '', name: '', curioIds: '', fishIds: '', minutes: 1440 });
     var eventForm = _eventForm[0]; var setEventForm = _eventForm[1];
+    var _templateId = useState(''); var templateId = _templateId[0]; var setTemplateId = _templateId[1];
 
     var refresh = useCallback(function () {
       return Promise.all([
@@ -1881,17 +1883,39 @@
             h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/admin/event/end', { handle: handle }), 'Event ended.'); } }, 'End')
           )
         : h('div', { className: 'shoal-event-form' },
-            h('input', { type: 'text', placeholder: 'event id (e.g. summer-splash)', value: eventForm.id, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { id: e.target.value })); } }),
-            h('input', { type: 'text', placeholder: 'Event name', value: eventForm.name, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { name: e.target.value })); } }),
-            h('input', { type: 'text', placeholder: 'curio ids, comma-separated', value: eventForm.curioIds, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { curioIds: e.target.value })); } }),
-            h('input', { type: 'text', placeholder: 'fish ids, comma-separated', value: eventForm.fishIds, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { fishIds: e.target.value })); } }),
+            h('select', {
+              value: templateId,
+              onChange: function (e) {
+                var tid = e.target.value;
+                setTemplateId(tid);
+                var tpl = (DATA.eventTemplates || []).find(function (t) { return t.id === tid; });
+                if (tpl) {
+                  setEventForm({
+                    id: tpl.id, name: tpl.name,
+                    curioIds: (tpl.curioIds || []).join(', '), fishIds: (tpl.fishIds || []).join(', '),
+                    minutes: tpl.minutes
+                  });
+                }
+              }
+            },
+              h('option', { value: '' }, '-- custom event --'),
+              (DATA.eventTemplates || []).map(function (t) { return h('option', { key: t.id, value: t.id }, t.name, ' (template)'); })
+            ),
+            h('input', { type: 'text', placeholder: 'event id (e.g. summer-splash)', value: eventForm.id, onChange: function (e) { setTemplateId(''); setEventForm(Object.assign({}, eventForm, { id: e.target.value })); } }),
+            h('input', { type: 'text', placeholder: 'Event name', value: eventForm.name, onChange: function (e) { setTemplateId(''); setEventForm(Object.assign({}, eventForm, { name: e.target.value })); } }),
+            h('input', { type: 'text', placeholder: 'curio ids, comma-separated', value: eventForm.curioIds, onChange: function (e) { setTemplateId(''); setEventForm(Object.assign({}, eventForm, { curioIds: e.target.value })); } }),
+            h('input', { type: 'text', placeholder: 'fish ids, comma-separated', value: eventForm.fishIds, onChange: function (e) { setTemplateId(''); setEventForm(Object.assign({}, eventForm, { fishIds: e.target.value })); } }),
             h('input', { type: 'number', min: 1, value: eventForm.minutes, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { minutes: Number(e.target.value) })); } }),
             h('button', {
               type: 'button', disabled: busy || !eventForm.id || !eventForm.name,
               onClick: function () {
                 var curioIds = eventForm.curioIds.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
                 var fishIds = eventForm.fishIds.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-                run(apiPost('/api/shoal-tales/admin/event/start', { handle: handle, id: eventForm.id, name: eventForm.name, curioIds: curioIds, fishIds: fishIds, minutes: eventForm.minutes }), 'Event started.');
+                var tpl = (DATA.eventTemplates || []).find(function (t) { return t.id === templateId; });
+                run(apiPost('/api/shoal-tales/admin/event/start', {
+                  handle: handle, id: eventForm.id, name: eventForm.name, curioIds: curioIds, fishIds: fishIds, minutes: eventForm.minutes,
+                  looks: tpl ? tpl.looks : undefined
+                }), 'Event started.');
               }
             }, 'Start')
           ),

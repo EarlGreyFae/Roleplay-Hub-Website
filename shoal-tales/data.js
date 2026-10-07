@@ -4432,6 +4432,13 @@
       "id": "season-champion",
       "name": "Season Champion",
       "unlocksAtRetirement": null
+    },
+    {
+      "id": "tide-lantern-flag",
+      "name": "Tide Lantern Flag",
+      "unlocksAtRetirement": null,
+      "eventReward": true,
+      "eventRewardName": "Tide Lantern Festival"
     }
   ],
   "pets": [
@@ -4690,6 +4697,28 @@
     { "id": "spring", "name": "Spring Tide", "effect": "+25% items in every haul" },
     { "id": "glass", "name": "Glass Tide", "effect": "Twice the chance of curios" },
     { "id": "silver", "name": "Silver Tide", "effect": "+25% value on everything sorted and made" }
+  ],
+  // Event-only bottle letters (14-extras.md). Only enter the /uncork
+  // discovery pool while their matching eventId is the active event -
+  // hand-authored here, NOT part of the generated/protected bottleLetters
+  // array above.
+  "eventLetters": [
+    { "id": "event-tide-festival-1", "eventId": "tide-festival", "title": "Lanterns on the water", "text": "We lit one for everyone who couldn't make it home. If you're reading this, yours is still burning." },
+    { "id": "event-tide-festival-2", "eventId": "tide-festival", "title": "The festival bell", "text": "They ring it once for every lantern that makes it all the way out past the breakwater. I counted eleven last year." }
+  ],
+  // One example/template event a staff member can start as-is from the
+  // Staff tab, exercising every event hook in 14-extras.md: its own
+  // Collector's Log curios/fish, event-only letters above, and a look
+  // granted at the Shipwright on completion.
+  "eventTemplates": [
+    {
+      "id": "tide-festival",
+      "name": "The Tide Lantern Festival",
+      "curioIds": ["meeting-hall-lantern", "glowing-flask", "moon-water-jar", "captains-spyglass"],
+      "fishIds": ["moonfish", "mithril-minnow"],
+      "looks": [{ "category": "flag", "id": "tide-lantern-flag" }],
+      "minutes": 10080
+    }
   ],
   // The quest book (14-extras.md): "a placeholder set the owner will
   // rewrite" - 2 chapters, 22 quests, each locked behind the previous quest

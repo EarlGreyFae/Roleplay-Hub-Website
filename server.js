@@ -938,6 +938,11 @@ function shoalCheckEventCompletion(save, handle) {
   const fishDone = (event.fishIds || []).every(id => !!save.collectorsLog.fish[id]);
   if (((event.curioIds || []).length > 0 || (event.fishIds || []).length > 0) && curiosDone && fishDone) {
     save.completedEventIds.push(event.id);
+    const fieldByCategory = { badge: 'unlockedBadges', sail: 'unlockedSails', flag: 'unlockedFlags', pet: 'unlockedPets', track: 'unlockedTracks' };
+    (event.looks || []).forEach(look => {
+      const field = fieldByCategory[look.category];
+      if (field && save.cosmetics[field].indexOf(look.id) === -1) save.cosmetics[field].push(look.id);
+    });
     shoalBroadcastAnnouncement(`${handle} completed the ${event.name} event set!`);
   }
 }
@@ -3070,7 +3075,14 @@ const server = http.createServer(async (req, res) => {
       // ("hearted letters wash up more often").
       const unfoundStatic = ShoalTalesData.bottleLetters.filter(l => save.bottleLettersFound.indexOf(l.id) === -1);
       const playerLetters = shoalEligiblePlayerLetters(handle);
+      const activeEventForLetters = shoalActiveEvent();
+      // "Event-only bottle letters" (14-extras.md) - only enter the
+      // discovery pool while their event is actually running.
+      const eventLetters = activeEventForLetters
+        ? ShoalTalesData.eventLetters.filter(l => l.eventId === activeEventForLetters.id && save.bottleLettersFound.indexOf(l.id) === -1)
+        : [];
       const pool = unfoundStatic.map(l => ({ kind: 'static', letter: l, weight: 1 }))
+        .concat(eventLetters.map(l => ({ kind: 'static', letter: l, weight: 1 })))
         .concat(playerLetters.map(l => ({ kind: 'player', letter: l, weight: 1 + l.heartCount * 0.1 })));
       if (Math.random() < 0.35 && pool.length > 0) {
         const totalWeight = pool.reduce((s, p) => s + p.weight, 0);
@@ -4893,15 +4905,26 @@ const server = http.createServer(async (req, res) => {
 
   if (reqPath === '/api/shoal-tales/admin/event/start' && req.method === 'POST') {
     try {
-      const { handle, id, name, curioIds, fishIds, minutes } = await parseJsonBody(req);
+      const body = await parseJsonBody(req);
+      const { handle, templateId } = body;
       if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      // A template (e.g. the built-in Tide Lantern Festival) pre-fills every
+      // field below; any field also sent in the body overrides the template's.
+      const template = templateId ? ShoalTalesData.eventTemplates.find(t => t.id === templateId) : null;
+      if (templateId && !template) return sendJson(res, 400, { error: 'Unknown templateId' });
+      const id = body.id || (template && template.id);
+      const name = body.name || (template && template.name);
+      const curioIds = body.curioIds || (template && template.curioIds) || [];
+      const fishIds = body.fishIds || (template && template.fishIds) || [];
+      const looks = body.looks || (template && template.looks) || [];
+      const minutes = body.minutes || (template && template.minutes);
       if (!id || !name) return sendJson(res, 400, { error: 'Missing id or name' });
       const mins = Math.max(1, Number(minutes) || 1440);
       const endsAt = new Date(Date.now() + mins * 60000).toISOString();
       // "Reusing an event's id next year brings it back" - restarting the
       // same id just overwrites the run (start/end dates), nothing about
       // past completions needs resetting.
-      db.shoalTalesActiveEvent = { id, name, curioIds: curioIds || [], fishIds: fishIds || [], startsAt: new Date().toISOString(), endsAt, startedBy: handle };
+      db.shoalTalesActiveEvent = { id, name, curioIds, fishIds, looks, startsAt: new Date().toISOString(), endsAt, startedBy: handle };
       shoalBroadcastAnnouncement(`The ${name} event has begun!`);
       saveDatabase();
       return sendJson(res, 200, { success: true, event: db.shoalTalesActiveEvent });
