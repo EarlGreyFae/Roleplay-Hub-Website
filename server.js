@@ -3370,6 +3370,79 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Act on a Stored Curio later (06-curios.md: "keep it in Stored Curios ...
+  // to log, donate, sell, gift, or process later" - gifting is its own
+  // /gift/send endpoint). Mirrors curio-action's log/sell/donate, plus
+  // process (Wood/metal/mixed curios at their matching station, worth value
+  // x the station's factor, same as stored junk).
+  if (reqPath === '/api/shoal-tales/stored-curio-action' && req.method === 'POST') {
+    try {
+      const { handle, storedCurioId, action } = await parseJsonBody(req);
+      if (!handle || !storedCurioId || !action) return sendJson(res, 400, { error: 'Missing handle, storedCurioId or action' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.storedCurios.findIndex(c => c.id === storedCurioId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That stored curio was not found.' });
+      const item = save.storedCurios[itemIndex];
+      const collected = shoalCollectedBonuses(save);
+      const fullValue = ShoalTalesEngine.curioValue(item.baseCoins, item.rarity, collected.curio || 0) * (item.golden ? 3 : 1);
+      const RARITY_RANK = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3 };
+
+      if (action === 'log') {
+        const existing = save.collectorsLog.curios[item.curioId];
+        const better = !existing || RARITY_RANK[item.rarity] > RARITY_RANK[existing.rarity] || (item.golden && !existing.golden);
+        if (better) {
+          save.collectorsLog.curios[item.curioId] = { rarity: item.rarity, golden: item.golden, foundAt: new Date().toISOString() };
+          if (item.golden) save.goldenLog.push({ kind: 'curio', id: item.curioId, foundAt: new Date().toISOString() });
+          shoalUpdateCompletedSets(save, handle);
+        }
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'log', logged: better });
+      }
+      if (action === 'sell') {
+        const coins = Math.round(fullValue);
+        save.coins += coins;
+        save.allTimeStats.coinsEarned += coins;
+        save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'sell', coins });
+      }
+      if (action === 'donate') {
+        if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+        const guild = db.shoalTalesGuilds[save.guildId];
+        if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+        const existing = guild.guildLog.curios[item.curioId];
+        const better = !existing || RARITY_RANK[item.rarity] > RARITY_RANK[existing.rarity];
+        if (better) guild.guildLog.curios[item.curioId] = { rarity: item.rarity, donatedBy: handle, foundAt: new Date().toISOString() };
+        shoalUpdateGuildCompletedSets(guild);
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'donate', logged: better });
+      }
+      if (action === 'process') {
+        const STATION_FOR_BIN = { Wood: 'carpentry', Metal: 'crucible', Mixed: 'recycling' };
+        const RESOURCE_FOR_BIN = { Wood: 'knickKnacks', Metal: 'ingots', Mixed: 'materials' };
+        const stationId = STATION_FOR_BIN[item.bin];
+        if (!stationId) return sendJson(res, 400, { error: 'That curio is not made of wood, metal, or mixed materials.' });
+        if (!save.stationsInstalled.includes(stationId)) return sendJson(res, 400, { error: 'That station is not installed yet.' });
+        const station = ShoalTalesData.stations.find(s => s.id === stationId);
+        const producedValue = fullValue * station.valueFactor;
+        const resourceKey = RESOURCE_FOR_BIN[item.bin];
+        save[resourceKey].units += 1;
+        save[resourceKey].value += producedValue;
+        save.allTimeStats.goodsMade = (save.allTimeStats.goodsMade || 0) + 1;
+        shoalContributeToGuildQuests(save, 'goodsMade', 1);
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'process', resource: resourceKey, producedValue });
+      }
+      return sendJson(res, 400, { error: 'Unknown action.' });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // Dress a raw fish at the Cutting Board (always free/available, unlike the
   // 4 paid stations - 05-fish.md): x1.6 value, or x1.6*1.3 with Limes (Priya's
   // only Cutting Board supply - Sushi Rice was dropped so every station keeps
@@ -3390,9 +3463,7 @@ const server = http.createServer(async (req, res) => {
         save.coins -= 1;
         mult = 1.3;
       }
-      const rawValue = fish.rawValue != null ? fish.rawValue : fish.value;
-      fish.rawValue = rawValue;
-      fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'dressed', mult);
+      fish.value = ShoalTalesEngine.processedFishValue(fish.value, 'dressed', mult);
       fish.stage = 'dressed';
       shoalTrackStationProgress(save, 'fishDressed', 1);
       shoalContributeToGuildQuests(save, 'fishDressed', 1);
@@ -3428,9 +3499,10 @@ const server = http.createServer(async (req, res) => {
         save.coins -= 2;
         mult = 1.4;
       }
-      const rawValue = fish.rawValue != null ? fish.rawValue : fish.value;
-      fish.rawValue = rawValue;
-      fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'meal', mult);
+      // Base the meal's value on the fish's CURRENT (already-dressed) value,
+      // not the original raw value - otherwise a Limes bonus applied at the
+      // Cutting Board would be silently lost when the fish is later baked.
+      fish.value = ShoalTalesEngine.processedFishValue(fish.value, 'meal', mult);
       fish.stage = 'meal';
       shoalContributeToGuildQuests(save, 'mealsBaked', 1);
       saveDatabase();

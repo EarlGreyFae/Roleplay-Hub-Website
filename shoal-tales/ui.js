@@ -434,6 +434,64 @@
     );
   }
 
+  // Stored Curios (06-curios.md: "keep it in Stored Curios ... to log,
+  // donate, sell, gift, or process later"). Rare/Epic curios ask for a
+  // confirm click before processing, since that permanently breaks them
+  // down for station resources.
+  function StoredCuriosPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onAction = props.onStoredCurioAction;
+    var onGift = props.onGiftCurio;
+    var _confirmId = useState(null); var confirmProcessId = _confirmId[0]; var setConfirmProcessId = _confirmId[1];
+    var _giftTo = useState({}); var giftTargets = _giftTo[0]; var setGiftTargets = _giftTo[1];
+
+    if (!save.storedCurios.length) return null;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Stored Curios'),
+      h('div', { className: 'shoal-stored-curio-list' },
+        save.storedCurios.map(function (item) {
+          var stationId = PROCESS_STATION_FOR_BIN[item.bin];
+          var canProcess = stationId && save.stationsInstalled.indexOf(stationId) !== -1;
+          var needsConfirm = item.rarity === 'Rare' || item.rarity === 'Epic';
+          var confirming = confirmProcessId === item.id;
+          return h('div', { key: item.id, className: 'shoal-stored-curio-row' },
+            h('div', { className: 'shoal-cooler-name' }, item.name, ' ',
+              h('span', { className: 'shoal-tray-rarity shoal-rarity-' + item.rarity.toLowerCase() }, item.rarity, item.golden ? ' ✨' : '')),
+            h('div', { className: 'shoal-bin-row' },
+              confirming
+                ? [
+                    h('button', { key: 'confirm', type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger',
+                      onClick: function () { setConfirmProcessId(null); onAction(item.id, 'process'); } }, 'Confirm: Process'),
+                    h('button', { key: 'cancel', type: 'button', disabled: busy, className: 'shoal-action-btn',
+                      onClick: function () { setConfirmProcessId(null); } }, 'Cancel')
+                  ]
+                : [
+                    h('button', { key: 'log', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { onAction(item.id, 'log'); } }, 'Log'),
+                    h('button', { key: 'sell', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { onAction(item.id, 'sell'); } }, 'Sell'),
+                    save.guildId && h('button', { key: 'donate', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { onAction(item.id, 'donate'); } }, 'Donate'),
+                    canProcess && h('button', {
+                      key: 'process', type: 'button', disabled: busy, className: 'shoal-action-btn',
+                      onClick: function () { needsConfirm ? setConfirmProcessId(item.id) : onAction(item.id, 'process'); }
+                    }, 'Process'),
+                    h('input', {
+                      key: 'gift-input', type: 'text', placeholder: '@handle to gift', className: 'shoal-gift-input',
+                      value: giftTargets[item.id] || '',
+                      onChange: function (e) { setGiftTargets(Object.assign({}, giftTargets, { [item.id]: e.target.value })); }
+                    }),
+                    h('button', {
+                      key: 'gift', type: 'button', disabled: busy || !giftTargets[item.id], className: 'shoal-action-btn',
+                      onClick: function () { onGift(item.id, giftTargets[item.id]); setGiftTargets(Object.assign({}, giftTargets, { [item.id]: '' })); }
+                    }, 'Gift')
+                  ]
+            )
+          );
+        })
+      )
+    );
+  }
+
   var RESOURCE_LABEL = { knickKnacks: 'Knick-knacks', ingots: 'Ingots', materials: 'Materials' };
 
   function GoodsAndCoolerPanel(props) {
@@ -2276,6 +2334,25 @@
       setCurioChoosingBin(trayItemId);
     }
 
+    function handleStoredCurioAction(storedCurioId, action) {
+      runAction(apiPost('/api/shoal-tales/stored-curio-action', { handle: handle, storedCurioId: storedCurioId, action: action })).then(function (data) {
+        if (!data) return;
+        var message = action === 'log' ? (data.logged ? 'Added to the Collector\'s Log!' : 'Already logged a better copy.')
+          : action === 'sell' ? ('Sold for +' + formatCoins(data.coins) + ' coins')
+          : action === 'donate' ? (data.logged ? 'Donated to the Guild Log!' : 'Your guild already has a better copy.')
+          : action === 'process' ? ('Processed into ' + formatCoins(data.producedValue) + 'c of ' + data.resource)
+          : '';
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
+    function handleGiftCurio(storedCurioId, toHandle) {
+      runAction(apiPost('/api/shoal-tales/gift/send', { handle: handle, toHandle: toHandle, storedCurioId: storedCurioId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Gifted to ' + toHandle + '!' });
+      });
+    }
+
     function handleSell(what) {
       setBusy(true);
       apiPost('/api/shoal-tales/sell', { handle: handle, what: what }).then(function () { return refresh(); })
@@ -2539,6 +2616,7 @@
           onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
         }),
         h(CollectorsLogSummary, { save: save }),
+        h(StoredCuriosPanel, { save: save, busy: busy, onStoredCurioAction: handleStoredCurioAction, onGiftCurio: handleGiftCurio }),
         h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff }),
         save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire })
       );
@@ -2606,6 +2684,7 @@
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,
+    StoredCuriosPanel: StoredCuriosPanel,
     SocialPanel: SocialPanel,
     PartyTab: PartyTab,
     GuildTab: GuildTab,

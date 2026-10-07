@@ -238,11 +238,15 @@
   // dressed), each optionally boosted by a Priya add-in. (Sushi/Sushi Rice
   // was dropped - each station keeps exactly one upgrade material, and
   // Limes is the Cutting Board's.)
-  function processedFishValue(rawValue, step, addInMultiplier) {
+  // `value` is the fish's value going INTO this step (raw cooler value for
+  // 'dressed', the already-dressed value - Limes bonus included - for
+  // 'meal'), so each step's own add-in multiplies on top of the last step's
+  // result rather than recomputing from scratch.
+  function processedFishValue(value, step, addInMultiplier) {
     var mult = addInMultiplier || 1;
-    if (step === 'raw') return rawValue;
-    if (step === 'dressed') return rawValue * 1.6 * mult;
-    if (step === 'meal') return rawValue * 1.6 * 1.5 * mult;
+    if (step === 'raw') return value;
+    if (step === 'dressed') return value * 1.6 * mult;
+    if (step === 'meal') return value * 1.5 * mult;
     throw new Error('Unknown processing step: ' + step);
   }
 
