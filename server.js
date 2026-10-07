@@ -651,7 +651,11 @@ function shoalPayoutBonus(save) {
   // of about +2%" - stacks per event completed, like a guild set.
   const eventBonus = (save.completedEventIds || []).length * 0.02;
   const collectedBonus = shoalCollectedBonuses(save).payout || 0;
-  return Math.min(0.5, retireBonus + petBonus + partyBonus + guildBonus + tideBonus + eventBonus + collectedBonus);
+  // Unlike the time bonus, payout has no cap (11-retiring.md: the "all time
+  // bonuses capped at 50% total" note sits on the dredge-time bullet only) -
+  // it keeps compounding every retirement to match "Goals keep growing 10%
+  // per run" in the endgame.
+  return retireBonus + petBonus + partyBonus + guildBonus + tideBonus + eventBonus + collectedBonus;
 }
 
 // --- Extras (docs/shoal-tales-spec/14-extras.md): Tides, Events ---
