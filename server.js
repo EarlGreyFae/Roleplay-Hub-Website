@@ -303,7 +303,23 @@ function defaultShoalTalesSave(handle) {
     stationProgress: 0,
     knickKnacks: { units: 0, value: 0 },
     ingots: { units: 0, value: 0 },
-    materials: { units: 0, value: 0 }
+    materials: { units: 0, value: 0 },
+    // The Emporium (docs/shoal-tales-spec/10-emporium.md) - the end-of-run
+    // shop-sim, opened once all 4 stations are in, 6,000 coins are spent,
+    // and the exact rare materials from the Story requests are on hand.
+    emporiumOpen: false,
+    emporium: {
+      pedestalCount: 6,
+      pedestals: [null, null, null, null, null, null],
+      decorationsOwned: {},
+      backRoomBuilt: false,
+      tickets: 0,
+      lastVisit: new Date().toISOString(),
+      shellStreak: 0,
+      activePuzzle: null,
+      workOrders: [],
+      counterCustomers: []
+    }
   };
 }
 
@@ -445,13 +461,108 @@ function shoalNewTrayId(i) {
   return 'tray_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
 }
 
+// --- The Emporium (docs/shoal-tales-spec/10-emporium.md) ---
+
+const EMPORIUM_OPEN_COST = 6000;
+const EMPORIUM_REQUIRED_MATERIALS = { 'Stained Glass Panel': 2, 'Old-Growth Timber': 3, 'Brass Fittings': 3, 'Neon Sign': 1 };
+const PEDESTAL_EXPANSION_COSTS = [5000, 10000, 20000, 40000, 80000]; // 6->8->10->12->14->16
+const BACK_ROOM_COST = 250000;
+const RARITY_ORDER = ['Common', 'Uncommon', 'Rare', 'Epic'];
+const PRIZE_BOXES = {
+  common: { tickets: 20, weights: { Common: 70, Uncommon: 25, Rare: 5, Epic: 0 } },
+  uncommon: { tickets: 60, weights: { Common: 30, Uncommon: 50, Rare: 17, Epic: 3 } },
+  rare: { tickets: 150, weights: { Common: 0, Uncommon: 40, Rare: 45, Epic: 15 } }
+};
+const CUSTOMER_TYPES = [
+  { type: 'local', chance: 45, tip: 1, names: ['Old Mrs. Penhallow', 'Tom the Postman', 'The Vicar'] },
+  { type: 'townsfolk', chance: 20, tip: 1.2, names: null }, // scoped to appeared townsfolk at roll time
+  { type: 'traveller', chance: 15, tip: 1.3, names: ['A Backpacker', 'A Cyclist', 'A Lorry Driver'] },
+  { type: 'tourist', chance: 15, tip: 1.5, names: ['A Day-Tripper', 'A Family of Four'] },
+  { type: 'rare', chance: 5, tip: 5, names: ['Zephyr the Crow', 'A Mermaid in a Raincoat', 'The Lighthouse Keeper'] }
+];
+const DRINK_PARTS = {
+  base: ['Coffee', 'Tea', 'Hot Cocoa', 'Warm Milk'],
+  flavour: ['Vanilla', 'Caramel', 'Mint', 'Salted Kelp'],
+  finish: ['Whipped Cream', 'Cinnamon', 'Marshmallows', 'Sea Salt']
+};
+
+function shoalPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function shoalRareMaterialsMet(save) {
+  return Object.keys(EMPORIUM_REQUIRED_MATERIALS).every(m => (save.rareMaterials[m] || 0) >= EMPORIUM_REQUIRED_MATERIALS[m]);
+}
+
+function shoalGrantRandomDecoration(save, rarity) {
+  const pool = ShoalTalesData.decorations.filter(d => d.rarity === rarity);
+  if (pool.length === 0) return null;
+  const d = shoalPick(pool);
+  save.emporium.decorationsOwned[d.id] = (save.emporium.decorationsOwned[d.id] || 0) + 1;
+  return d;
+}
+
+// Lights-out puzzle generation: starting from the solved (all-off) board and
+// pressing a random subset of cells gives both a guaranteed-solvable puzzle
+// AND an exact solution for free - pressing that same subset once each
+// undoes the scramble, since toggling is its own inverse (XOR) and order
+// doesn't matter. `solution` is tracked live as "cells still needing a
+// press" so a hint can always point at one that's genuinely needed.
+function shoalToggleCell(cells, idx, size) {
+  const row = Math.floor(idx / size), col = idx % size;
+  [[row, col], [row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]].forEach(([r, c]) => {
+    if (r >= 0 && r < size && c >= 0 && c < size) { const i = r * size + c; cells[i] = cells[i] ? 0 : 1; }
+  });
+}
+function shoalGeneratePuzzle(size, rarity) {
+  const total = size * size;
+  const scramble = [];
+  for (let i = 0; i < total; i++) { if (Math.random() < 0.5) scramble.push(i); }
+  if (scramble.length === 0) scramble.push(Math.floor(Math.random() * total));
+  const cells = new Array(total).fill(0);
+  scramble.forEach(idx => shoalToggleCell(cells, idx, size));
+  return { size, rarity, cells, solution: scramble.slice(), hintsUsed: 0 };
+}
+
+function shoalGenerateWorkOrder(save) {
+  const useBin = Math.random() < 0.5;
+  const retirements = save.retirements || 0;
+  if (useBin) {
+    const bin = shoalPick(ShoalTalesEngine.BINS);
+    const [lo, hi] = ShoalTalesEngine.workOrderGoodsRequired('sortedGoods', retirements);
+    return { id: 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), requires: { type: 'sortedBin', bin, amount: lo + Math.floor(Math.random() * (hi - lo + 1)) } };
+  }
+  const type = shoalPick(['knickKnacks', 'ingots', 'materials', 'rawFish', 'dressedFish', 'meals']);
+  const [lo, hi] = ShoalTalesEngine.workOrderGoodsRequired('other', retirements);
+  return { id: 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), requires: { type, amount: lo + Math.floor(Math.random() * (hi - lo + 1)) } };
+}
+
+// Value of exactly requires.amount units of whatever a Work Order asks for
+// (never the whole stock, which may hold more) - used to pay 2x on fill.
+// Mirrors shoalConsume's own consumption order so the two stay consistent:
+// proportional per-unit for the aggregate stores, array-order for fish.
+function shoalValueFor(save, requires) {
+  const amount = requires.amount;
+  if (requires.type === 'sortedBin') {
+    const bin = save.sortedGoods[requires.bin];
+    const perUnit = bin.units > 0 ? bin.value / bin.units : 0;
+    return perUnit * Math.min(amount, bin.units);
+  }
+  if (requires.type === 'knickKnacks' || requires.type === 'ingots' || requires.type === 'materials') {
+    const store = save[requires.type];
+    const perUnit = store.units > 0 ? store.value / store.units : 0;
+    return perUnit * Math.min(amount, store.units);
+  }
+  if (requires.type === 'rawFish' || requires.type === 'dressedFish' || requires.type === 'meals') {
+    const stage = requires.type === 'rawFish' ? 'raw' : requires.type === 'dressedFish' ? 'dressed' : 'meal';
+    return save.cooler.filter(f => f.stage === stage).slice(0, amount).reduce((s, f) => s + f.value, 0);
+  }
+  return 0;
+}
+
 // Produces the N items for one haul, following the exact cascade in
 // docs/shoal-tales-spec/03-dredging.md "What each haul contains": per item
 // slot, roll (1) puzzle box, (2) magic curio, (3) otherwise the catch-type
 // weighted roll among junk/fish/curio/crate/bottle/sea creature. Puzzle boxes
-// are gated behind the Emporium being open (not built yet, so that branch is
-// permanently 0% until the Emporium phase lands) - documented here rather
-// than silently omitted so it's not mistaken for missing.
+// only start appearing once the Emporium is open (10-emporium.md).
 function generateShoalHaul(save) {
   const area = shoalAreaById(save.area);
   const isFirstHaulOfDay = save.lastHaulDate !== new Date().toISOString().slice(0, 10);
@@ -466,7 +577,6 @@ function generateShoalHaul(save) {
     return save.depth >= range[0] && save.depth <= range[1];
   });
   const curioPool = ShoalTalesData.curios.filter(c => c.area === area.name);
-  const emporiumOpen = false; // Emporium phase not built yet.
   const magicCuriosRemaining = ShoalTalesData.magicCurios.filter(m => save.magicCurios.indexOf(m.id) === -1);
 
   const catchWeights = ShoalTalesEngine.catchTypeWeights(save.depth, luck, false);
@@ -478,12 +588,16 @@ function generateShoalHaul(save) {
     const areaMultiplier = area.valueMultiplier; // locked in at haul time, see 03-dredging.md
     const id = shoalNewTrayId(i);
 
-    const puzzleBoxChance = emporiumOpen ? 0.03 * (1 + 0.5 * save.depth) : 0;
+    const puzzleBoxChance = save.emporiumOpen ? 0.03 * (1 + 0.5 * save.depth) : 0;
     const magicCurioChance = magicCuriosRemaining.length > 0 ? 0.006 * (1 + luck) * (1 + 0.5 * save.depth) : 0;
     const roll = Math.random();
 
     if (roll < puzzleBoxChance) {
-      tray.push({ id, kind: 'puzzleBox', name: 'Puzzle Box', areaMultiplier });
+      // "Common/uncommon boxes are 3x3; rare/epic are 4x4" - reuses the
+      // curio rarity distribution since the spec gives no separate table.
+      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(0));
+      const size = (rarity === 'Rare' || rarity === 'Epic') ? 4 : 3;
+      tray.push({ id, kind: 'puzzleBox', name: 'Puzzle Box', rarity, size, areaMultiplier });
       continue;
     }
     if (roll < puzzleBoxChance + magicCurioChance) {
@@ -2545,6 +2659,442 @@ const server = http.createServer(async (req, res) => {
       save.allTimeStats.coinsEarned += reward;
       saveDatabase();
       return sendJson(res, 200, { success: true, personId, reward });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- The Emporium (docs/shoal-tales-spec/10-emporium.md) ---
+
+  if (reqPath === '/api/shoal-tales/open-emporium' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is already open.' });
+      if (save.stationsInstalled.length < ShoalTalesData.stations.length) {
+        return sendJson(res, 400, { error: 'All four stations must be installed first.' });
+      }
+      if (save.coins < EMPORIUM_OPEN_COST) {
+        return sendJson(res, 400, { error: `Not enough coins (need ${EMPORIUM_OPEN_COST}, have ${Math.floor(save.coins)}).` });
+      }
+      if (!shoalRareMaterialsMet(save)) {
+        const missing = Object.keys(EMPORIUM_REQUIRED_MATERIALS).filter(m => (save.rareMaterials[m] || 0) < EMPORIUM_REQUIRED_MATERIALS[m]);
+        return sendJson(res, 400, { error: 'Missing rare materials: ' + missing.join(', ') });
+      }
+      save.coins -= EMPORIUM_OPEN_COST;
+      Object.keys(EMPORIUM_REQUIRED_MATERIALS).forEach(m => { save.rareMaterials[m] -= EMPORIUM_REQUIRED_MATERIALS[m]; });
+      save.emporiumOpen = true;
+      save.emporium.workOrders = [shoalGenerateWorkOrder(save), shoalGenerateWorkOrder(save), shoalGenerateWorkOrder(save)];
+      save.emporium.lastVisit = new Date().toISOString();
+      const newLetter = shoalDeliverCrowLetter(save, 'the-emporium');
+      saveDatabase();
+      return sendJson(res, 200, { success: true, newLetter });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/place-decoration' && req.method === 'POST') {
+    try {
+      const { handle, pedestalIndex, decorationId } = await parseJsonBody(req);
+      if (!handle || pedestalIndex == null || !decorationId) return sendJson(res, 400, { error: 'Missing handle, pedestalIndex or decorationId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      if (pedestalIndex < 0 || pedestalIndex >= emp.pedestalCount) return sendJson(res, 400, { error: 'No such pedestal.' });
+      if (!(emp.decorationsOwned[decorationId] > 0)) return sendJson(res, 400, { error: "You don't have a spare of that decoration." });
+      const current = emp.pedestals[pedestalIndex];
+      emp.decorationsOwned[decorationId] -= 1;
+      if (emp.decorationsOwned[decorationId] === 0) delete emp.decorationsOwned[decorationId];
+      // A full pedestal swaps - its old decoration goes back to the spares pool.
+      if (current) emp.decorationsOwned[current] = (emp.decorationsOwned[current] || 0) + 1;
+      emp.pedestals[pedestalIndex] = decorationId;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, pedestals: emp.pedestals });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/take-decoration' && req.method === 'POST') {
+    try {
+      const { handle, pedestalIndex } = await parseJsonBody(req);
+      if (!handle || pedestalIndex == null) return sendJson(res, 400, { error: 'Missing handle or pedestalIndex' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      if (pedestalIndex < 0 || pedestalIndex >= emp.pedestalCount) return sendJson(res, 400, { error: 'No such pedestal.' });
+      const current = emp.pedestals[pedestalIndex];
+      if (!current) return sendJson(res, 400, { error: 'That pedestal is already empty.' });
+      emp.decorationsOwned[current] = (emp.decorationsOwned[current] || 0) + 1;
+      emp.pedestals[pedestalIndex] = null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, pedestals: emp.pedestals });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/expand-pedestals' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      const tier = (emp.pedestalCount - 6) / 2;
+      if (tier >= PEDESTAL_EXPANSION_COSTS.length) return sendJson(res, 400, { error: 'Pedestals are already fully expanded (16).' });
+      const cost = PEDESTAL_EXPANSION_COSTS[tier];
+      if (save.coins < cost) return sendJson(res, 400, { error: `Not enough coins (need ${cost}, have ${Math.floor(save.coins)}).` });
+      save.coins -= cost;
+      emp.pedestalCount += 2;
+      emp.pedestals.push(null, null);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, pedestalCount: emp.pedestalCount, coinsSpent: cost });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/build-back-room' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      if (emp.backRoomBuilt) return sendJson(res, 400, { error: 'The Back Room is already built.' });
+      if (emp.pedestalCount < 16) return sendJson(res, 400, { error: 'All 16 pedestals must be open first.' });
+      if (save.coins < BACK_ROOM_COST) return sendJson(res, 400, { error: `Not enough coins (need ${BACK_ROOM_COST}, have ${Math.floor(save.coins)}).` });
+      save.coins -= BACK_ROOM_COST;
+      emp.backRoomBuilt = true;
+      emp.pedestalCount += 8;
+      for (let i = 0; i < 8; i++) emp.pedestals.push(null);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, pedestalCount: emp.pedestalCount });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/trade-up' && req.method === 'POST') {
+    try {
+      const { handle, rarity } = await parseJsonBody(req);
+      if (!handle || !rarity) return sendJson(res, 400, { error: 'Missing handle or rarity' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      const idx = RARITY_ORDER.indexOf(rarity);
+      if (idx === -1 || idx === RARITY_ORDER.length - 1) return sendJson(res, 400, { error: 'That rarity cannot be traded up.' });
+      const spareIds = ShoalTalesData.decorations.filter(d => d.rarity === rarity).map(d => d.id).filter(id => (emp.decorationsOwned[id] || 0) > 0);
+      const totalSpare = spareIds.reduce((s, id) => s + emp.decorationsOwned[id], 0);
+      if (totalSpare < 3) return sendJson(res, 400, { error: `Need 3 spare ${rarity} decorations (have ${totalSpare}).` });
+      let left = 3;
+      for (const id of spareIds) {
+        if (left <= 0) break;
+        const take = Math.min(left, emp.decorationsOwned[id]);
+        emp.decorationsOwned[id] -= take;
+        if (emp.decorationsOwned[id] === 0) delete emp.decorationsOwned[id];
+        left -= take;
+      }
+      const granted = shoalGrantRandomDecoration(save, RARITY_ORDER[idx + 1]);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, granted });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Customers walk in on request (up to 3 waiting) - the design bible has
+  // them arrive on a 25s real-world timer, but there is no server-side
+  // ticking loop in this request/response architecture, so the UI is
+  // expected to poll this on a 25s client-side interval instead.
+  if (reqPath === '/api/shoal-tales/emporium/counter/next-customer' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      if (emp.counterCustomers.length >= 3) return sendJson(res, 400, { error: 'Up to 3 customers can wait at once.' });
+      const typeWeights = {};
+      CUSTOMER_TYPES.forEach(t => { typeWeights[t.type] = t.chance; });
+      const typeId = ShoalTalesEngine.weightedPick(typeWeights);
+      const typeDef = CUSTOMER_TYPES.find(t => t.type === typeId);
+      let names = typeDef.names;
+      if (typeId === 'townsfolk') {
+        names = ShoalTalesData.townsfolk.filter(p => shoalTownspersonAppears(save, p.id)).map(p => p.name);
+        if (names.length === 0) names = ['A Local']; // nobody met yet - fall back rather than erroring
+      }
+      const customer = {
+        id: 'cust_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        type: typeId,
+        tip: typeDef.tip,
+        name: shoalPick(names),
+        drink: { base: shoalPick(DRINK_PARTS.base), flavour: shoalPick(DRINK_PARTS.flavour), finish: shoalPick(DRINK_PARTS.finish) },
+        wantsMeal: Math.random() < 0.3
+      };
+      emp.counterCustomers.push(customer);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, customer });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/counter/serve' && req.method === 'POST') {
+    try {
+      const { handle, customerId, drink, coolerItemId } = await parseJsonBody(req);
+      if (!handle || !customerId || !drink) return sendJson(res, 400, { error: 'Missing handle, customerId or drink' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      const idx = emp.counterCustomers.findIndex(c => c.id === customerId);
+      if (idx < 0) return sendJson(res, 404, { error: 'That customer is not waiting.' });
+      const customer = emp.counterCustomers[idx];
+      const area = shoalAreaById(save.area).valueMultiplier;
+      const correctDrink = drink.base === customer.drink.base && drink.flavour === customer.drink.flavour && drink.finish === customer.drink.finish;
+      let pay = ShoalTalesEngine.counterDrinkPay({ correctDrink, customerTip: customer.tip, area, bPayout: 0 });
+      let mealGiven = false;
+      if (customer.wantsMeal && coolerItemId) {
+        const meal = save.cooler.find(f => f.id === coolerItemId && f.stage === 'meal');
+        if (meal) {
+          pay += ShoalTalesEngine.counterMealBonus(meal.value);
+          save.cooler = save.cooler.filter(f => f.id !== coolerItemId);
+          mealGiven = true;
+        }
+      }
+      pay = Math.round(pay);
+      save.coins += pay;
+      save.allTimeStats.coinsEarned += pay;
+      emp.counterCustomers.splice(idx, 1);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, correctDrink, mealGiven, coinsEarned: pay });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/puzzle/start' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId } = await parseJsonBody(req);
+      if (!handle || !trayItemId) return sendJson(res, 400, { error: 'Missing handle or trayItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.emporium.activePuzzle) return sendJson(res, 400, { error: 'Finish your current puzzle first.' });
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      const item = save.tray[itemIndex];
+      if (item.kind !== 'puzzleBox') return sendJson(res, 400, { error: 'That is not a puzzle box.' });
+      save.emporium.activePuzzle = shoalGeneratePuzzle(item.size, item.rarity);
+      save.tray.splice(itemIndex, 1);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, puzzle: save.emporium.activePuzzle });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/puzzle/press' && req.method === 'POST') {
+    try {
+      const { handle, cellIndex } = await parseJsonBody(req);
+      if (!handle || cellIndex == null) return sendJson(res, 400, { error: 'Missing handle or cellIndex' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const puzzle = save.emporium.activePuzzle;
+      if (!puzzle) return sendJson(res, 400, { error: 'No puzzle in progress.' });
+      if (cellIndex < 0 || cellIndex >= puzzle.cells.length) return sendJson(res, 400, { error: 'Cell out of range.' });
+      shoalToggleCell(puzzle.cells, cellIndex, puzzle.size);
+      const pos = puzzle.solution.indexOf(cellIndex);
+      if (pos !== -1) puzzle.solution.splice(pos, 1); else puzzle.solution.push(cellIndex);
+      const solved = puzzle.cells.every(c => c === 0);
+      let coinsEarned = 0, decoration = null;
+      if (solved) {
+        const area = shoalAreaById(save.area).valueMultiplier;
+        coinsEarned = Math.round(ShoalTalesEngine.puzzleSolvePay(puzzle.rarity, area, 0));
+        save.coins += coinsEarned;
+        save.allTimeStats.coinsEarned += coinsEarned;
+        decoration = shoalGrantRandomDecoration(save, ShoalTalesEngine.weightedPick(PRIZE_BOXES.common.weights));
+        save.emporium.activePuzzle = null;
+      }
+      saveDatabase();
+      return sendJson(res, 200, { success: true, puzzle: solved ? null : puzzle, solved, coinsEarned, decoration });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/puzzle/hint' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const puzzle = save.emporium.activePuzzle;
+      if (!puzzle) return sendJson(res, 400, { error: 'No puzzle in progress.' });
+      if (save.emporium.tickets < 3) return sendJson(res, 400, { error: 'Not enough tickets (need 3).' });
+      if (puzzle.solution.length === 0) return sendJson(res, 400, { error: 'No hint needed - the puzzle is already solved.' });
+      save.emporium.tickets -= 3;
+      puzzle.hintsUsed += 1;
+      const cellIndex = puzzle.solution[0];
+      saveDatabase();
+      return sendJson(res, 200, { success: true, cellIndex, ticketsLeft: save.emporium.tickets });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Arcade: Tide Timer and Crab Grab are real-time skill minigames in the
+  // design bible (a sliding float; 1.1s crab windows). There is no live
+  // timing signal available from the client over this request/response API,
+  // so both outcomes are rolled directly server-side rather than trusting an
+  // unverifiable client-reported score - still a real coin cost and a real
+  // (random) ticket payout, just not a skill test. Shell Game keeps its real
+  // 3-way guess, since that needs no timing data.
+  if (reqPath === '/api/shoal-tales/emporium/arcade/tide-timer' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      if (save.coins < 25) return sendJson(res, 400, { error: 'Not enough coins (need 25).' });
+      save.coins -= 25;
+      const stop = Math.floor(Math.random() * 9); // 0-8, center=4
+      const distance = Math.abs(stop - 4);
+      const tickets = [10, 5, 3, 1, 1][distance];
+      save.emporium.tickets += tickets;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, stop, distance, tickets });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/arcade/crab-grab' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      if (save.coins < 25) return sendJson(res, 400, { error: 'Not enough coins (need 25).' });
+      save.coins -= 25;
+      const crabsHit = Math.floor(Math.random() * 21); // 0-20
+      const tickets = Math.min(10, Math.floor(crabsHit / 3));
+      save.emporium.tickets += tickets;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, crabsHit, tickets });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/arcade/shell-game' && req.method === 'POST') {
+    try {
+      const { handle, guess } = await parseJsonBody(req);
+      if (!handle || guess == null) return sendJson(res, 400, { error: 'Missing handle or guess' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      if (save.coins < 25) return sendJson(res, 400, { error: 'Not enough coins (need 25).' });
+      save.coins -= 25;
+      const truth = Math.floor(Math.random() * 3);
+      const win = guess === truth;
+      let tickets = 0;
+      if (win) {
+        tickets = Math.min(10, 2 + 2 * save.emporium.shellStreak);
+        save.emporium.shellStreak += 1;
+      } else {
+        save.emporium.shellStreak = 0;
+      }
+      save.emporium.tickets += tickets;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, truth, win, tickets, streak: save.emporium.shellStreak });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/prize-box' && req.method === 'POST') {
+    try {
+      const { handle, tier } = await parseJsonBody(req);
+      if (!handle || !tier) return sendJson(res, 400, { error: 'Missing handle or tier' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const box = PRIZE_BOXES[tier];
+      if (!box) return sendJson(res, 400, { error: 'Unknown prize box tier.' });
+      if (save.emporium.tickets < box.tickets) return sendJson(res, 400, { error: `Not enough tickets (need ${box.tickets}).` });
+      save.emporium.tickets -= box.tickets;
+      const rarity = ShoalTalesEngine.weightedPick(box.weights);
+      const decoration = shoalGrantRandomDecoration(save, rarity);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, decoration });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/work-order/fill' && req.method === 'POST') {
+    try {
+      const { handle, orderId } = await parseJsonBody(req);
+      if (!handle || !orderId) return sendJson(res, 400, { error: 'Missing handle or orderId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      const idx = emp.workOrders.findIndex(o => o.id === orderId);
+      if (idx < 0) return sendJson(res, 404, { error: 'That order no longer exists.' });
+      const order = emp.workOrders[idx];
+      const have = shoalAvailableFor(save, order.requires);
+      if (have < order.requires.amount) return sendJson(res, 400, { error: `Not enough yet (have ${have}, need ${order.requires.amount}).` });
+      const value = shoalValueFor(save, order.requires);
+      shoalConsume(save, order.requires, order.requires.amount);
+      const pay = Math.round(value * 2);
+      save.coins += pay;
+      save.allTimeStats.coinsEarned += pay;
+      let decoration = null;
+      if (Math.random() < 0.25) decoration = shoalGrantRandomDecoration(save, ShoalTalesEngine.weightedPick(PRIZE_BOXES.common.weights));
+      emp.workOrders[idx] = shoalGenerateWorkOrder(save);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, coinsEarned: pay, decoration, newOrder: emp.workOrders[idx] });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/emporium/work-order/swap' && req.method === 'POST') {
+    try {
+      const { handle, orderId } = await parseJsonBody(req);
+      if (!handle || !orderId) return sendJson(res, 400, { error: 'Missing handle or orderId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      const idx = emp.workOrders.findIndex(o => o.id === orderId);
+      if (idx < 0) return sendJson(res, 404, { error: 'That order no longer exists.' });
+      const cost = ShoalTalesEngine.workOrderSwapCost(save.retirements || 0);
+      if (save.coins < cost) return sendJson(res, 400, { error: `Not enough coins (need ${cost}, have ${Math.floor(save.coins)}).` });
+      save.coins -= cost;
+      emp.workOrders[idx] = shoalGenerateWorkOrder(save);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, coinsSpent: cost, newOrder: emp.workOrders[idx] });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Tip jar isn't wired up yet - it's filled by visitors, which require the
+  // Social phase (parties/guilds/visits, task 24) and the first retirement.
+  // Away earnings don't need a visitor and are real today.
+  if (reqPath === '/api/shoal-tales/emporium/collect-away-earnings' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const emp = save.emporium;
+      const hoursAway = (Date.now() - new Date(emp.lastVisit).getTime()) / 3600000;
+      const area = shoalAreaById(save.area).valueMultiplier;
+      const earnings = Math.round(ShoalTalesEngine.awayEarnings(hoursAway, area, 0));
+      save.coins += earnings;
+      save.allTimeStats.coinsEarned += earnings;
+      emp.lastVisit = new Date().toISOString();
+      saveDatabase();
+      return sendJson(res, 200, { success: true, hoursAway: Math.min(hoursAway, 8), earnings });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

@@ -90,6 +90,24 @@
 
   var BIN_LABELS = { Plastic: 'Plastic', Metal: 'Metal', Glass: 'Glass', Wood: 'Wood', Electronics: 'Electronics', Hazardous: 'Hazardous', Mixed: 'Mixed' };
 
+  // --- The Emporium (10-emporium.md) - mirrors server.js's own constants ---
+  var EMPORIUM_REQUIRED_MATERIALS = { 'Stained Glass Panel': 2, 'Old-Growth Timber': 3, 'Brass Fittings': 3, 'Neon Sign': 1 };
+  var EMPORIUM_OPEN_COST = 6000;
+  var PEDESTAL_EXPANSION_COSTS = [5000, 10000, 20000, 40000, 80000];
+  var BACK_ROOM_COST = 250000;
+  var RARITY_ORDER = ['Common', 'Uncommon', 'Rare', 'Epic'];
+  var DRINK_PARTS = {
+    base: ['Coffee', 'Tea', 'Hot Cocoa', 'Warm Milk'],
+    flavour: ['Vanilla', 'Caramel', 'Mint', 'Salted Kelp'],
+    finish: ['Whipped Cream', 'Cinnamon', 'Marshmallows', 'Sea Salt']
+  };
+  var CUSTOMER_TYPE_LABELS = { local: 'Local', townsfolk: 'Townsfolk', traveller: 'Traveller', tourist: 'Tourist', rare: 'Rare Visitor' };
+  var PRIZE_BOXES = [
+    { tier: 'common', label: 'Common Prize Box', cost: 20 },
+    { tier: 'uncommon', label: 'Uncommon Prize Box', cost: 60 },
+    { tier: 'rare', label: 'Rare Prize Box', cost: 150 }
+  ];
+
   // --- fetch helpers (res.ok IS checked - see docs/shoal-tales-spec, a prior
   // bug in this same app's push-notification code came from skipping this) ---
   function apiGet(url) {
@@ -185,6 +203,7 @@
     var onCurioAction = props.onCurioAction;
     var curioChoosingBin = props.curioChoosingBin;
     var onStartCurioSort = props.onStartCurioSort;
+    var onStartPuzzle = props.onStartPuzzle;
     var busy = props.busy;
     var lastResult = props.lastResult;
 
@@ -208,7 +227,8 @@
           },
             h(Icons[iconName], { className: 'shoal-tray-icon' }),
             h('span', { className: 'shoal-tray-name' }, item.name),
-            item.kind === 'curio' && item.identified && h('span', { className: 'shoal-tray-rarity shoal-rarity-' + item.rarity.toLowerCase() }, item.rarity, item.golden ? ' ✨' : '')
+            item.kind === 'curio' && item.identified && h('span', { className: 'shoal-tray-rarity shoal-rarity-' + item.rarity.toLowerCase() }, item.rarity, item.golden ? ' ✨' : ''),
+            item.kind === 'puzzleBox' && h('span', { className: 'shoal-tray-rarity shoal-rarity-' + item.rarity.toLowerCase() }, item.rarity, ' ', item.size, 'x', item.size)
           );
         })
       ),
@@ -246,6 +266,10 @@
       if (item.kind === 'magicCurio') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn shoal-action-btn-magic' },
           h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub'));
+      }
+      if (item.kind === 'puzzleBox') {
+        return h('button', { type: 'button', disabled: busy, onClick: function () { onStartPuzzle(item.id); }, className: 'shoal-action-btn' },
+          h(Icons.Box, { className: 'shoal-bin-icon' }), h('span', null, 'Take to Puzzle Bench'));
       }
       if (item.kind === 'curio') {
         if (!item.identified) {
@@ -465,6 +489,267 @@
           className: 'shoal-action-btn'
         }, 'Process ', save.sortedGoods[bin].units, ' ', bin, ' into ', RESOURCE_LABEL[RESOURCE_FOR_BIN[bin]]);
       })
+    );
+  }
+
+  // --- The Emporium (10-emporium.md): shown once the Town is open, first as
+  // "The Empty Shop" with a readiness checklist, then as the full shop-sim
+  // once opened. Split into one sub-component per room to keep each piece
+  // manageable; EmporiumPanel just composes them. ---
+
+  function EmporiumGate(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onOpen = props.onOpen;
+    var stationsReady = save.stationsInstalled.length >= DATA.stations.length;
+    var coinsReady = save.coins >= EMPORIUM_OPEN_COST;
+    var materialsReady = Object.keys(EMPORIUM_REQUIRED_MATERIALS).every(function (m) { return (save.rareMaterials[m] || 0) >= EMPORIUM_REQUIRED_MATERIALS[m]; });
+    var allReady = stationsReady && coinsReady && materialsReady;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'The Empty Shop'),
+      h('p', { className: 'shoal-hint' }, 'A note on the door: "Coming soon - the Emporium."'),
+      h('div', { className: 'shoal-emporium-checklist' },
+        h('div', { className: 'shoal-checklist-row' }, stationsReady ? '✓' : '○', ' All 4 stations installed'),
+        h('div', { className: 'shoal-checklist-row' }, coinsReady ? '✓' : '○', ' ', formatCoins(EMPORIUM_OPEN_COST), ' coins (have ', formatCoins(save.coins), ')'),
+        Object.keys(EMPORIUM_REQUIRED_MATERIALS).map(function (m) {
+          var have = save.rareMaterials[m] || 0;
+          var need = EMPORIUM_REQUIRED_MATERIALS[m];
+          return h('div', { key: m, className: 'shoal-checklist-row' }, have >= need ? '✓' : '○', ' ', need, ' ', m, ' (have ', have, ')');
+        })
+      ),
+      h('button', { type: 'button', disabled: busy || !allReady, onClick: onOpen, className: 'shoal-dredge-btn' }, 'Open the Emporium')
+    );
+  }
+
+  function ShopFloorPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onPlace = props.onPlace;
+    var onTake = props.onTake;
+    var onExpand = props.onExpand;
+    var onBuildBackRoom = props.onBuildBackRoom;
+    var onTradeUp = props.onTradeUp;
+    var emp = save.emporium;
+    var _picked = useState(null); var pickedId = _picked[0]; var setPickedId = _picked[1];
+
+    function decorationById(id) { return DATA.decorations.find(function (d) { return d.id === id; }); }
+    var spareIds = Object.keys(emp.decorationsOwned).filter(function (id) { return emp.decorationsOwned[id] > 0; });
+    var tier = (emp.pedestalCount - 6) / 2;
+    var expansionCost = PEDESTAL_EXPANSION_COSTS[tier];
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Shop Floor'),
+      h('p', { className: 'shoal-hint' }, pickedId
+        ? ('Holding: ' + (decorationById(pickedId) ? decorationById(pickedId).name : pickedId) + ' - tap a pedestal to place it.')
+        : 'Tap a spare decoration to pick it up, then tap a pedestal. Tap a filled pedestal with nothing held to take it down.'),
+      spareIds.length > 0 && h('div', { className: 'shoal-decoration-grid' },
+        spareIds.map(function (id) {
+          var d = decorationById(id);
+          return h('button', {
+            key: id, type: 'button', disabled: busy,
+            onClick: function () { setPickedId(pickedId === id ? null : id); },
+            className: 'shoal-decoration-chip' + (pickedId === id ? ' shoal-decoration-chip-selected' : '')
+          }, d ? d.name : id, ' x', emp.decorationsOwned[id]);
+        })
+      ),
+      h('div', { className: 'shoal-pedestal-grid' },
+        emp.pedestals.map(function (decoId, i) {
+          var d = decoId ? decorationById(decoId) : null;
+          return h('button', {
+            key: i, type: 'button', disabled: busy,
+            onClick: function () {
+              if (pickedId) { onPlace(i, pickedId); setPickedId(null); } else if (decoId) { onTake(i); }
+            },
+            className: 'shoal-pedestal' + (decoId ? ' shoal-pedestal-filled' : '')
+          }, d ? d.name : 'Empty');
+        })
+      ),
+      h('div', { className: 'shoal-controls-row' },
+        tier < PEDESTAL_EXPANSION_COSTS.length && h('button', {
+          type: 'button', disabled: busy || save.coins < expansionCost, onClick: onExpand, className: 'shoal-action-btn'
+        }, 'Add 2 Pedestals (', formatCoins(expansionCost), 'c)'),
+        emp.pedestalCount >= 16 && !emp.backRoomBuilt && h('button', {
+          type: 'button', disabled: busy || save.coins < BACK_ROOM_COST, onClick: onBuildBackRoom, className: 'shoal-action-btn'
+        }, 'Build the Back Room (', formatCoins(BACK_ROOM_COST), 'c)')
+      ),
+      h('div', { className: 'shoal-controls-row' },
+        RARITY_ORDER.slice(0, 3).map(function (rarity) {
+          var count = spareIds.filter(function (id) { var d = decorationById(id); return d && d.rarity === rarity; })
+            .reduce(function (s, id) { return s + emp.decorationsOwned[id]; }, 0);
+          return h('button', {
+            key: rarity, type: 'button', disabled: busy || count < 3, onClick: function () { onTradeUp(rarity); }, className: 'shoal-action-btn'
+          }, 'Trade Up 3 ', rarity, ' (have ', count, ')');
+        })
+      )
+    );
+  }
+
+  function CounterPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onNextCustomer = props.onNextCustomer;
+    var onServe = props.onServe;
+    var emp = save.emporium;
+    var _sel = useState({}); var selections = _sel[0]; var setSelections = _sel[1];
+    var mealOptions = save.cooler.filter(function (f) { return f.stage === 'meal'; });
+
+    function selFor(id) {
+      return selections[id] || { base: DRINK_PARTS.base[0], flavour: DRINK_PARTS.flavour[0], finish: DRINK_PARTS.finish[0], mealId: '' };
+    }
+    function setPart(id, part, value) {
+      var next = Object.assign({}, selFor(id));
+      next[part] = value;
+      var copy = Object.assign({}, selections);
+      copy[id] = next;
+      setSelections(copy);
+    }
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'The Counter'),
+      h('button', {
+        type: 'button', disabled: busy || emp.counterCustomers.length >= 3, onClick: onNextCustomer, className: 'shoal-action-btn'
+      }, 'Next Customer (', emp.counterCustomers.length, '/3 waiting)'),
+      emp.counterCustomers.map(function (c) {
+        var sel = selFor(c.id);
+        return h('div', { key: c.id, className: 'shoal-customer-row' },
+          h('div', { className: 'shoal-customer-name' },
+            c.name, ' (', CUSTOMER_TYPE_LABELS[c.type] || c.type, ', tip x', c.tip, ')', c.wantsMeal ? ' - also wants a meal' : ''),
+          h('div', { className: 'shoal-drink-builder' },
+            ['base', 'flavour', 'finish'].map(function (part) {
+              return h('select', {
+                key: part, value: sel[part], disabled: busy,
+                onChange: function (e) { setPart(c.id, part, e.target.value); }
+              }, DRINK_PARTS[part].map(function (opt) { return h('option', { key: opt, value: opt }, opt); }));
+            }),
+            c.wantsMeal && mealOptions.length > 0 && h('select', {
+              value: sel.mealId, disabled: busy,
+              onChange: function (e) { setPart(c.id, 'mealId', e.target.value); }
+            }, [h('option', { key: 'none', value: '' }, 'No meal')].concat(mealOptions.map(function (f) {
+              return h('option', { key: f.id, value: f.id }, f.name, ' (', formatCoins(f.value), 'c)');
+            })))
+          ),
+          h('button', {
+            type: 'button', disabled: busy,
+            onClick: function () { onServe(c.id, { base: sel.base, flavour: sel.flavour, finish: sel.finish }, sel.mealId || null); },
+            className: 'shoal-action-btn'
+          }, 'Serve')
+        );
+      })
+    );
+  }
+
+  function PuzzleBenchPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onPress = props.onPress;
+    var onHint = props.onHint;
+    var puzzle = save.emporium.activePuzzle;
+    if (!puzzle) return null;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Puzzle Bench (', puzzle.rarity, ' ', puzzle.size, 'x', puzzle.size, ')'),
+      h('p', { className: 'shoal-hint' }, 'Pressing a cell toggles it and its neighbours. Turn every light off.'),
+      h('div', { className: 'shoal-puzzle-grid', style: { gridTemplateColumns: 'repeat(' + puzzle.size + ', 1fr)' } },
+        puzzle.cells.map(function (lit, i) {
+          return h('button', {
+            key: i, type: 'button', disabled: busy, onClick: function () { onPress(i); },
+            className: 'shoal-puzzle-cell' + (lit ? ' shoal-puzzle-cell-lit' : '')
+          });
+        })
+      ),
+      h('button', {
+        type: 'button', disabled: busy || save.emporium.tickets < 3, onClick: onHint, className: 'shoal-action-btn'
+      }, 'Hint (3 tickets, have ', save.emporium.tickets, ')')
+    );
+  }
+
+  function ArcadePanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onTideTimer = props.onTideTimer;
+    var onCrabGrab = props.onCrabGrab;
+    var onShellGame = props.onShellGame;
+    var affordable = save.coins >= 25;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Arcade (25 coins a game)'),
+      h('div', { className: 'shoal-controls-row' },
+        h('button', { type: 'button', disabled: busy || !affordable, onClick: onTideTimer, className: 'shoal-action-btn' }, 'Tide Timer'),
+        h('button', { type: 'button', disabled: busy || !affordable, onClick: onCrabGrab, className: 'shoal-action-btn' }, 'Crab Grab')
+      ),
+      h('p', { className: 'shoal-hint' }, 'Shell Game: guess which shell hides the pearl.'),
+      h('div', { className: 'shoal-controls-row' },
+        [0, 1, 2].map(function (i) {
+          return h('button', {
+            key: i, type: 'button', disabled: busy || !affordable, onClick: function () { onShellGame(i); }, className: 'shoal-action-btn'
+          }, 'Shell ', i + 1);
+        })
+      )
+    );
+  }
+
+  function PrizeCounterPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onOpenBox = props.onOpenBox;
+    var tickets = save.emporium.tickets;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Prize Counter (', tickets, ' tickets)'),
+      PRIZE_BOXES.map(function (b) {
+        return h('button', {
+          key: b.tier, type: 'button', disabled: busy || tickets < b.cost, onClick: function () { onOpenBox(b.tier); }, className: 'shoal-action-btn'
+        }, b.label, ' (', b.cost, ')');
+      })
+    );
+  }
+
+  function WorkOrdersPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onFill = props.onFill;
+    var onSwap = props.onSwap;
+    var swapCost = Math.round(50 * ((save.retirements || 0) + 1));
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Work Orders'),
+      save.emporium.workOrders.map(function (o) {
+        var have = shoalHaveFor(save, o.requires);
+        return h('div', { key: o.id, className: 'shoal-town-request' },
+          h('span', null, 'Wants ', o.requires.amount, ' ', describeRequires(o.requires), ' (have ', have, ')'),
+          h('div', null,
+            h('button', { type: 'button', disabled: busy || have < o.requires.amount, onClick: function () { onFill(o.id); }, className: 'shoal-action-btn' }, 'Fill'),
+            h('button', { type: 'button', disabled: busy || save.coins < swapCost, onClick: function () { onSwap(o.id); }, className: 'shoal-action-btn' }, 'Swap (', swapCost, 'c)')
+          )
+        );
+      })
+    );
+  }
+
+  // Composes the rooms above. Takes a single `handlers` bag (rather than
+  // ~14 individual on* props) since EmporiumPanel is just a pass-through
+  // wrapper - keeps ShoalTalesScreen's own render call readable.
+  function EmporiumPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var handlers = props.handlers;
+
+    if (!save.emporiumOpen) {
+      return h(EmporiumGate, { save: save, busy: busy, onOpen: handlers.onOpenEmporium });
+    }
+
+    return h('div', { className: 'shoal-emporium' },
+      h('div', { className: 'shoal-card' },
+        h('div', { className: 'shoal-card-title' }, 'The Emporium'),
+        h('button', { type: 'button', disabled: busy, onClick: handlers.onCollectAwayEarnings, className: 'shoal-action-btn' }, 'Collect Away Earnings')
+      ),
+      h(ShopFloorPanel, { save: save, busy: busy, onPlace: handlers.onPlaceDecoration, onTake: handlers.onTakeDecoration, onExpand: handlers.onExpandPedestals, onBuildBackRoom: handlers.onBuildBackRoom, onTradeUp: handlers.onTradeUp }),
+      h(CounterPanel, { save: save, busy: busy, onNextCustomer: handlers.onNextCustomer, onServe: handlers.onServeCustomer }),
+      h(PuzzleBenchPanel, { save: save, busy: busy, onPress: handlers.onPressPuzzle, onHint: handlers.onPuzzleHint }),
+      h(ArcadePanel, { save: save, busy: busy, onTideTimer: handlers.onTideTimer, onCrabGrab: handlers.onCrabGrab, onShellGame: handlers.onShellGame }),
+      h(PrizeCounterPanel, { save: save, busy: busy, onOpenBox: handlers.onPrizeBox }),
+      h(WorkOrdersPanel, { save: save, busy: busy, onFill: handlers.onFillWorkOrder, onSwap: handlers.onSwapWorkOrder })
     );
   }
 
@@ -728,6 +1013,116 @@
       });
     }
 
+    function handleStartPuzzle(trayItemId) {
+      runAction(apiPost('/api/shoal-tales/emporium/puzzle/start', { handle: handle, trayItemId: trayItemId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Puzzle box opened - solve it at the Puzzle Bench.' });
+      });
+    }
+
+    var emporiumHandlers = {
+      onOpenEmporium: function () {
+        runAction(apiPost('/api/shoal-tales/open-emporium', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'The Emporium is open!' + (data.newLetter ? (' A crow drops a last letter: "' + data.newLetter.title + '"') : '') });
+        });
+      },
+      onCollectAwayEarnings: function () {
+        runAction(apiPost('/api/shoal-tales/emporium/collect-away-earnings', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Collected +' + formatCoins(data.earnings) + ' coins while you were away.' });
+        });
+      },
+      onPlaceDecoration: function (pedestalIndex, decorationId) {
+        runAction(apiPost('/api/shoal-tales/emporium/place-decoration', { handle: handle, pedestalIndex: pedestalIndex, decorationId: decorationId }));
+      },
+      onTakeDecoration: function (pedestalIndex) {
+        runAction(apiPost('/api/shoal-tales/emporium/take-decoration', { handle: handle, pedestalIndex: pedestalIndex }));
+      },
+      onExpandPedestals: function () {
+        runAction(apiPost('/api/shoal-tales/emporium/expand-pedestals', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Added 2 pedestals for ' + formatCoins(data.coinsSpent) + ' coins.' });
+        });
+      },
+      onBuildBackRoom: function () {
+        runAction(apiPost('/api/shoal-tales/emporium/build-back-room', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'The Back Room is built!' });
+        });
+      },
+      onTradeUp: function (rarity) {
+        runAction(apiPost('/api/shoal-tales/emporium/trade-up', { handle: handle, rarity: rarity })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: data.granted ? ('Traded up for a ' + data.granted.name + '!') : 'Trade failed.' });
+        });
+      },
+      onNextCustomer: function () {
+        runAction(apiPost('/api/shoal-tales/emporium/counter/next-customer', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: data.customer.name + ' walks in.' });
+        });
+      },
+      onServeCustomer: function (customerId, drink, coolerItemId) {
+        runAction(apiPost('/api/shoal-tales/emporium/counter/serve', { handle: handle, customerId: customerId, drink: drink, coolerItemId: coolerItemId })).then(function (data) {
+          if (!data) return;
+          var message = (data.correctDrink ? '✓ Correct drink! ' : '✗ Wrong drink. ') + '+' + formatCoins(data.coinsEarned) + ' coins' + (data.mealGiven ? ' (meal included)' : '');
+          setLastResult({ ok: data.correctDrink, message: message });
+        });
+      },
+      onPressPuzzle: function (cellIndex) {
+        runAction(apiPost('/api/shoal-tales/emporium/puzzle/press', { handle: handle, cellIndex: cellIndex })).then(function (data) {
+          if (!data) return;
+          var message = data.solved
+            ? ('Solved! +' + formatCoins(data.coinsEarned) + ' coins' + (data.decoration ? (' and a ' + data.decoration.name) : ''))
+            : 'Click.';
+          setLastResult({ ok: true, message: message });
+        });
+      },
+      onPuzzleHint: function () {
+        runAction(apiPost('/api/shoal-tales/emporium/puzzle/hint', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Hint used (' + data.ticketsLeft + ' tickets left).' });
+        });
+      },
+      onTideTimer: function () {
+        runAction(apiPost('/api/shoal-tales/emporium/arcade/tide-timer', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: '+' + data.tickets + ' tickets' });
+        });
+      },
+      onCrabGrab: function () {
+        runAction(apiPost('/api/shoal-tales/emporium/arcade/crab-grab', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Hit ' + data.crabsHit + ' crabs - +' + data.tickets + ' tickets' });
+        });
+      },
+      onShellGame: function (guess) {
+        runAction(apiPost('/api/shoal-tales/emporium/arcade/shell-game', { handle: handle, guess: guess })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: data.win, message: data.win ? ('Found it! +' + data.tickets + ' tickets (streak x' + data.streak + ')') : 'Wrong shell.' });
+        });
+      },
+      onPrizeBox: function (tier) {
+        runAction(apiPost('/api/shoal-tales/emporium/prize-box', { handle: handle, tier: tier })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: data.decoration ? ('Won a ' + data.decoration.name + '!') : 'Nothing this time.' });
+        });
+      },
+      onFillWorkOrder: function (orderId) {
+        runAction(apiPost('/api/shoal-tales/emporium/work-order/fill', { handle: handle, orderId: orderId })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Order filled! +' + formatCoins(data.coinsEarned) + ' coins' + (data.decoration ? (' and a ' + data.decoration.name) : '') });
+        });
+      },
+      onSwapWorkOrder: function (orderId) {
+        runAction(apiPost('/api/shoal-tales/emporium/work-order/swap', { handle: handle, orderId: orderId })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Order swapped for ' + formatCoins(data.coinsSpent) + ' coins.' });
+        });
+      }
+    };
+
     if (loading) {
       return h('div', { className: 'shoal-tales-screen shoal-loading' }, 'Loading Shoal Tales...');
     }
@@ -748,11 +1143,13 @@
         h(TrayPanel, {
           save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult,
           onScrub: handleScrub, onPry: handlePry, onUncork: handleUncork, onRelease: handleRelease,
-          onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort
+          onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort,
+          onStartPuzzle: handleStartPuzzle
         }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
         h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
         h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
+        save.townOpen && h(EmporiumPanel, { save: save, busy: busy, handlers: emporiumHandlers }),
         h(CollectorsLogSummary, { save: save }),
         h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy })
       )
@@ -769,6 +1166,14 @@
     GoodsAndCoolerPanel: GoodsAndCoolerPanel,
     TownPanel: TownPanel,
     StationsPanel: StationsPanel,
+    EmporiumGate: EmporiumGate,
+    ShopFloorPanel: ShopFloorPanel,
+    CounterPanel: CounterPanel,
+    PuzzleBenchPanel: PuzzleBenchPanel,
+    ArcadePanel: ArcadePanel,
+    PrizeCounterPanel: PrizeCounterPanel,
+    WorkOrdersPanel: WorkOrdersPanel,
+    EmporiumPanel: EmporiumPanel,
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,

@@ -291,6 +291,7 @@
 .shoal-tray-item-bottle { border-color: #4fa8c9; }
 .shoal-tray-item-seaCreature { border-color: var(--shoal-good); }
 .shoal-tray-item-magicCurio { border-color: #ffd166; box-shadow: 0 0 6px rgba(255, 209, 102, 0.35); }
+.shoal-tray-item-puzzleBox { border-color: #b06fd1; }
 
 .shoal-tray-rarity {
   font-size: 0.55rem;
@@ -423,3 +424,87 @@
   color: var(--shoal-good);
 }
 .shoal-station-hint { font-size: 0.68rem; color: rgba(232, 244, 248, 0.6); font-style: italic; }
+
+/* The Emporium */
+
+.shoal-emporium { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.shoal-emporium-checklist { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.75rem; }
+.shoal-checklist-row { font-size: 0.72rem; color: rgba(232, 244, 248, 0.8); }
+
+.shoal-decoration-grid { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.shoal-decoration-chip {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(0,0,0,0.2);
+  color: var(--shoal-foam);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+.shoal-decoration-chip-selected {
+  border-color: var(--shoal-gold-bright);
+  background: rgba(217, 164, 65, 0.2);
+  color: var(--shoal-gold-bright);
+}
+
+.shoal-pedestal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+.shoal-pedestal {
+  padding: 0.6rem 0.4rem;
+  border-radius: 0.6rem;
+  border: 1px dashed var(--shoal-card-border);
+  background: rgba(0,0,0,0.15);
+  color: rgba(232, 244, 248, 0.5);
+  font-size: 0.65rem;
+  min-height: 2.6rem;
+}
+.shoal-pedestal-filled {
+  border-style: solid;
+  border-color: var(--shoal-gold);
+  background: rgba(217, 164, 65, 0.15);
+  color: var(--shoal-gold-bright);
+  font-weight: 700;
+}
+
+.shoal-customer-row {
+  padding: 0.55rem 0.6rem;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.shoal-customer-name { font-size: 0.72rem; font-weight: 700; }
+.shoal-drink-builder { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.shoal-drink-builder select {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  color: var(--shoal-foam);
+  font-size: 0.68rem;
+}
+
+.shoal-puzzle-grid {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 0.65rem;
+  max-width: 280px;
+}
+.shoal-puzzle-cell {
+  aspect-ratio: 1;
+  border-radius: 0.4rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(0,0,0,0.3);
+}
+.shoal-puzzle-cell-lit {
+  background: var(--shoal-gold-bright);
+  box-shadow: 0 0 8px rgba(240, 193, 104, 0.6);
+}
