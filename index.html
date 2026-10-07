@@ -7952,7 +7952,7 @@ function App() {
   // don't fully control (proxies, browser quirks, etc). Bump it whenever sw.js changes.
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=2').catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=3').catch(() => {});
     }
   }, []);
 
@@ -7962,6 +7962,13 @@ function App() {
   // instead of doing a fresh navigation - no request is made at all, so no
   // Cache-Control header ever comes into play, no matter how it's set.
   // Checking a build id on resume is the only way to actually notice.
+  // Belt-and-suspenders on the event listeners: iOS standalone (Home
+  // Screen) apps have a history of visibilitychange/pageshow firing
+  // unreliably, so a 60s poll backs them up rather than depending on any
+  // one lifecycle event actually firing. (The real fallback for a client
+  // stuck on JS old enough to predate this whole check is sw.js's own
+  // activate handler, which force-navigates every window it takes over,
+  // independently of whatever that stale page's own script does.)
   useEffect(() => {
     const knownBuildId = { current: null };
     async function checkBuildId() {
@@ -7985,10 +7992,14 @@ function App() {
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('pageshow', onPageShow);
     window.addEventListener('focus', checkBuildId);
+    const pollId = setInterval(() => {
+      if (document.visibilityState === 'visible') checkBuildId();
+    }, 60000);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('pageshow', onPageShow);
       window.removeEventListener('focus', checkBuildId);
+      clearInterval(pollId);
     };
   }, []);
 
