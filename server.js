@@ -5207,8 +5207,12 @@ const server = http.createServer(async (req, res) => {
       // sw.js must never be cached: browsers only detect a new service worker by
       // byte-comparing a fresh fetch of this exact file, so a stale cached copy
       // can keep an old service worker (and whatever it intercepts) installed
-      // long after a redeploy ships a fix.
-      'Cache-Control': (ext === '.html' || targetFile === 'sw.js') ? 'no-cache' : 'public, max-age=86400'
+      // long after a redeploy ships a fix. .js/.css get the same treatment -
+      // there's no build step hashing filenames here, so a long max-age on
+      // them meant a redeploy's script/style changes (e.g. Shoal Tales'
+      // ui.js) could sit invisible in a visitor's browser cache for up to a
+      // day after shipping, even though index.html itself updated instantly.
+      'Cache-Control': (ext === '.html' || ext === '.js' || ext === '.css' || targetFile === 'sw.js') ? 'no-cache' : 'public, max-age=86400'
     });
     fs.createReadStream(filePath).pipe(res);
   } else {
