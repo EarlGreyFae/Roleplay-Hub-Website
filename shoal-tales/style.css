@@ -857,3 +857,107 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
+
+/* Point-and-click scenes: flat/vector illustrated "rooms" (CSS gradients +
+   emoji sprites, no external image assets) in place of the old
+   always-stacked panel list. Each scene gets its own gradient/theme; the
+   Scene frame, hotspot buttons, and roster list are shared across all of
+   them for a consistent feel. */
+.shoal-scene {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.shoal-scene-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+}
+.shoal-scene-back {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--shoal-card-border);
+  color: var(--shoal-foam);
+  border-radius: 0.6rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.shoal-scene-title {
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--shoal-gold-bright);
+  letter-spacing: 0.02em;
+}
+.shoal-scene-stage {
+  flex: 1;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.shoal-scene-subtitle {
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: var(--shoal-gold-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.shoal-scene-hotspot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.shoal-scene-hotspot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 110px;
+  flex: 1 1 110px;
+  background: rgba(14, 53, 80, 0.75);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 1rem;
+  padding: 0.9rem 0.6rem;
+  color: var(--shoal-foam);
+  box-shadow: 0 2px 0 rgba(0,0,0,0.25), 0 4px 14px rgba(0,0,0,0.25);
+  transition: transform 0.1s;
+}
+.shoal-scene-hotspot:active:not(:disabled) { transform: translateY(2px); }
+.shoal-scene-hotspot:disabled, .shoal-scene-hotspot-disabled { opacity: 0.5; }
+.shoal-scene-hotspot-icon { font-size: 2rem; line-height: 1; }
+.shoal-scene-hotspot-label { font-weight: 800; font-size: 0.75rem; text-align: center; }
+.shoal-scene-hotspot-sublabel {
+  font-size: 0.62rem;
+  color: rgba(232, 244, 248, 0.6);
+  text-align: center;
+}
+.shoal-scene-hotspot-small {
+  min-width: 90px;
+  flex: 0 1 auto;
+  padding: 0.6rem 0.5rem;
+}
+.shoal-scene-hotspot-small .shoal-scene-hotspot-icon { font-size: 1.4rem; }
+
+.shoal-harbor-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* Scene background themes - flat gradients standing in for illustration,
+   each nodding at its setting (sea for the Harbor, warm timber for the
+   Ship, sunlit stone for the Town, lamplit gold for the Emporium, and cool
+   stone for the Guild Hall). */
+.shoal-scene-harbor { background: linear-gradient(180deg, #0f4c6b 0%, #0b2a3a 65%); }
+.shoal-scene-ship { background: linear-gradient(180deg, #4a3620 0%, #0b2a3a 70%); }
+.shoal-scene-town { background: linear-gradient(180deg, #5a4a2a 0%, #0b2a3a 70%); }
+.shoal-scene-emporium { background: linear-gradient(180deg, #5a4214 0%, #0b2a3a 70%); }
+.shoal-scene-guildhall { background: linear-gradient(180deg, #3a3f4a 0%, #0b2a3a 70%); }
+.shoal-scene-dockboard { background: linear-gradient(180deg, #0f4c6b 0%, #0b2a3a 65%); }
