@@ -77,6 +77,9 @@
     },
     Sparkle: function (props) {
       return Icon([h('path', { key: 'p1', d: 'M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8' })], props);
+    },
+    Mail: function (props) {
+      return Icon([h('rect', { key: 'r', x: '3', y: '5', width: '18', height: '14', rx: '2' }), h('path', { key: 'p', d: 'm3 7 9 6 9-6' })], props);
     }
   };
 
@@ -112,6 +115,59 @@
 
   function formatCoins(n) {
     return Math.round(n).toLocaleString();
+  }
+
+  // --- Town/NPC display helpers. These mirror server.js's shoalTownspersonAppears/
+  // shoalCurrentRequestFor/shoalAvailableFor purely for rendering ("has this
+  // person shown up yet", "what do they want", "do I have enough") - the
+  // server is still the sole source of truth and re-checks everything itself
+  // when fulfill-request/fulfill-daily is actually called. ---
+  function shoalPersonAppears(save, personId) {
+    var p = DATA.townsfolk.find(function (t) { return t.id === personId; });
+    if (!p) return false;
+    if (p.appearsWhen === 'townOpen') return save.townOpen;
+    if (p.appearsWhen === 'carpentry-installed') return save.stationsInstalled.indexOf('carpentry') !== -1;
+    if (p.appearsWhen === 'crucible-installed') return save.stationsInstalled.indexOf('crucible') !== -1;
+    return false;
+  }
+
+  function shoalHaveFor(save, requires) {
+    if (requires.type === 'rawFish') return save.cooler.filter(function (f) { return f.stage === 'raw'; }).length;
+    if (requires.type === 'dressedFish') return save.cooler.filter(function (f) { return f.stage === 'dressed'; }).length;
+    if (requires.type === 'sortedBin') return save.sortedGoods[requires.bin] ? save.sortedGoods[requires.bin].units : 0;
+    if (requires.type === 'meals') return save.cooler.filter(function (f) { return f.stage === 'meal'; }).length;
+    if (requires.type === 'knickKnacks') return save.knickKnacks || 0;
+    if (requires.type === 'ingots') return save.ingots || 0;
+    if (requires.type === 'materials') return save.materials || 0;
+    return 0;
+  }
+
+  var REQUIRES_LABEL = {
+    rawFish: 'raw fish', dressedFish: 'dressed fish', meals: 'meals',
+    knickKnacks: 'knick-knacks', ingots: 'ingots', materials: 'materials'
+  };
+  function describeRequires(requires) {
+    if (requires.type === 'sortedBin') return BIN_LABELS[requires.bin] + ' goods';
+    return REQUIRES_LABEL[requires.type] || requires.type;
+  }
+
+  // The next thing a townsperson wants: their next story request, or (once
+  // that chain is exhausted) their repeatable standing order. Returns null
+  // if they haven't appeared yet. Matches server.js's shoalCurrentRequestFor.
+  function shoalCurrentRequestFor(save, personId) {
+    if (!shoalPersonAppears(save, personId)) return null;
+    var chain = DATA.storyRequests.filter(function (r) { return r.personId === personId; })
+      .sort(function (a, b) { return a.order - b.order; });
+    var idx = save.storyRequestIndex[personId] || 0;
+    if (idx < chain.length) return { kind: 'story', requires: chain[idx].requires, reward: chain[idx].reward };
+    var standing = DATA.standingOrders.find(function (s) { return s.personId === personId; });
+    if (!standing) return null;
+    var filled = save.standingOrdersFilled[personId] || 0;
+    var amount = standing.baseAmount + standing.amountPerFill * filled;
+    var requires = standing.wants.type === 'sortedBinCycle'
+      ? { type: 'sortedBin', bin: ENGINE.BINS[filled % ENGINE.BINS.length], amount: amount }
+      : { type: standing.wants.type, amount: amount };
+    return { kind: 'standing', requires: requires, reward: { type: 'coins', amount: Math.round(amount * 3) } };
   }
 
   // --- The Tray: shows current haul, lets the player select an item then
@@ -249,11 +305,15 @@
   function GoodsAndCoolerPanel(props) {
     var save = props.save;
     var onSell = props.onSell;
+    var onDress = props.onDress;
     var busy = props.busy;
 
     var goodsValue = ENGINE.BINS.reduce(function (sum, b) { return sum + save.sortedGoods[b].value; }, 0);
-    var fishValue = save.cooler.reduce(function (sum, f) { return sum + f.value; }, 0);
-    var totalValue = goodsValue + fishValue;
+    var rawFish = save.cooler.filter(function (f) { return f.stage === 'raw'; });
+    var dressedFish = save.cooler.filter(function (f) { return f.stage === 'dressed'; });
+    var rawValue = rawFish.reduce(function (sum, f) { return sum + f.value; }, 0);
+    var dressedValue = dressedFish.reduce(function (sum, f) { return sum + f.value; }, 0);
+    var totalValue = goodsValue + rawValue + dressedValue;
 
     if (totalValue <= 0 && save.cooler.length === 0) return null;
 
@@ -265,14 +325,85 @@
             h('span', null, 'Sorted ', b), h('span', null, save.sortedGoods[b].units, ' units — ', formatCoins(save.sortedGoods[b].value), 'c')
           );
         }),
-        save.cooler.length > 0 && h('div', { className: 'shoal-goods-row' },
-          h('span', null, 'Raw fish'), h('span', null, save.cooler.length, ' — ', formatCoins(fishValue), 'c')
+        dressedFish.length > 0 && h('div', { className: 'shoal-goods-row' },
+          h('span', null, 'Dressed fish'), h('span', null, dressedFish.length, ' — ', formatCoins(dressedValue), 'c')
         )
       ),
+      // Dressing is a deliberate one-click-per-fish step at the Cutting Board
+      // (05-fish.md), not a bulk action - each raw fish gets its own row.
+      rawFish.length > 0 && h('div', { className: 'shoal-cooler-list' },
+        rawFish.map(function (f) {
+          return h('div', { key: f.id, className: 'shoal-cooler-row' },
+            h('span', { className: 'shoal-cooler-name' }, f.name, f.golden ? ' ✨' : '', ' (', formatCoins(f.value), 'c)'),
+            h('button', { type: 'button', disabled: busy, onClick: function () { onDress(f.id); }, className: 'shoal-dress-btn' }, 'Dress')
+          );
+        })
+      ),
+      !save.townOpen && h('p', { className: 'shoal-hint' }, 'Dress a fish to open the Town before you can sell.'),
       h('button', {
-        type: 'button', disabled: busy || totalValue <= 0, onClick: function () { onSell('all'); },
+        type: 'button', disabled: busy || totalValue <= 0 || !save.townOpen, onClick: function () { onSell('all'); },
         className: 'shoal-sell-btn'
       }, 'Sell Everything for ', formatCoins(totalValue), ' coins')
+    );
+  }
+
+  // --- The Town: Crow's letters received, appeared townsfolk, their current
+  // story request/standing order, and their once-a-day request. Hidden
+  // entirely until the first fish is dressed (see 07-story.md). ---
+  function TownPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onFulfillRequest = props.onFulfillRequest;
+    var onFulfillDaily = props.onFulfillDaily;
+
+    if (!save.townOpen) return null;
+
+    var today = new Date().toISOString().slice(0, 10);
+    var appeared = DATA.townsfolk.filter(function (p) { return shoalPersonAppears(save, p.id); });
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'The Town'),
+      save.crowLettersReceived.length > 0 && h('div', { className: 'shoal-letters-list' },
+        save.crowLettersReceived.map(function (id) {
+          var letter = DATA.crowLetters.find(function (l) { return l.id === id; });
+          return h('div', { key: id, className: 'shoal-letter-row' },
+            h(Icons.Mail, { className: 'shoal-bin-icon' }),
+            h('span', null, letter ? letter.title : id)
+          );
+        })
+      ),
+      h('div', { className: 'shoal-town-list' },
+        appeared.map(function (p) {
+          var current = shoalCurrentRequestFor(save, p.id);
+          var daily = DATA.dailyRequests.find(function (d) { return d.personId === p.id; });
+          var dailyDone = save.dailyRequestsDate === today && save.dailyRequestsDone.indexOf(p.id) !== -1;
+          return h('div', { key: p.id, className: 'shoal-town-person' },
+            h('div', { className: 'shoal-town-person-header' },
+              h('span', { className: 'shoal-town-person-name' }, p.name),
+              h('span', { className: 'shoal-town-person-place' }, p.place)
+            ),
+            current && h('div', { className: 'shoal-town-request' },
+              h('span', null, 'Wants ', current.requires.amount, ' ', describeRequires(current.requires),
+                ' (have ', shoalHaveFor(save, current.requires), ')'),
+              h('button', {
+                type: 'button',
+                disabled: busy || shoalHaveFor(save, current.requires) < current.requires.amount,
+                onClick: function () { onFulfillRequest(p.id); },
+                className: 'shoal-action-btn'
+              }, current.kind === 'story' ? 'Fulfill' : 'Fulfill (standing order)')
+            ),
+            daily && h('div', { className: 'shoal-town-daily' },
+              h('span', null, daily.description),
+              h('button', {
+                type: 'button',
+                disabled: busy || dailyDone,
+                onClick: function () { onFulfillDaily(p.id); },
+                className: 'shoal-action-btn'
+              }, dailyDone ? 'Done today' : 'Fulfill daily')
+            )
+          );
+        })
+      )
     );
   }
 
@@ -487,6 +618,31 @@
         .catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
     }
 
+    function handleDress(coolerItemId) {
+      runAction(apiPost('/api/shoal-tales/dress', { handle: handle, coolerItemId: coolerItemId })).then(function (data) {
+        if (!data) return;
+        var message = data.newLetter ? ('Dressed! A crow drops a letter: "' + data.newLetter.title + '"') : 'Fish dressed.';
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
+    function handleFulfillRequest(personId) {
+      runAction(apiPost('/api/shoal-tales/fulfill-request', { handle: handle, personId: personId })).then(function (data) {
+        if (!data) return;
+        var message = data.kind === 'story'
+          ? ('Request fulfilled! Reward: ' + data.rewardMessage)
+          : ('Standing order filled! +' + formatCoins(data.reward) + ' coins');
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
+    function handleFulfillDaily(personId) {
+      runAction(apiPost('/api/shoal-tales/fulfill-daily', { handle: handle, personId: personId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Daily request done! +' + formatCoins(data.reward) + ' coins' });
+      });
+    }
+
     if (loading) {
       return h('div', { className: 'shoal-tales-screen shoal-loading' }, 'Loading Shoal Tales...');
     }
@@ -509,7 +665,8 @@
           onScrub: handleScrub, onPry: handlePry, onUncork: handleUncork, onRelease: handleRelease,
           onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort
         }),
-        h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, busy: busy }),
+        h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, busy: busy }),
+        h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
         h(CollectorsLogSummary, { save: save }),
         h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy })
       )
@@ -524,6 +681,7 @@
     // can't simulate. Not meant to be used standalone outside this module.
     TrayPanel: TrayPanel,
     GoodsAndCoolerPanel: GoodsAndCoolerPanel,
+    TownPanel: TownPanel,
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,

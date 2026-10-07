@@ -339,3 +339,63 @@
 }
 .shoal-log-num { font-weight: 800; font-size: 0.95rem; color: var(--shoal-gold-bright); }
 .shoal-log-stat span:last-child { font-size: 0.6rem; color: rgba(232, 244, 248, 0.6); text-transform: uppercase; letter-spacing: 0.03em; text-align: center; }
+
+/* Story & NPCs (Crow's letters, the Town, requests/standing orders/dailies) */
+
+.shoal-cooler-list { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.65rem; }
+.shoal-cooler-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  font-size: 0.72rem;
+}
+.shoal-cooler-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.shoal-dress-btn {
+  flex-shrink: 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--shoal-gold);
+  background: rgba(217, 164, 65, 0.18);
+  color: var(--shoal-gold-bright);
+  font-weight: 700;
+  font-size: 0.68rem;
+}
+.shoal-dress-btn:disabled { opacity: 0.5; }
+
+.shoal-letters-list { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.7rem; }
+.shoal-letter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: rgba(232, 244, 248, 0.85);
+}
+.shoal-letter-row .shoal-bin-icon { opacity: 0.8; flex-shrink: 0; }
+
+.shoal-town-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.shoal-town-person {
+  padding: 0.55rem 0.6rem;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.shoal-town-person-header { display: flex; align-items: baseline; gap: 0.4rem; }
+.shoal-town-person-name { font-weight: 800; font-size: 0.78rem; color: var(--shoal-gold-bright); }
+.shoal-town-person-place { font-size: 0.65rem; color: rgba(232, 244, 248, 0.55); }
+.shoal-town-request, .shoal-town-daily {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+}
+.shoal-town-request span, .shoal-town-daily span { min-width: 0; }
+.shoal-town-request .shoal-action-btn, .shoal-town-daily .shoal-action-btn { flex: 0 0 auto; min-width: 0; }

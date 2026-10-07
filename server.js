@@ -279,7 +279,20 @@ function defaultShoalTalesSave(handle) {
     creaturesSeen: [],
     goldenLog: [],
     storedCurios: [],
-    bottleLettersFound: []
+    bottleLettersFound: [],
+    // Story and the Town (docs/shoal-tales-spec/07-story.md). Until the Town
+    // opens there is no selling, no requests, no Crow's letters - per spec.
+    townOpen: false,
+    anyFishDressed: false,
+    crowLettersReceived: [],
+    rareMaterials: {},
+    // Next story-request index per townsperson; once a person's chain is
+    // exhausted (index >= their request count), further fulfillments go to
+    // their standing order instead (see fulfill-request).
+    storyRequestIndex: { walt: 0, dot: 0, rosalind: 0, hank: 0, priya: 0 },
+    standingOrdersFilled: { walt: 0, dot: 0, rosalind: 0, hank: 0, priya: 0 },
+    dailyRequestsDate: null,
+    dailyRequestsDone: []
   };
 }
 
@@ -295,6 +308,87 @@ function getOrCreateShoalTalesSave(handle) {
 
 function shoalAreaById(id) {
   return ShoalTalesData.mapAreas.find(a => a.id === id) || ShoalTalesData.mapAreas[0];
+}
+
+// Delivers a Crow's letter. Per the spec a letter is dropped off and then
+// read separately at the Desk to take effect; this implementation collapses
+// that into one step (received = read = effect applied immediately) since
+// there's no mail-reading UI in this phase - the letter's text is still kept
+// and viewable in crowLettersReceived. The first letter ("An invitation
+// ashore") opens the Town; letters 2-6 are triggered by station installs and
+// the Emporium opening, wired in those later phases via this same function.
+function shoalDeliverCrowLetter(save, letterId) {
+  if (save.crowLettersReceived.indexOf(letterId) !== -1) return null;
+  const letter = ShoalTalesData.crowLetters.find(l => l.id === letterId);
+  if (!letter) return null;
+  save.crowLettersReceived.push(letterId);
+  if (letterId === 'an-invitation-ashore') {
+    save.townOpen = true;
+  }
+  return letter;
+}
+
+function shoalTownspersonAppears(save, personId) {
+  const person = ShoalTalesData.townsfolk.find(p => p.id === personId);
+  if (!person) return false;
+  if (person.appearsWhen === 'townOpen') return save.townOpen;
+  if (person.appearsWhen === 'carpentry-installed') return save.stationsInstalled.indexOf('carpentry') !== -1;
+  if (person.appearsWhen === 'crucible-installed') return save.stationsInstalled.indexOf('crucible') !== -1;
+  return false;
+}
+
+// Current request for a person: the next story request in their chain, or
+// (once that chain is exhausted) their repeatable standing order. Returns
+// null if the person hasn't appeared yet.
+function shoalCurrentRequestFor(save, personId) {
+  if (!shoalTownspersonAppears(save, personId)) return null;
+  const chain = ShoalTalesData.storyRequests.filter(r => r.personId === personId).sort((a, b) => a.order - b.order);
+  const idx = save.storyRequestIndex[personId] || 0;
+  if (idx < chain.length) {
+    return { kind: 'story', request: chain[idx] };
+  }
+  const standing = ShoalTalesData.standingOrders.find(s => s.personId === personId);
+  if (!standing) return null;
+  const filled = save.standingOrdersFilled[personId] || 0;
+  const amount = standing.baseAmount + standing.amountPerFill * filled;
+  return { kind: 'standing', standing, amount };
+}
+
+// How many units of `requires.type` the player currently has on hand -
+// several types (meals/knickKnacks/ingots/materials) aren't producible until
+// later phases (Stations/Economy) and always read 0 until then, so their
+// requests simply can't be fulfilled yet rather than erroring.
+function shoalAvailableFor(save, requires) {
+  if (requires.type === 'rawFish') return save.cooler.filter(f => f.stage === 'raw').length;
+  if (requires.type === 'dressedFish') return save.cooler.filter(f => f.stage === 'dressed').length;
+  if (requires.type === 'sortedBin') return save.sortedGoods[requires.bin] ? save.sortedGoods[requires.bin].units : 0;
+  if (requires.type === 'meals') return save.cooler.filter(f => f.stage === 'meal').length;
+  if (requires.type === 'knickKnacks') return save.knickKnacks || 0;
+  if (requires.type === 'ingots') return save.ingots || 0;
+  if (requires.type === 'materials') return save.materials || 0;
+  return 0;
+}
+
+// Consumes `amount` units of `requires.type` from the player's holdings.
+// Caller must have already checked shoalAvailableFor(...) >= amount.
+function shoalConsume(save, requires, amount) {
+  if (requires.type === 'rawFish' || requires.type === 'dressedFish') {
+    const stage = requires.type === 'rawFish' ? 'raw' : 'dressed';
+    let left = amount;
+    save.cooler = save.cooler.filter(f => {
+      if (left > 0 && f.stage === stage) { left--; return false; }
+      return true;
+    });
+    return;
+  }
+  if (requires.type === 'sortedBin') {
+    const bin = save.sortedGoods[requires.bin];
+    const perUnit = bin.units > 0 ? bin.value / bin.units : 0;
+    bin.units -= amount;
+    bin.value = Math.max(0, bin.value - perUnit * amount);
+    return;
+  }
+  // meals/knickKnacks/ingots/materials: not producible yet, nothing to consume.
 }
 
 function shoalNewTrayId(i) {
@@ -1778,7 +1872,7 @@ const server = http.createServer(async (req, res) => {
         const value = ShoalTalesEngine.fishValue({
           base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: 0, bFish: 0, golden: golden
         });
-        save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, caughtAt: new Date().toISOString() });
+        save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, stage: 'raw', caughtAt: new Date().toISOString() });
         save.streak += 1;
         save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
         save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
@@ -1841,6 +1935,11 @@ const server = http.createServer(async (req, res) => {
       const { handle, what } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
       const save = getOrCreateShoalTalesSave(handle);
+      // "Until the Town opens there is no selling" (07-story.md) - dress your
+      // first fish (Cutting Board, always free/available) to open it.
+      if (!save.townOpen) {
+        return sendJson(res, 400, { error: 'The Town is not open yet. Dress a fish first.' });
+      }
       const sellWhat = what || 'all';
       let coinsEarned = 0;
 
@@ -2131,6 +2230,148 @@ const server = http.createServer(async (req, res) => {
       }
       // 'donate' needs a guild (Social phase, not built yet).
       return sendJson(res, 400, { error: 'Unknown or not-yet-available action.' });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Dress a raw fish at the Cutting Board (always free/available, unlike the
+  // 4 paid stations - 05-fish.md): x1.6 value. The very first fish ever
+  // dressed brings Crow's first letter and opens the Town (07-story.md's
+  // opening sequence).
+  if (reqPath === '/api/shoal-tales/dress' && req.method === 'POST') {
+    try {
+      const { handle, coolerItemId } = await parseJsonBody(req);
+      if (!handle || !coolerItemId) return sendJson(res, 400, { error: 'Missing handle or coolerItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const fish = save.cooler.find(f => f.id === coolerItemId);
+      if (!fish) return sendJson(res, 404, { error: 'That fish is not in your cooler.' });
+      if (fish.stage !== 'raw') return sendJson(res, 400, { error: 'That fish is already dressed.' });
+
+      fish.value = fish.value * 1.6;
+      fish.stage = 'dressed';
+
+      let newLetter = null;
+      if (!save.anyFishDressed) {
+        save.anyFishDressed = true;
+        newLetter = shoalDeliverCrowLetter(save, 'an-invitation-ashore');
+      }
+      saveDatabase();
+      return sendJson(res, 200, { success: true, fish, newLetter, townOpen: save.townOpen });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Fulfill a townsperson's current request: their next story request if
+  // their chain isn't exhausted, otherwise their repeatable standing order.
+  if (reqPath === '/api/shoal-tales/fulfill-request' && req.method === 'POST') {
+    try {
+      const { handle, personId } = await parseJsonBody(req);
+      if (!handle || !personId) return sendJson(res, 400, { error: 'Missing handle or personId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const current = shoalCurrentRequestFor(save, personId);
+      if (!current) return sendJson(res, 400, { error: 'That person has nothing to ask for right now.' });
+
+      if (current.kind === 'story') {
+        const req2 = current.request;
+        const have = shoalAvailableFor(save, req2.requires);
+        if (have < req2.requires.amount) {
+          return sendJson(res, 400, { error: `Not enough yet (have ${have}, need ${req2.requires.amount}).` });
+        }
+        shoalConsume(save, req2.requires, req2.requires.amount);
+        save.storyRequestIndex[personId] = (save.storyRequestIndex[personId] || 0) + 1;
+        let rewardMessage;
+        if (req2.reward.type === 'coins') {
+          save.coins += req2.reward.amount;
+          save.allTimeStats.coinsEarned += req2.reward.amount;
+          rewardMessage = req2.reward.amount + ' coins';
+        } else {
+          save.rareMaterials[req2.reward.material] = (save.rareMaterials[req2.reward.material] || 0) + 1;
+          rewardMessage = req2.reward.material;
+        }
+        saveDatabase();
+        return sendJson(res, 200, { success: true, kind: 'story', requestId: req2.id, reward: req2.reward, rewardMessage });
+      }
+
+      // Standing order. The spec documents the requirement scaling
+      // (baseAmount + amountPerFill per fill) but not an explicit reward
+      // formula for standing orders - this coins-per-unit payout is an
+      // inferred placeholder (consistent with the design bible's own "all
+      // writing/several prices are placeholder" note, docs/shoal-tales-
+      // spec/17-open-items.md) pending the original, uncaptured design doc.
+      const standing = current.standing;
+      const amount = current.amount;
+      const requires = standing.wants.type === 'sortedBinCycle'
+        ? { type: 'sortedBin', bin: ShoalTalesEngine.BINS[(save.standingOrdersFilled[personId] || 0) % ShoalTalesEngine.BINS.length] }
+        : { type: standing.wants.type };
+      const have = shoalAvailableFor(save, requires);
+      if (have < amount) {
+        return sendJson(res, 400, { error: `Not enough yet (have ${have}, need ${amount}).` });
+      }
+      shoalConsume(save, requires, amount);
+      save.standingOrdersFilled[personId] = (save.standingOrdersFilled[personId] || 0) + 1;
+      const reward = Math.round(amount * 3); // placeholder, see comment above
+      save.coins += reward;
+      save.allTimeStats.coinsEarned += reward;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, kind: 'standing', personId, amount, reward });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Each real-world day, one fresh request per appeared townsperson.
+  if (reqPath === '/api/shoal-tales/fulfill-daily' && req.method === 'POST') {
+    try {
+      const { handle, personId } = await parseJsonBody(req);
+      if (!handle || !personId) return sendJson(res, 400, { error: 'Missing handle or personId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!shoalTownspersonAppears(save, personId)) {
+        return sendJson(res, 400, { error: 'That person has not appeared yet.' });
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      if (save.dailyRequestsDate !== today) {
+        save.dailyRequestsDate = today;
+        save.dailyRequestsDone = [];
+      }
+      if (save.dailyRequestsDone.indexOf(personId) !== -1) {
+        return sendJson(res, 400, { error: "Already done today's request for this person." });
+      }
+      const daily = ShoalTalesData.dailyRequests.find(d => d.personId === personId);
+      if (!daily) return sendJson(res, 400, { error: 'No daily request for this person.' });
+
+      const typeMap = { fishOnIceToday: 'rawFish', sortedUnitsToday: null, knickKnacksToday: 'knickKnacks', ingotsToday: 'ingots', materialsToday: 'materials' };
+      let have, requires;
+      if (daily.requires.type === 'sortedUnitsToday') {
+        const totalSorted = ShoalTalesEngine.BINS.reduce((sum, b) => sum + save.sortedGoods[b].units, 0);
+        have = totalSorted;
+        requires = null; // consuming a cross-bin total is handled specially below
+      } else {
+        requires = { type: typeMap[daily.requires.type] };
+        have = shoalAvailableFor(save, requires);
+      }
+      if (have < daily.requires.amount) {
+        return sendJson(res, 400, { error: `Not enough yet (have ${have}, need ${daily.requires.amount}).` });
+      }
+      if (requires) {
+        shoalConsume(save, requires, daily.requires.amount);
+      } else {
+        // Spread the consumption across bins, largest stacks first.
+        let left = daily.requires.amount;
+        ShoalTalesEngine.BINS.slice().sort((a, b) => save.sortedGoods[b].units - save.sortedGoods[a].units).forEach(b => {
+          if (left <= 0) return;
+          const take = Math.min(left, save.sortedGoods[b].units);
+          shoalConsume(save, { type: 'sortedBin', bin: b }, take);
+          left -= take;
+        });
+      }
+      save.dailyRequestsDone.push(personId);
+      const reward = 50; // placeholder, see standing-order comment above - not specified in the extracted spec.
+      save.coins += reward;
+      save.allTimeStats.coinsEarned += reward;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, personId, reward });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

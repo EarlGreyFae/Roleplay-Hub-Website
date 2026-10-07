@@ -3792,31 +3792,36 @@
       "id": "walt",
       "name": "Walt",
       "place": "Low Tide Diner",
-      "buys": "Raw fish, dressed fish, sushi, meals"
+      "buys": "Raw fish, dressed fish, sushi, meals",
+      "appearsWhen": "townOpen"
     },
     {
       "id": "dot",
       "name": "Dot",
       "place": "Dot's Salvage Yard",
-      "buys": "Sorted goods (all 7 bins)"
+      "buys": "Sorted goods (all 7 bins)",
+      "appearsWhen": "townOpen"
     },
     {
       "id": "rosalind",
       "name": "Rosalind",
       "place": "Rosalind's Antiques",
-      "buys": "Knick-knacks"
+      "buys": "Knick-knacks",
+      "appearsWhen": "carpentry-installed"
     },
     {
       "id": "hank",
       "name": "Hank",
       "place": "Hank's Hardware",
-      "buys": "Ingots"
+      "buys": "Ingots",
+      "appearsWhen": "crucible-installed"
     },
     {
       "id": "priya",
       "name": "Priya",
       "place": "The Makers' Co-op",
-      "buys": "Materials"
+      "buys": "Materials",
+      "appearsWhen": "townOpen"
     }
   ],
   "featTitles": [
@@ -3854,6 +3859,315 @@
       "id": "golden-touch",
       "name": "Golden Touch",
       "earnedBy": "A golden set completed"
+    }
+  ],
+  "crowLetters": [
+    {
+      "id": "an-invitation-ashore",
+      "title": "An invitation ashore",
+      "arrivesWhen": "first-fish-dressed"
+    },
+    {
+      "id": "something-warm",
+      "title": "Something warm",
+      "arrivesWhen": "oven-installed"
+    },
+    {
+      "id": "good-hands",
+      "title": "Good hands",
+      "arrivesWhen": "carpentry-installed"
+    },
+    {
+      "id": "fire-and-iron",
+      "title": "Fire and iron",
+      "arrivesWhen": "crucible-installed"
+    },
+    {
+      "id": "nothing-wasted",
+      "title": "Nothing wasted",
+      "arrivesWhen": "recycling-installed"
+    },
+    {
+      "id": "the-emporium",
+      "title": "The Emporium",
+      "arrivesWhen": "emporium-opened"
+    }
+  ],
+  "rareMaterials": [
+    "Old-Growth Timber",
+    "Brass Fittings",
+    "Stained Glass Panel",
+    "Neon Sign"
+  ],
+  "storyRequests": [
+    {
+      "id": "walt-1",
+      "personId": "walt",
+      "order": 0,
+      "requires": {
+        "type": "rawFish",
+        "amount": 5
+      },
+      "reward": {
+        "type": "coins",
+        "amount": 60
+      }
+    },
+    {
+      "id": "walt-2",
+      "personId": "walt",
+      "order": 1,
+      "requires": {
+        "type": "dressedFish",
+        "amount": 10
+      },
+      "reward": {
+        "type": "coins",
+        "amount": 150
+      }
+    },
+    {
+      "id": "walt-3",
+      "personId": "walt",
+      "order": 2,
+      "requires": {
+        "type": "meals",
+        "amount": 10
+      },
+      "reward": {
+        "type": "material",
+        "material": "Old-Growth Timber"
+      }
+    },
+    {
+      "id": "dot-1",
+      "personId": "dot",
+      "order": 0,
+      "requires": {
+        "type": "sortedBin",
+        "bin": "Plastic",
+        "amount": 20
+      },
+      "reward": {
+        "type": "coins",
+        "amount": 80
+      }
+    },
+    {
+      "id": "dot-2",
+      "personId": "dot",
+      "order": 1,
+      "requires": {
+        "type": "sortedBin",
+        "bin": "Metal",
+        "amount": 30
+      },
+      "reward": {
+        "type": "coins",
+        "amount": 200
+      }
+    },
+    {
+      "id": "dot-3",
+      "personId": "dot",
+      "order": 2,
+      "requires": {
+        "type": "sortedBin",
+        "bin": "Mixed",
+        "amount": 40
+      },
+      "reward": {
+        "type": "material",
+        "material": "Brass Fittings"
+      }
+    },
+    {
+      "id": "rosalind-1",
+      "personId": "rosalind",
+      "order": 0,
+      "requires": {
+        "type": "knickKnacks",
+        "amount": 10
+      },
+      "reward": {
+        "type": "material",
+        "material": "Stained Glass Panel"
+      }
+    },
+    {
+      "id": "rosalind-2",
+      "personId": "rosalind",
+      "order": 1,
+      "requires": {
+        "type": "knickKnacks",
+        "amount": 20
+      },
+      "reward": {
+        "type": "material",
+        "material": "Old-Growth Timber"
+      }
+    },
+    {
+      "id": "rosalind-3",
+      "personId": "rosalind",
+      "order": 2,
+      "requires": {
+        "type": "knickKnacks",
+        "amount": 30
+      },
+      "reward": {
+        "type": "material",
+        "material": "Stained Glass Panel"
+      }
+    },
+    {
+      "id": "hank-1",
+      "personId": "hank",
+      "order": 0,
+      "requires": {
+        "type": "ingots",
+        "amount": 10
+      },
+      "reward": {
+        "type": "material",
+        "material": "Brass Fittings"
+      }
+    },
+    {
+      "id": "hank-2",
+      "personId": "hank",
+      "order": 1,
+      "requires": {
+        "type": "ingots",
+        "amount": 20
+      },
+      "reward": {
+        "type": "material",
+        "material": "Brass Fittings"
+      }
+    },
+    {
+      "id": "hank-3",
+      "personId": "hank",
+      "order": 2,
+      "requires": {
+        "type": "ingots",
+        "amount": 30
+      },
+      "reward": {
+        "type": "material",
+        "material": "Old-Growth Timber"
+      }
+    },
+    {
+      "id": "priya-1",
+      "personId": "priya",
+      "order": 0,
+      "requires": {
+        "type": "materials",
+        "amount": 6
+      },
+      "reward": {
+        "type": "coins",
+        "amount": 400
+      }
+    },
+    {
+      "id": "priya-2",
+      "personId": "priya",
+      "order": 1,
+      "requires": {
+        "type": "materials",
+        "amount": 15
+      },
+      "reward": {
+        "type": "material",
+        "material": "Neon Sign"
+      }
+    }
+  ],
+  "standingOrders": [
+    {
+      "personId": "walt",
+      "wants": {
+        "type": "meals"
+      },
+      "baseAmount": 10,
+      "amountPerFill": 5
+    },
+    {
+      "personId": "dot",
+      "wants": {
+        "type": "sortedBinCycle"
+      },
+      "baseAmount": 30,
+      "amountPerFill": 10
+    },
+    {
+      "personId": "rosalind",
+      "wants": {
+        "type": "knickKnacks"
+      },
+      "baseAmount": 15,
+      "amountPerFill": 5
+    },
+    {
+      "personId": "hank",
+      "wants": {
+        "type": "ingots"
+      },
+      "baseAmount": 15,
+      "amountPerFill": 5
+    },
+    {
+      "personId": "priya",
+      "wants": {
+        "type": "materials"
+      },
+      "baseAmount": 15,
+      "amountPerFill": 5
+    }
+  ],
+  "dailyRequests": [
+    {
+      "personId": "walt",
+      "description": "Put 15 fish on ice",
+      "requires": {
+        "type": "fishOnIceToday",
+        "amount": 15
+      }
+    },
+    {
+      "personId": "dot",
+      "description": "Sort 40 units of one bin (picked each day)",
+      "requires": {
+        "type": "sortedUnitsToday",
+        "amount": 40
+      }
+    },
+    {
+      "personId": "rosalind",
+      "description": "Make 12 knick-knacks",
+      "requires": {
+        "type": "knickKnacksToday",
+        "amount": 12
+      }
+    },
+    {
+      "personId": "hank",
+      "description": "Make 12 ingots",
+      "requires": {
+        "type": "ingotsToday",
+        "amount": 12
+      }
+    },
+    {
+      "personId": "priya",
+      "description": "Make 12 materials",
+      "requires": {
+        "type": "materialsToday",
+        "amount": 12
+      }
     }
   ]
 };
