@@ -838,3 +838,22 @@
   color: var(--shoal-foam);
   font-size: 0.72rem;
 }
+
+.shoal-hint-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.6rem;
+  background: rgba(255, 209, 102, 0.12);
+  border: 1px dashed #ffd166;
+  color: #ffd166;
+  font-size: 0.72rem;
+  font-weight: 600;
+  animation: shoal-hint-pulse 2.5s ease-in-out infinite;
+}
+@keyframes shoal-hint-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

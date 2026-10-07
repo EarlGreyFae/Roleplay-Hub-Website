@@ -1593,6 +1593,34 @@
     );
   }
 
+  // New-player guide (14-extras.md): "sparkles hover over the next thing to
+  // use on deck: the winch, then the Cutting Board, the Desk, the bell, and
+  // the Work Table - each until used once... Retired players never see the
+  // sparkles." A single running text hint (rather than a positioned overlay
+  // pinned to each distant component) - same information, simpler to keep
+  // correct across a page with no separate screens to walk between.
+  var NEW_PLAYER_HINTS = [
+    { id: 'winch', text: 'Try the winch - drop the dredge to haul up your first catch.' },
+    { id: 'cutting-board', text: 'Dress a raw fish at the Cutting Board to open the Town.' },
+    { id: 'desk', text: 'Check the Quest Book down at the Desk for what to do next.' },
+    { id: 'bell', text: 'Ring the bell - sell your sorted goods in Town.' },
+    { id: 'work-table', text: 'Visit the Work Table and buy your first upgrade.' }
+  ];
+
+  function NewPlayerHintBanner(props) {
+    var save = props.save;
+    if ((save.retirements || 0) > 0) return null;
+    if (save.settings && save.settings.sparkles === false) return null;
+    var seen = save.newPlayerHintsSeen || [];
+    var next = NEW_PLAYER_HINTS.filter(function (hnt) { return seen.indexOf(hnt.id) === -1; })[0];
+    if (!next) return null;
+    var isVeryFirstHaul = (save.allTimeStats.hauls || 0) === 0;
+    return h('div', { className: 'shoal-hint-banner' },
+      h(Icons.Sparkle, { className: 'shoal-social-tab-icon' }),
+      isVeryFirstHaul ? 'Welcome aboard! Look for the dredge basket, and check the Quest Book for what to do next.' : next.text
+    );
+  }
+
   var EXTRAS_TABS = [
     { id: 'stats', label: 'Stats', icon: 'BarChart' },
     { id: 'feats', label: 'Feat Titles', icon: 'Trophy' },
@@ -2261,6 +2289,7 @@
       ),
       error && h('div', { className: 'shoal-error-banner' }, error),
       h(TideEventBanner, { key: 'tide-event' }),
+      h(NewPlayerHintBanner, { key: 'hint', save: save }),
       h('div', { className: 'shoal-body' },
         h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
         h(TrayPanel, {
@@ -2322,6 +2351,7 @@
     LettersTab: LettersTab,
     ExtrasPanel: ExtrasPanel,
     TideEventBanner: TideEventBanner,
+    NewPlayerHintBanner: NewPlayerHintBanner,
     StatsTab: StatsTab,
     FeatsTab: FeatsTab,
     QuestBookTab: QuestBookTab,

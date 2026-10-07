@@ -904,6 +904,14 @@ function shoalCheckFeatTitles(save) {
   if ((save.goldenSetIds || []).length >= 1) unlock('golden-touch');
 }
 
+// New-player guide (14-extras.md): "sparkles hover over the next thing to
+// use on deck... each until used once." Tracked server-side (not a client
+// "I saw it" click) so it's tied to the real action actually succeeding.
+function shoalMarkHintSeen(save, hintId) {
+  if (!save.newPlayerHintsSeen) save.newPlayerHintsSeen = [];
+  if (save.newPlayerHintsSeen.indexOf(hintId) === -1) save.newPlayerHintsSeen.push(hintId);
+}
+
 // "Letter Writer: 10 of your letters out at sea" - read literally as 10
 // currently-approved letters by this author at once (not a lifetime
 // cumulative count, since a report can pull one back out of circulation -
@@ -2799,6 +2807,7 @@ const server = http.createServer(async (req, res) => {
       save.lastDredgeAt = new Date().toISOString();
       save.allTimeStats.hauls += 1;
       save.allTimeStats.secondsAtSea = (save.allTimeStats.secondsAtSea || 0) + dredgeTimeSeconds;
+      shoalMarkHintSeen(save, 'winch');
       shoalContributeToGuildQuests(save, 'hauls', 1);
       // A written reply to one of this player's bottle letters is delivered
       // on their next haul (13-social.md step 5) - same forcing mechanism as
@@ -2867,6 +2876,9 @@ const server = http.createServer(async (req, res) => {
       save.allTimeStats.unitsSold = (save.allTimeStats.unitsSold || 0) + unitsSold;
       save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coinsEarned;
       shoalContributeToGuildQuests(save, 'coinsEarnedSelling', coinsEarned);
+      // "The bell" (the ferry's navigation cue in the original, web-adapted
+      // to "going to Town to sell" since this port has no separate screens).
+      shoalMarkHintSeen(save, 'bell');
       saveDatabase();
       return sendJson(res, 200, { success: true, coinsEarned, coins: save.coins });
     } catch (e) {
@@ -2894,6 +2906,7 @@ const server = http.createServer(async (req, res) => {
       }
       save.coins -= cost;
       save[field] = currentLevel + 1;
+      shoalMarkHintSeen(save, 'work-table');
       saveDatabase();
       return sendJson(res, 200, { success: true, upgradeId, newLevel: save[field], coinsSpent: cost, coins: save.coins });
     } catch (e) {
@@ -3221,6 +3234,7 @@ const server = http.createServer(async (req, res) => {
       fish.stage = 'dressed';
       shoalTrackStationProgress(save, 'fishDressed', 1);
       shoalContributeToGuildQuests(save, 'fishDressed', 1);
+      shoalMarkHintSeen(save, 'cutting-board');
 
       let newLetter = null;
       if (!save.anyFishDressed) {
@@ -4966,6 +4980,9 @@ const server = http.createServer(async (req, res) => {
       const handle = query.get('handle') || '';
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
       const save = getOrCreateShoalTalesSave(handle);
+      // "Check the quest book" is the Desk's own new-player hint.
+      shoalMarkHintSeen(save, 'desk');
+      saveDatabase();
       const quests = ShoalTalesData.questBook.map(q => {
         const unlocked = shoalQuestUnlocked(save, q);
         const claimed = (save.claimedQuestIds || []).indexOf(q.id) !== -1;
