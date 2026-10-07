@@ -271,7 +271,15 @@ function defaultShoalTalesSave(handle) {
     unlockedDepths: [0],
     retirements: 0,
     lastHaulDate: null,
-    allTimeStats: { hauls: 0, junkSorted: 0, fishOnIce: 0, coinsEarned: 0, bestStreak: 0 }
+    allTimeStats: { hauls: 0, junkSorted: 0, fishOnIce: 0, coinsEarned: 0, bestStreak: 0, curiosScrubbed: 0, cratesOpened: 0, creaturesReleased: 0 },
+    // Kept for good across retiring (docs/shoal-tales-spec/11-retiring.md) -
+    // not reset by anything in this phase since retiring itself isn't built yet.
+    collectorsLog: { curios: {}, fish: {} },
+    magicCurios: [],
+    creaturesSeen: [],
+    goldenLog: [],
+    storedCurios: [],
+    bottleLettersFound: []
   };
 }
 
@@ -289,17 +297,23 @@ function shoalAreaById(id) {
   return ShoalTalesData.mapAreas.find(a => a.id === id) || ShoalTalesData.mapAreas[0];
 }
 
-// Produces the N items for one haul. Scope note: this phase (the core
-// dredge/sort loop) generates junk and fish only - curios, crates, messages
-// in bottles, sea creatures and magic curios are deferred to the Collector's
-// Log phase (docs/shoal-tales-spec/06-curios.md), which builds their
-// identify/scrub/pry-open interactions alongside adding them to the haul, so
-// the tray is never left holding an item the player has no way to clear.
+function shoalNewTrayId(i) {
+  return 'tray_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+// Produces the N items for one haul, following the exact cascade in
+// docs/shoal-tales-spec/03-dredging.md "What each haul contains": per item
+// slot, roll (1) puzzle box, (2) magic curio, (3) otherwise the catch-type
+// weighted roll among junk/fish/curio/crate/bottle/sea creature. Puzzle boxes
+// are gated behind the Emporium being open (not built yet, so that branch is
+// permanently 0% until the Emporium phase lands) - documented here rather
+// than silently omitted so it's not mistaken for missing.
 function generateShoalHaul(save) {
   const area = shoalAreaById(save.area);
   const isFirstHaulOfDay = save.lastHaulDate !== new Date().toISOString().slice(0, 10);
   const isVeryFirstHaul = save.allTimeStats.hauls === 0;
   const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, 0, { isFirstHaulOfDay: isFirstHaulOfDay });
+  const luck = 0; // no luck-bonus sources wired in yet (sets/magic curios/upgrades) - see 09-economy.md bonus stacking, deferred to the Economy phase.
 
   const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
   const fishPool = ShoalTalesData.fish.filter(f => {
@@ -307,24 +321,53 @@ function generateShoalHaul(save) {
     const range = shoalDepthRangeFromString(f.depths);
     return save.depth >= range[0] && save.depth <= range[1];
   });
+  const curioPool = ShoalTalesData.curios.filter(c => c.area === area.name);
+  const emporiumOpen = false; // Emporium phase not built yet.
+  const magicCuriosRemaining = ShoalTalesData.magicCurios.filter(m => save.magicCurios.indexOf(m.id) === -1);
 
-  const weights = { junk: ShoalTalesEngine.junkCatchWeight(save.depth), fish: 22 };
+  const catchWeights = ShoalTalesEngine.catchTypeWeights(save.depth, luck, false);
   const tray = [];
+  let forcedFishUsed = false;
+  let forcedCurioUsed = false;
+
   for (let i = 0; i < count; i++) {
-    let kind = ShoalTalesEngine.weightedPick(weights);
-    if (isVeryFirstHaul && i === 0) kind = 'fish'; // "the very first haul of a save always contains a fish"
-    if (kind === 'fish' && fishPool.length === 0) kind = 'junk'; // area/depth has no fish available right now
-    const id = 'tray_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
-    // Locked in at haul time, not re-read at sort time: "each item remembers
-    // the value multiplier of the area it was hauled in, so moving before
-    // sorting doesn't change its worth" (03-dredging.md).
-    const areaMultiplier = area.valueMultiplier;
+    const areaMultiplier = area.valueMultiplier; // locked in at haul time, see 03-dredging.md
+    const id = shoalNewTrayId(i);
+
+    const puzzleBoxChance = emporiumOpen ? 0.03 * (1 + 0.5 * save.depth) : 0;
+    const magicCurioChance = magicCuriosRemaining.length > 0 ? 0.006 * (1 + luck) * (1 + 0.5 * save.depth) : 0;
+    const roll = Math.random();
+
+    if (roll < puzzleBoxChance) {
+      tray.push({ id, kind: 'puzzleBox', name: 'Puzzle Box', areaMultiplier });
+      continue;
+    }
+    if (roll < puzzleBoxChance + magicCurioChance) {
+      tray.push({ id, kind: 'magicCurio', name: 'Strange Curio', identified: false, areaMultiplier });
+      continue;
+    }
+
+    let kind = ShoalTalesEngine.weightedPick(catchWeights);
+    if (isVeryFirstHaul && !forcedFishUsed) { kind = 'fish'; forcedFishUsed = true; } // "the very first haul of a save always contains a fish"
+    else if (isFirstHaulOfDay && !forcedCurioUsed && !(isVeryFirstHaul && !forcedFishUsed)) { kind = 'curio'; forcedCurioUsed = true; } // "the first haul of each real-world day ... always includes a curio"
+    if (kind === 'fish' && fishPool.length === 0) kind = 'junk';
+    if (kind === 'curio' && curioPool.length === 0) kind = 'junk';
+
     if (kind === 'fish') {
       const f = fishPool[Math.floor(Math.random() * fishPool.length)];
-      tray.push({ id, kind: 'fish', name: f.name, baseCoins: f.baseCoins, weight: f.weight, description: f.description, areaMultiplier: areaMultiplier });
+      tray.push({ id, kind: 'fish', name: f.name, baseCoins: f.baseCoins, weight: f.weight, description: f.description, areaMultiplier });
+    } else if (kind === 'curio') {
+      tray.push({ id, kind: 'curio', name: 'Encrusted Curio', identified: false, areaMultiplier });
+    } else if (kind === 'crate') {
+      tray.push({ id, kind: 'crate', name: 'Sealed Crate', areaMultiplier });
+    } else if (kind === 'bottle') {
+      tray.push({ id, kind: 'bottle', name: 'Message in a Bottle', areaMultiplier });
+    } else if (kind === 'seaCreature') {
+      const creature = ShoalTalesData.creaturesSeen[Math.floor(Math.random() * ShoalTalesData.creaturesSeen.length)];
+      tray.push({ id, kind: 'seaCreature', name: creature.name, creatureId: creature.id, areaMultiplier });
     } else {
       const j = junkPool[Math.floor(Math.random() * junkPool.length)];
-      tray.push({ id, kind: 'junk', name: j.name, bin: j.bin, baseCoins: j.baseCoins, weight: j.weight, description: j.description, areaMultiplier: areaMultiplier });
+      tray.push({ id, kind: 'junk', name: j.name, bin: j.bin, baseCoins: j.baseCoins, weight: j.weight, description: j.description, areaMultiplier });
     }
   }
   return tray;
@@ -1728,18 +1771,35 @@ const server = http.createServer(async (req, res) => {
         if (bin !== 'cooler') {
           return sendJson(res, 400, { error: 'Fish can only go in the cooler.' });
         }
+        // Golden finds are endgame-only (8th retirement+, 09-economy.md); this
+        // stays inert (golden never true) until the Retiring phase lands.
+        const goldenEligible = save.retirements >= 8;
+        const golden = goldenEligible && Math.random() < 0.01;
         const value = ShoalTalesEngine.fishValue({
-          base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: 0, bFish: 0, golden: false
+          base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: 0, bFish: 0, golden: golden
         });
-        save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, caughtAt: new Date().toISOString() });
+        save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, caughtAt: new Date().toISOString() });
         save.streak += 1;
         save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
         save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
         save.allTimeStats.fishOnIce += 1;
         save.allTimeStats.bestStreak = Math.max(save.allTimeStats.bestStreak, save.streak);
         save.tray.splice(itemIndex, 1);
+
+        // "The first catch of each fish species logs it in the Collector's
+        // Log" - automatic, unlike curios which require an explicit Log choice.
+        const fishData = ShoalTalesData.fish.find(f => f.name === item.name);
+        let newlyLogged = false;
+        if (fishData) {
+          const existing = save.collectorsLog.fish[fishData.id];
+          if (!existing || (golden && !existing.golden)) {
+            save.collectorsLog.fish[fishData.id] = { foundAt: new Date().toISOString(), golden: golden };
+            newlyLogged = !existing;
+            if (golden) save.goldenLog.push({ kind: 'fish', id: fishData.id, foundAt: new Date().toISOString() });
+          }
+        }
         saveDatabase();
-        return sendJson(res, 200, { success: true, correct: true, kind: 'fish', value, newStreak: save.streak });
+        return sendJson(res, 200, { success: true, correct: true, kind: 'fish', value, newStreak: save.streak, golden, newlyLogged });
       }
 
       // Junk: validate the target is one of the 7 real bins (never 'cooler').
@@ -1859,6 +1919,218 @@ const server = http.createServer(async (req, res) => {
       save.area = area;
       saveDatabase();
       return sendJson(res, 200, { success: true, area: save.area });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Scrub: identifies an Encrusted Curio (rolls which curio + its rarity) or
+  // resolves a Strange Curio (one of the 6 magic curios - identified and kept
+  // forever in one step, no further choice, per 06-curios.md).
+  if (reqPath === '/api/shoal-tales/scrub' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId } = await parseJsonBody(req);
+      if (!handle || !trayItemId) return sendJson(res, 400, { error: 'Missing handle or trayItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      const item = save.tray[itemIndex];
+
+      if (item.kind === 'magicCurio') {
+        const remaining = ShoalTalesData.magicCurios.filter(m => save.magicCurios.indexOf(m.id) === -1);
+        if (remaining.length === 0) return sendJson(res, 400, { error: 'All magic curios are already found.' });
+        const found = remaining[Math.floor(Math.random() * remaining.length)];
+        save.magicCurios.push(found.id);
+        save.tray.splice(itemIndex, 1);
+        save.allTimeStats.curiosScrubbed += 1;
+        saveDatabase();
+        return sendJson(res, 200, { success: true, kind: 'magicCurio', magicCurio: found, allSixFound: save.magicCurios.length >= 6 });
+      }
+
+      if (item.kind !== 'curio' || item.identified) {
+        return sendJson(res, 400, { error: 'Nothing to scrub here.' });
+      }
+      const area = shoalAreaById(save.area);
+      const curioPool = ShoalTalesData.curios.filter(c => c.area === area.name);
+      if (curioPool.length === 0) return sendJson(res, 500, { error: 'No curios available to identify in this area.' });
+      const picked = curioPool[Math.floor(Math.random() * curioPool.length)];
+      const goldenEligible = save.retirements >= 8;
+      const rarityShift = 0; // no rarity-boosting bonuses wired in yet (Glowing Pearl / set bonuses) - Economy phase.
+      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(rarityShift));
+
+      item.identified = true;
+      item.name = picked.name;
+      item.set = picked.set;
+      item.bin = picked.bin;
+      item.baseCoins = picked.baseCoins;
+      item.description = picked.description;
+      item.rarity = rarity;
+      item.curioId = picked.id;
+      item.golden = goldenEligible && Math.random() < 0.01;
+      save.allTimeStats.curiosScrubbed += 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, kind: 'curio', item });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Pry open a Sealed Crate: 50% coins, 30% two more junk items, 20% a curio.
+  if (reqPath === '/api/shoal-tales/pry' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId } = await parseJsonBody(req);
+      if (!handle || !trayItemId) return sendJson(res, 400, { error: 'Missing handle or trayItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      const item = save.tray[itemIndex];
+      if (item.kind !== 'crate') return sendJson(res, 400, { error: 'That is not a crate.' });
+
+      const area = shoalAreaById(save.area);
+      save.tray.splice(itemIndex, 1);
+      save.allTimeStats.cratesOpened += 1;
+
+      const roll = Math.random();
+      let result;
+      if (roll < 0.5) {
+        const coins = Math.round((5 + Math.random() * 20) * item.areaMultiplier);
+        save.coins += coins;
+        save.allTimeStats.coinsEarned += coins;
+        result = { outcome: 'coins', coins };
+      } else if (roll < 0.8) {
+        const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
+        const newItems = [0, 1].map(i => {
+          const j = junkPool[Math.floor(Math.random() * junkPool.length)];
+          const newItem = { id: shoalNewTrayId('crate' + i), kind: 'junk', name: j.name, bin: j.bin, baseCoins: j.baseCoins, weight: j.weight, description: j.description, areaMultiplier: item.areaMultiplier };
+          save.tray.push(newItem);
+          return newItem;
+        });
+        result = { outcome: 'junk', items: newItems };
+      } else {
+        const curioPool = ShoalTalesData.curios.filter(c => c.area === area.name);
+        const newItem = { id: shoalNewTrayId('cratecurio'), kind: 'curio', name: 'Encrusted Curio', identified: false, areaMultiplier: item.areaMultiplier };
+        if (curioPool.length > 0) save.tray.push(newItem);
+        result = { outcome: 'curio', item: curioPool.length > 0 ? newItem : null };
+      }
+      saveDatabase();
+      return sendJson(res, 200, Object.assign({ success: true }, result, { tray: save.tray }));
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Uncork a Message in a Bottle: 35% a letter, otherwise becomes an empty
+  // glass bottle (the real "Glass Bottle" junk item) to sort.
+  if (reqPath === '/api/shoal-tales/uncork' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId } = await parseJsonBody(req);
+      if (!handle || !trayItemId) return sendJson(res, 400, { error: 'Missing handle or trayItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      const item = save.tray[itemIndex];
+      if (item.kind !== 'bottle') return sendJson(res, 400, { error: 'That is not a bottle.' });
+
+      save.tray.splice(itemIndex, 1);
+      const unfoundLetters = ShoalTalesData.bottleLetters.filter(l => save.bottleLettersFound.indexOf(l.id) === -1);
+      if (Math.random() < 0.35 && unfoundLetters.length > 0) {
+        const letter = unfoundLetters[Math.floor(Math.random() * unfoundLetters.length)];
+        save.bottleLettersFound.push(letter.id);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, outcome: 'letter', letter, tray: save.tray });
+      }
+      const glassBottle = ShoalTalesData.junk.find(j => j.name === 'Glass Bottle');
+      const newItem = { id: shoalNewTrayId('bottleglass'), kind: 'junk', name: glassBottle.name, bin: glassBottle.bin, baseCoins: glassBottle.baseCoins, weight: glassBottle.weight, description: glassBottle.description, areaMultiplier: item.areaMultiplier };
+      save.tray.push(newItem);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, outcome: 'emptyBottle', item: newItem, tray: save.tray });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Release a sea creature: 2-6 coins, first-of-kind logs it in Creatures Seen.
+  if (reqPath === '/api/shoal-tales/release' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId } = await parseJsonBody(req);
+      if (!handle || !trayItemId) return sendJson(res, 400, { error: 'Missing handle or trayItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      const item = save.tray[itemIndex];
+      if (item.kind !== 'seaCreature') return sendJson(res, 400, { error: 'That is not a sea creature.' });
+
+      const coins = Math.round((2 + Math.random() * 4) * item.areaMultiplier);
+      save.coins += coins;
+      save.allTimeStats.coinsEarned += coins;
+      save.allTimeStats.creaturesReleased += 1;
+      const newlySeen = save.creaturesSeen.indexOf(item.creatureId) === -1;
+      if (newlySeen) save.creaturesSeen.push(item.creatureId);
+      save.tray.splice(itemIndex, 1);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, coins, newlySeen, allFiveSeen: save.creaturesSeen.length >= 5 });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Resolve an identified curio: Log (museum it, no coins), Sell (coins now),
+  // Store (keep for later), or Sort (break it down like junk).
+  if (reqPath === '/api/shoal-tales/curio-action' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId, action, bin } = await parseJsonBody(req);
+      if (!handle || !trayItemId || !action) return sendJson(res, 400, { error: 'Missing handle, trayItemId or action' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      const item = save.tray[itemIndex];
+      if (item.kind !== 'curio' || !item.identified) {
+        return sendJson(res, 400, { error: 'Scrub this curio first.' });
+      }
+      const fullValue = ShoalTalesEngine.curioValue(item.baseCoins, item.rarity, 0) * (item.golden ? 3 : 1);
+      const RARITY_RANK = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3 };
+
+      if (action === 'log') {
+        const existing = save.collectorsLog.curios[item.curioId];
+        const better = !existing || RARITY_RANK[item.rarity] > RARITY_RANK[existing.rarity] || (item.golden && !existing.golden);
+        if (better) {
+          save.collectorsLog.curios[item.curioId] = { rarity: item.rarity, golden: item.golden, foundAt: new Date().toISOString() };
+          if (item.golden) save.goldenLog.push({ kind: 'curio', id: item.curioId, foundAt: new Date().toISOString() });
+        }
+        save.tray.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'log', logged: better });
+      }
+      if (action === 'sell') {
+        const coins = Math.round(fullValue);
+        save.coins += coins;
+        save.allTimeStats.coinsEarned += coins;
+        save.tray.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'sell', coins });
+      }
+      if (action === 'store') {
+        save.storedCurios.push({ id: 'stored_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), curioId: item.curioId, name: item.name, set: item.set, bin: item.bin, baseCoins: item.baseCoins, rarity: item.rarity, golden: item.golden, storedAt: new Date().toISOString() });
+        save.tray.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'store' });
+      }
+      if (action === 'sort') {
+        if (!bin || !ShoalTalesEngine.BINS.includes(bin)) return sendJson(res, 400, { error: 'Not a real bin.' });
+        const correct = bin === item.bin;
+        const streakMult = ShoalTalesEngine.streakMultiplier(save.streak, 0, 0);
+        const value = ShoalTalesEngine.curioSortValue(fullValue, streakMult, correct);
+        save.streak = correct ? save.streak + 1 : 0;
+        save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
+        save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
+        save.sortedGoods[bin].units += 2;
+        save.sortedGoods[bin].value += value;
+        save.tray.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'sort', correct, value, newStreak: save.streak });
+      }
+      // 'donate' needs a guild (Social phase, not built yet).
+      return sendJson(res, 400, { error: 'Unknown or not-yet-available action.' });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

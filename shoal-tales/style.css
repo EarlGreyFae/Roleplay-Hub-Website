@@ -282,3 +282,60 @@
   font-size: 0.72rem;
 }
 .shoal-upgrade-btn:disabled { opacity: 0.4; border-color: var(--shoal-card-border); color: var(--shoal-foam); }
+
+/* Collector's Log, curios/crates/bottles/creatures (added alongside the
+   Fish/Curios/Collector's Log phase) */
+
+.shoal-tray-item-curio { border-color: #b06fd1; }
+.shoal-tray-item-crate { border-color: var(--shoal-gold); }
+.shoal-tray-item-bottle { border-color: #4fa8c9; }
+.shoal-tray-item-seaCreature { border-color: var(--shoal-good); }
+.shoal-tray-item-magicCurio { border-color: #ffd166; box-shadow: 0 0 6px rgba(255, 209, 102, 0.35); }
+
+.shoal-tray-rarity {
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 0.1rem;
+}
+.shoal-rarity-common { color: #c5d0d6; }
+.shoal-rarity-uncommon { color: #7fd6a0; }
+.shoal-rarity-rare { color: #6fb3f0; }
+.shoal-rarity-epic { color: #d989f0; }
+
+.shoal-action-btn {
+  flex: 1 1 calc(50% - 0.3rem);
+  min-width: 100px;
+  padding: 0.55rem 0.4rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(17, 69, 107, 0.6);
+  color: var(--shoal-foam);
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+.shoal-action-btn:disabled { opacity: 0.5; }
+.shoal-action-btn-magic { border-color: #ffd166; background: rgba(255, 209, 102, 0.15); color: #ffd166; }
+
+.shoal-log-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+.shoal-log-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.3rem;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.6rem;
+}
+.shoal-log-num { font-weight: 800; font-size: 0.95rem; color: var(--shoal-gold-bright); }
+.shoal-log-stat span:last-child { font-size: 0.6rem; color: rgba(232, 244, 248, 0.6); text-transform: uppercase; letter-spacing: 0.03em; text-align: center; }

@@ -62,8 +62,28 @@
     },
     Trash: function (props) {
       return Icon([h('path', { key: 'p1', d: 'M3 6h18' }), h('path', { key: 'p2', d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }), h('path', { key: 'p3', d: 'm19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' })], props);
+    },
+    Gem: function (props) {
+      return Icon([h('path', { key: 'p1', d: 'M6 3h12l4 6-10 12L2 9Z' }), h('path', { key: 'p2', d: 'M11 3 8 9l4 12 4-12-3-6' }), h('path', { key: 'p3', d: 'M2 9h20' })], props);
+    },
+    Box: function (props) {
+      return Icon([h('path', { key: 'p1', d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }), h('path', { key: 'p2', d: 'm3.3 7 8.7 5 8.7-5' }), h('path', { key: 'p3', d: 'M12 22V12' })], props);
+    },
+    Bottle: function (props) {
+      return Icon([h('path', { key: 'p1', d: 'M9 2h6v4l2 3v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V9l2-3Z' }), h('path', { key: 'p2', d: 'M9 2h6' })], props);
+    },
+    Creature: function (props) {
+      return Icon([h('circle', { key: 'c1', cx: '12', cy: '12', r: '4' }), h('path', { key: 'p1', d: 'M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4' })], props);
+    },
+    Sparkle: function (props) {
+      return Icon([h('path', { key: 'p1', d: 'M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8' })], props);
     }
   };
+
+  var TRAY_ICONS = {
+    junk: 'Anchor', fish: 'Fish', curio: 'Gem', crate: 'Box', bottle: 'Bottle', seaCreature: 'Creature', magicCurio: 'Sparkle', puzzleBox: 'Box'
+  };
+  var RARITY_LABELS = { Common: 'Common', Uncommon: 'Uncommon', Rare: 'Rare', Epic: 'Epic' };
 
   var BIN_LABELS = { Plastic: 'Plastic', Metal: 'Metal', Glass: 'Glass', Wood: 'Wood', Electronics: 'Electronics', Hazardous: 'Hazardous', Mixed: 'Mixed' };
 
@@ -95,12 +115,20 @@
   }
 
   // --- The Tray: shows current haul, lets the player select an item then
-  // tap a bin/the cooler to sort it ---
+  // act on it. Junk -> a bin; fish -> the cooler; curios need an extra scrub
+  // step before Log/Sell/Store/Sort; crates/bottles/creatures are one tap. ---
   function TrayPanel(props) {
     var save = props.save;
     var selectedId = props.selectedId;
     var onSelect = props.onSelect;
     var onSort = props.onSort;
+    var onScrub = props.onScrub;
+    var onPry = props.onPry;
+    var onUncork = props.onUncork;
+    var onRelease = props.onRelease;
+    var onCurioAction = props.onCurioAction;
+    var curioChoosingBin = props.curioChoosingBin;
+    var onStartCurioSort = props.onStartCurioSort;
     var busy = props.busy;
     var lastResult = props.lastResult;
 
@@ -110,39 +138,110 @@
 
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'The Tray (', save.tray.length, ' item', save.tray.length === 1 ? '' : 's', ')'),
-      h('p', { className: 'shoal-hint' }, 'Tap an item, then tap where it goes.'),
+      h('p', { className: 'shoal-hint' }, 'Tap an item, then tap what to do with it.'),
       h('div', { className: 'shoal-tray-grid' },
         save.tray.map(function (item) {
           var isSelected = item.id === selectedId;
+          var iconName = TRAY_ICONS[item.kind] || 'Anchor';
           return h('button', {
             key: item.id,
             type: 'button',
             disabled: busy,
             onClick: function () { onSelect(isSelected ? null : item.id); },
-            className: 'shoal-tray-item' + (isSelected ? ' shoal-tray-item-selected' : '') + (item.kind === 'fish' ? ' shoal-tray-item-fish' : '')
+            className: 'shoal-tray-item' + (isSelected ? ' shoal-tray-item-selected' : '') + (' shoal-tray-item-' + item.kind)
           },
-            h(item.kind === 'fish' ? Icons.Fish : Icons.Anchor, { className: 'shoal-tray-icon' }),
+            h(Icons[iconName], { className: 'shoal-tray-icon' }),
             h('span', { className: 'shoal-tray-name' }, item.name),
-            item.kind === 'junk' && h('span', { className: 'shoal-tray-bin-hint' }, '')
+            item.kind === 'curio' && item.identified && h('span', { className: 'shoal-tray-rarity shoal-rarity-' + item.rarity.toLowerCase() }, item.rarity, item.golden ? ' ✨' : '')
           );
         })
       ),
-      selectedItem && h('div', { className: 'shoal-bin-row' },
-        selectedItem.kind === 'fish'
-          ? h('button', {
-              type: 'button', disabled: busy, onClick: function () { onSort(selectedItem.id, 'cooler'); },
-              className: 'shoal-bin-btn shoal-bin-btn-cooler'
-            }, h(Icons.Fish, { className: 'shoal-bin-icon' }), h('span', null, 'Cooler'))
-          : ENGINE.BINS.map(function (bin) {
-              return h('button', {
-                key: bin, type: 'button', disabled: busy, onClick: function () { onSort(selectedItem.id, bin); },
-                className: 'shoal-bin-btn'
-              }, BIN_LABELS[bin]);
-            })
-      ),
-      lastResult && h('div', { className: 'shoal-sort-feedback ' + (lastResult.correct ? 'shoal-sort-correct' : 'shoal-sort-wrong') },
-        lastResult.correct ? '✓ Correct! +' : '✗ Wrong bin. +',
-        formatCoins(lastResult.value), ' coins', lastResult.newStreak > 1 ? (' (streak x' + lastResult.newStreak + ')') : ''
+      selectedItem && h('div', { className: 'shoal-bin-row' }, renderActionArea(selectedItem)),
+      lastResult && h('div', { className: 'shoal-sort-feedback ' + (lastResult.ok ? 'shoal-sort-correct' : 'shoal-sort-wrong') }, lastResult.message)
+    );
+
+    function renderActionArea(item) {
+      if (item.kind === 'fish') {
+        return h('button', {
+          type: 'button', disabled: busy, onClick: function () { onSort(item.id, 'cooler'); },
+          className: 'shoal-bin-btn shoal-bin-btn-cooler'
+        }, h(Icons.Fish, { className: 'shoal-bin-icon' }), h('span', null, 'Cooler'));
+      }
+      if (item.kind === 'junk') {
+        return ENGINE.BINS.map(function (bin) {
+          return h('button', {
+            key: bin, type: 'button', disabled: busy, onClick: function () { onSort(item.id, bin); },
+            className: 'shoal-bin-btn'
+          }, BIN_LABELS[bin]);
+        });
+      }
+      if (item.kind === 'crate') {
+        return h('button', { type: 'button', disabled: busy, onClick: function () { onPry(item.id); }, className: 'shoal-action-btn' },
+          h(Icons.Box, { className: 'shoal-bin-icon' }), h('span', null, 'Pry Open'));
+      }
+      if (item.kind === 'bottle') {
+        return h('button', { type: 'button', disabled: busy, onClick: function () { onUncork(item.id); }, className: 'shoal-action-btn' },
+          h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Uncork'));
+      }
+      if (item.kind === 'seaCreature') {
+        return h('button', { type: 'button', disabled: busy, onClick: function () { onRelease(item.id); }, className: 'shoal-action-btn' },
+          h(Icons.Creature, { className: 'shoal-bin-icon' }), h('span', null, 'Set Free'));
+      }
+      if (item.kind === 'magicCurio') {
+        return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn shoal-action-btn-magic' },
+          h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub'));
+      }
+      if (item.kind === 'curio') {
+        if (!item.identified) {
+          return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn' },
+            h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub'));
+        }
+        if (curioChoosingBin === item.id) {
+          return ENGINE.BINS.map(function (bin) {
+            return h('button', {
+              key: bin, type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sort', bin); },
+              className: 'shoal-bin-btn'
+            }, BIN_LABELS[bin]);
+          });
+        }
+        return [
+          h('button', { key: 'log', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'log'); }, className: 'shoal-action-btn' }, 'Log'),
+          h('button', { key: 'sell', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sell'); }, className: 'shoal-action-btn' }, 'Sell'),
+          h('button', { key: 'store', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'store'); }, className: 'shoal-action-btn' }, 'Store'),
+          h('button', { key: 'sort', type: 'button', disabled: busy, onClick: function () { onStartCurioSort(item.id); }, className: 'shoal-action-btn' }, 'Sort')
+        ];
+      }
+      return null;
+    }
+  }
+
+  function CollectorsLogSummary(props) {
+    var save = props.save;
+    var totalCurios = DATA.curios.length;
+    var totalFish = DATA.fish.length;
+    var curiosLogged = Object.keys(save.collectorsLog.curios).length;
+    var fishLogged = Object.keys(save.collectorsLog.fish).length;
+    var setsComplete = DATA.sets.filter(function (s) {
+      var curiosDone = s.curioNames.every(function (n) {
+        var c = DATA.curios.find(function (x) { return x.name === n; });
+        return c && save.collectorsLog.curios[c.id];
+      });
+      var fishDone = s.fishNames.every(function (n) {
+        var f = DATA.fish.find(function (x) { return x.name === n; });
+        return f && save.collectorsLog.fish[f.id];
+      });
+      return curiosDone && fishDone;
+    }).length;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, "Collector's Log"),
+      h('div', { className: 'shoal-log-grid' },
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, curiosLogged, '/', totalCurios), h('span', null, 'Curios')),
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, fishLogged, '/', totalFish), h('span', null, 'Fish')),
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, setsComplete, '/', DATA.sets.length), h('span', null, 'Sets')),
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, save.magicCurios.length, '/6'), h('span', null, 'Magic Curios')),
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, save.creaturesSeen.length, '/5'), h('span', null, 'Creatures Seen')),
+        h('div', { className: 'shoal-log-stat' }, h('span', { className: 'shoal-log-num' }, save.storedCurios.length), h('span', null, 'Stored Curios'))
       )
     );
   }
@@ -258,6 +357,7 @@
     var _lastResult = useState(null); var lastResult = _lastResult[0]; var setLastResult = _lastResult[1];
     var _dredging = useState(false); var dredging = _dredging[0]; var setDredging = _dredging[1];
     var _countdown = useState(0); var countdown = _countdown[0]; var setCountdown = _countdown[1];
+    var _curioChoosingBin = useState(null); var curioChoosingBin = _curioChoosingBin[0]; var setCurioChoosingBin = _curioChoosingBin[1];
 
     var refresh = useCallback(function () {
       if (!handle) return Promise.resolve();
@@ -272,8 +372,17 @@
       refresh().then(function () { setLoading(false); });
     }, [handle]);
 
+    function runAction(promise) {
+      setBusy(true);
+      return promise.then(function (data) {
+        setSelectedId(null);
+        setCurioChoosingBin(null);
+        return refresh().then(function () { return data; });
+      }).catch(function (e) { setError(e.message); return null; }).finally(function () { setBusy(false); });
+    }
+
     function handleDredge() {
-      setBusy(true); setSelectedId(null); setLastResult(null);
+      setBusy(true); setSelectedId(null); setLastResult(null); setCurioChoosingBin(null);
       apiPost('/api/shoal-tales/dredge', { handle: handle }).then(function (data) {
         var seconds = Math.max(1, Math.round(data.dredgeTimeSeconds));
         setDredging(true);
@@ -293,12 +402,65 @@
     }
 
     function handleSort(trayItemId, bin) {
-      setBusy(true);
-      apiPost('/api/shoal-tales/sort', { handle: handle, trayItemId: trayItemId, bin: bin }).then(function (data) {
-        setLastResult(data);
-        setSelectedId(null);
-        return refresh();
-      }).catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
+      runAction(apiPost('/api/shoal-tales/sort', { handle: handle, trayItemId: trayItemId, bin: bin })).then(function (data) {
+        if (!data) return;
+        var message = data.correct
+          ? ('✓ Correct! +' + formatCoins(data.value) + ' coins' + (data.newStreak > 1 ? (' (streak x' + data.newStreak + ')') : ''))
+          : ('✗ Wrong bin. +' + formatCoins(data.value) + ' coins');
+        setLastResult({ ok: data.correct, message: message });
+      });
+    }
+
+    function handleScrub(trayItemId) {
+      runAction(apiPost('/api/shoal-tales/scrub', { handle: handle, trayItemId: trayItemId })).then(function (data) {
+        if (!data) return;
+        if (data.kind === 'magicCurio') {
+          setLastResult({ ok: true, message: '✨ Found ' + data.magicCurio.name + '! ' + data.magicCurio.description });
+        } else {
+          setLastResult({ ok: true, message: 'Scrubbed clean: ' + data.item.name + ' (' + data.item.rarity + (data.item.golden ? ', golden!' : '') + ')' });
+        }
+      });
+    }
+
+    function handlePry(trayItemId) {
+      runAction(apiPost('/api/shoal-tales/pry', { handle: handle, trayItemId: trayItemId })).then(function (data) {
+        if (!data) return;
+        var message = data.outcome === 'coins' ? ('Found ' + formatCoins(data.coins) + ' coins inside!')
+          : data.outcome === 'junk' ? 'Found more junk inside.'
+          : data.item ? 'Found a curio inside!' : 'It was empty.';
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
+    function handleUncork(trayItemId) {
+      runAction(apiPost('/api/shoal-tales/uncork', { handle: handle, trayItemId: trayItemId })).then(function (data) {
+        if (!data) return;
+        var message = data.outcome === 'letter' ? ('Found a letter: "' + data.letter.title + '"') : 'Just an empty bottle.';
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
+    function handleRelease(trayItemId) {
+      runAction(apiPost('/api/shoal-tales/release', { handle: handle, trayItemId: trayItemId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Set free for +' + formatCoins(data.coins) + ' coins' + (data.newlySeen ? ' (new in Creatures Seen!)' : '') });
+      });
+    }
+
+    function handleCurioAction(trayItemId, action, bin) {
+      runAction(apiPost('/api/shoal-tales/curio-action', { handle: handle, trayItemId: trayItemId, action: action, bin: bin })).then(function (data) {
+        if (!data) return;
+        var message = action === 'log' ? (data.logged ? 'Added to the Collector\'s Log!' : 'Already logged a better copy.')
+          : action === 'sell' ? ('Sold for +' + formatCoins(data.coins) + ' coins')
+          : action === 'store' ? 'Stored for later.'
+          : action === 'sort' ? (data.correct ? ('✓ Correct bin! +' + formatCoins(data.value) + ' coins') : ('✗ Wrong bin. +' + formatCoins(data.value) + ' coins'))
+          : '';
+        setLastResult({ ok: action !== 'sort' || data.correct, message: message });
+      });
+    }
+
+    function handleStartCurioSort(trayItemId) {
+      setCurioChoosingBin(trayItemId);
     }
 
     function handleSell(what) {
@@ -342,8 +504,13 @@
       error && h('div', { className: 'shoal-error-banner' }, error),
       h('div', { className: 'shoal-body' },
         h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
-        h(TrayPanel, { save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult }),
+        h(TrayPanel, {
+          save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult,
+          onScrub: handleScrub, onPry: handlePry, onUncork: handleUncork, onRelease: handleRelease,
+          onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort
+        }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, busy: busy }),
+        h(CollectorsLogSummary, { save: save }),
         h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy })
       )
     );
@@ -359,6 +526,7 @@
     GoodsAndCoolerPanel: GoodsAndCoolerPanel,
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
+    CollectorsLogSummary: CollectorsLogSummary,
     formatCoins: formatCoins
   };
 })(typeof window !== 'undefined' ? window : this);
