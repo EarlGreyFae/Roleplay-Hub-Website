@@ -516,7 +516,8 @@
     var totalValue = goodsValue + rawFish.reduce(function (s, f) { return s + f.value; }, 0)
       + dressedFish.reduce(function (s, f) { return s + f.value; }, 0) + mealValue + resourceValue;
 
-    if (totalValue <= 0 && save.cooler.length === 0) return null;
+    var hasRareMaterials = Object.keys(save.rareMaterials || {}).some(function (m) { return save.rareMaterials[m] > 0; });
+    if (totalValue <= 0 && save.cooler.length === 0 && !hasRareMaterials) return null;
 
     // "It warns when a current request needs some of those goods"
     // (07-story.md) - Sell Everything wipes every sortedGoods bin, the
@@ -542,6 +543,15 @@
         ['knickKnacks', 'ingots', 'materials'].filter(function (k) { return save[k].units > 0; }).map(function (k) {
           return h('div', { key: k, className: 'shoal-goods-row' },
             h('span', null, RESOURCE_LABEL[k]), h('span', null, save[k].units, ' — ', formatCoins(save[k].value), 'c')
+          );
+        }),
+        // "The storage chest shows ... rare materials ... only appear once
+        // you've had one (no empty placeholder rows)" (08-stations-
+        // upgrades.md) - otherwise only ever surfaced buried in the
+        // Emporium build checklist, with no general inventory view.
+        Object.keys(save.rareMaterials || {}).filter(function (m) { return save.rareMaterials[m] > 0; }).map(function (m) {
+          return h('div', { key: m, className: 'shoal-goods-row' },
+            h('span', null, m), h('span', null, save.rareMaterials[m])
           );
         }),
         mealFish.length > 0 && h('div', { className: 'shoal-goods-row' },
