@@ -16,6 +16,7 @@
   var useState = root.React.useState;
   var useEffect = root.React.useEffect;
   var useCallback = root.React.useCallback;
+  var useRef = root.React.useRef;
 
   var DATA = root.ShoalTalesData;
   var ENGINE = root.ShoalTalesEngine;
@@ -196,6 +197,31 @@
         try {
           var data = JSON.parse(event.data);
           if (data.type === messageType && data.id === groupId) onMessage(data.message);
+        } catch (e) { /* ignore a malformed frame */ }
+      };
+      return ws;
+    } catch (e) { return null; }
+  }
+
+  // Live presence for the point-and-click Harbor: reports this player's
+  // current scene to the server (see server.js's SHOAL_SCENE handling) and
+  // listens for the personalized SHOAL_PRESENCE_UPDATE roster it broadcasts
+  // whenever anyone's scene changes. One connection per mount of
+  // ShoalTalesScreen, not per-scene - scene changes are sent over the same
+  // socket via sendScene, not by reopening it.
+  function shoalOpenPresenceSocket(handle, initialScene, onRoster) {
+    if (typeof root.WebSocket === 'undefined' || !root.location) return null;
+    try {
+      var protocol = root.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      var ws = new root.WebSocket(protocol + '//' + root.location.host + '/');
+      ws.onopen = function () {
+        ws.send(JSON.stringify({ type: 'IDENTIFY', handle: handle }));
+        ws.send(JSON.stringify({ type: 'SHOAL_SCENE', scene: initialScene }));
+      };
+      ws.onmessage = function (event) {
+        try {
+          var data = JSON.parse(event.data);
+          if (data.type === 'SHOAL_PRESENCE_UPDATE') onRoster(data.roster);
         } catch (e) { /* ignore a malformed frame */ }
       };
       return ws;
@@ -1120,9 +1146,12 @@
   // (coins, partyId, guildId, writingKits, ...) so the rest of the screen
   // stays in sync. ---
 
+  // Guild management moved out to its own Guild Hall scene (point-and-click
+  // rework) - this list (and SocialPanel below) now covers everything else
+  // social that doesn't belong to a specific building: forming a party,
+  // visiting another player's boat, leaderboards, and bottle letters.
   var SOCIAL_TABS = [
     { id: 'party', label: 'Party', icon: 'Users' },
-    { id: 'guild', label: 'Guild', icon: 'Flag' },
     { id: 'visit', label: 'Visit', icon: 'Home' },
     { id: 'leaderboard', label: 'Leaderboards', icon: 'Trophy' },
     { id: 'letters', label: 'Letters', icon: 'Mail' }
@@ -1151,7 +1180,6 @@
         })
       ),
       tab === 'party' && h(PartyTab, { key: 'party-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
-      tab === 'guild' && h(GuildTab, { key: 'guild-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
       tab === 'visit' && h(VisitTab, { key: 'visit-' + handle, save: save, handle: handle }),
       tab === 'leaderboard' && h(LeaderboardTab, { key: 'lb' }),
       tab === 'letters' && h(LettersTab, {
@@ -1285,6 +1313,12 @@
     var save = props.save;
     var handle = props.handle;
     var onRefreshSave = props.onRefreshSave;
+    // Optional room filter for the Guild Hall's multi-room scene
+    // ('common'/'quests'/'bank'). Omitted (as every existing caller/test
+    // does) shows everything in one scroll, same as before the point-and-
+    // click rework.
+    var room = props.room;
+    function showIn(r) { return !room || room === r; }
 
     var _guild = useState(null); var guildInfo = _guild[0]; var setGuildInfo = _guild[1];
     var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
@@ -1357,7 +1391,7 @@
         h('span', null, guild.name),
         h('span', null, 'Payout bonus: +', Math.round(guildInfo.payoutBonus * 100), '%')
       ),
-      h('div', { className: 'shoal-member-list' },
+      showIn('common') && h('div', { className: 'shoal-member-list' },
         guild.members.map(function (m) {
           return h('div', { key: m.handle, className: 'shoal-member-row' },
             h('span', { className: 'shoal-member-dot' + (m.active ? ' shoal-member-dot-active' : '') }),
@@ -1368,12 +1402,12 @@
           );
         })
       ),
-      h('div', { className: 'shoal-invite-form' },
+      showIn('common') && h('div', { className: 'shoal-invite-form' },
         h('input', { type: 'text', placeholder: '@handle to invite', value: inviteHandle, onChange: function (e) { setInviteHandle(e.target.value); } }),
         h('button', { type: 'button', disabled: busy || !inviteHandle, onClick: function () { run(apiPost('/api/shoal-tales/guild/invite', { handle: handle, toHandle: inviteHandle })); setInviteHandle(''); } }, 'Invite')
       ),
-      h('div', { className: 'shoal-subtitle' }, "Today's Quests"),
-      h('div', { className: 'shoal-quest-list' },
+      showIn('quests') && h('div', { className: 'shoal-subtitle' }, "Today's Quests"),
+      showIn('quests') && h('div', { className: 'shoal-quest-list' },
         guild.dailyQuests.map(function (q) {
           var done = q.progress >= q.goal;
           var claimed = q.claimedBy.indexOf(handle) !== -1;
@@ -1385,13 +1419,13 @@
           );
         })
       ),
-      h('div', { className: 'shoal-subtitle' }, 'Guild Bank: ', formatCoins(guild.bank.coins), ' coins'),
-      h('div', { className: 'shoal-bank-row' },
+      showIn('bank') && h('div', { className: 'shoal-subtitle' }, 'Guild Bank: ', formatCoins(guild.bank.coins), ' coins'),
+      showIn('bank') && h('div', { className: 'shoal-bank-row' },
         [100, 1000, 5000].map(function (amt) {
           return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { run(apiPost('/api/shoal-tales/guild/bank/deposit', { handle: handle, amount: amt })); } }, 'Deposit ', formatCoins(amt));
         })
       ),
-      canManageBank && h('div', { className: 'shoal-upgrade-list' },
+      showIn('bank') && canManageBank && h('div', { className: 'shoal-upgrade-list' },
         Object.keys(GUILD_UPGRADE_INFO).map(function (uid) {
           var level = guild.upgrades[uid] || 0;
           var info = GUILD_UPGRADE_INFO[uid];
@@ -1404,7 +1438,7 @@
           );
         })
       ),
-      h('div', { className: 'shoal-chat-box' },
+      showIn('common') && h('div', { className: 'shoal-chat-box' },
         h('div', { className: 'shoal-chat-log' },
           guild.chat.map(function (m, i) { return h('div', { key: i, className: 'shoal-chat-line' }, h('b', null, m.handle, ': '), m.text); })
         ),
@@ -1413,7 +1447,7 @@
           h('button', { type: 'button', disabled: busy || !chatText, onClick: function () { run(apiPost('/api/shoal-tales/guild/chat', { handle: handle, text: chatText })); setChatText(''); } }, 'Send')
         )
       ),
-      h('div', { className: 'shoal-action-row' },
+      showIn('common') && h('div', { className: 'shoal-action-row' },
         h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/guild/leave', { handle: handle })); } }, 'Leave Guild'),
         isOwner && h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/guild/disband', { handle: handle })); } }, 'Disband Guild')
       ),
@@ -1424,8 +1458,12 @@
   function VisitTab(props) {
     var save = props.save;
     var handle = props.handle;
+    // Arriving by clicking a specific ship in the Harbor (point-and-click
+    // rework) skips typing a handle - the manual form below still works
+    // too, e.g. to visit someone not currently shown there.
+    var initialTarget = props.initialTarget;
 
-    var _target = useState(''); var target = _target[0]; var setTarget = _target[1];
+    var _target = useState(initialTarget || ''); var target = _target[0]; var setTarget = _target[1];
     var _boat = useState(null); var boat = _boat[0]; var setBoat = _boat[1];
     var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
     var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
@@ -1433,12 +1471,17 @@
     var _drink = useState({ base: DRINK_PARTS.base[0], flavour: DRINK_PARTS.flavour[0], finish: DRINK_PARTS.finish[0] });
     var drink = _drink[0]; var setDrink = _drink[1];
 
-    function doVisit() {
-      if (!target) return;
+    function doVisit(targetOverride) {
+      var t = targetOverride || target;
+      if (!t) return;
       setBusy(true); setMsg(null);
-      apiGet('/api/shoal-tales/visit?handle=' + encodeURIComponent(handle) + '&ownerHandle=' + encodeURIComponent(target))
+      apiGet('/api/shoal-tales/visit?handle=' + encodeURIComponent(handle) + '&ownerHandle=' + encodeURIComponent(t))
         .then(function (data) { setBoat(data.boat); }).catch(function (e) { setMsg(e.message); setBoat(null); }).finally(function () { setBusy(false); });
     }
+
+    useEffect(function () {
+      if (initialTarget) doVisit(initialTarget);
+    }, [initialTarget]);
 
     function doTip() {
       setBusy(true); setMsg(null);
@@ -1943,6 +1986,109 @@
     );
   }
 
+  // --- Point-and-click rework: illustrated (CSS/SVG, no image assets)
+  // scenes in place of the old always-stacked panel list. Scene is a
+  // shared frame (a themed background + title + optional Back button);
+  // SceneHotspot is the shared clickable-location/person button used
+  // throughout every scene below. ---
+
+  function Scene(props) {
+    return h('div', { className: 'shoal-scene ' + (props.themeClass || '') },
+      h('div', { className: 'shoal-scene-header' },
+        props.onBack && h('button', { type: 'button', className: 'shoal-scene-back', onClick: props.onBack }, '← ', props.backLabel || 'Back'),
+        h('div', { className: 'shoal-scene-title' }, props.title)
+      ),
+      h('div', { className: 'shoal-scene-stage' }, props.children)
+    );
+  }
+
+  function SceneHotspot(props) {
+    return h('button', {
+      type: 'button',
+      className: 'shoal-scene-hotspot' + (props.small ? ' shoal-scene-hotspot-small' : '') + (props.disabled ? ' shoal-scene-hotspot-disabled' : ''),
+      disabled: props.disabled, onClick: props.onClick
+    },
+      h('span', { className: 'shoal-scene-hotspot-icon' }, props.emoji),
+      h('span', { className: 'shoal-scene-hotspot-label' }, props.label),
+      props.sublabel && h('span', { className: 'shoal-scene-hotspot-sublabel' }, props.sublabel)
+    );
+  }
+
+  // The Harbor: the point-and-click hub. Your Ship/The Town/Your Emporium/
+  // Your Guild Hall/The Dock Board are always-there buildings; "Ships at
+  // Anchor" is the live presence roster (task 35) - other currently-online
+  // players, each clickable straight into Visiting them, no typing a
+  // handle required.
+  function HarborScene(props) {
+    var save = props.save;
+    var roster = props.roster;
+    var onEnter = props.onEnter;
+    var onVisit = props.onVisit;
+
+    return h(Scene, { themeClass: 'shoal-scene-harbor', title: 'The Harbor' },
+      h('div', { className: 'shoal-scene-hotspot-row' },
+        h(SceneHotspot, { emoji: '⛵', label: 'Your Ship', onClick: function () { onEnter('ship'); } }),
+        h(SceneHotspot, { emoji: '🏘️', label: 'The Town', onClick: function () { onEnter('town'); } }),
+        save.townOpen && h(SceneHotspot, { emoji: '🏪', label: 'Your Emporium', onClick: function () { onEnter('emporium'); } }),
+        h(SceneHotspot, { emoji: '🚩', label: save.guildId ? 'Guild Hall' : 'Find a Guild', onClick: function () { onEnter('guildhall'); } }),
+        h(SceneHotspot, { emoji: '📜', label: 'The Dock Board', sublabel: 'Party, Visit, Leaderboards, Letters', onClick: function () { onEnter('dockboard'); } })
+      ),
+      h('div', { className: 'shoal-scene-subtitle' }, 'Ships at Anchor'),
+      roster.length === 0
+        ? h('p', { className: 'shoal-hint' }, 'Nobody else is around right now.')
+        : h('div', { className: 'shoal-harbor-roster' },
+            roster.map(function (r) {
+              return h(SceneHotspot, {
+                key: r.handle, emoji: '⛴️', small: true,
+                label: r.handle + (r.title ? (' (' + r.title + ')') : ''),
+                sublabel: 'in ' + (SCENE_NAMES[r.scene] || r.scene),
+                onClick: function () { onVisit(r.handle); }
+              });
+            })
+          )
+    );
+  }
+
+  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', dockboard: 'the Dock Board', visiting: 'the Harbor' };
+
+  var GUILD_HALL_ROOMS = [
+    { id: 'common', emoji: '🏛️', label: 'Common Room', sublabel: 'Roster & chat' },
+    { id: 'quests', emoji: '📋', label: 'Quest Board', sublabel: "Today's quests" },
+    { id: 'bank', emoji: '💰', label: 'Bank Vault', sublabel: 'Deposits & upgrades' }
+  ];
+
+  // The Guild Hall: a multi-room scene wrapping GuildTab's existing content
+  // (unchanged logic/endpoints) in place of its old single long scroll.
+  // Not in a guild yet -> GuildTab's own found/accept-invite flow, no rooms.
+  function GuildHallScene(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+    var onBack = props.onBack;
+    var _room = useState(null); var room = _room[0]; var setRoom = _room[1];
+
+    if (!save.guildId) {
+      return h(Scene, { themeClass: 'shoal-scene-guildhall', title: 'Find a Guild', onBack: onBack },
+        h(GuildTab, { save: save, handle: handle, onRefreshSave: onRefreshSave })
+      );
+    }
+
+    if (!room) {
+      return h(Scene, { themeClass: 'shoal-scene-guildhall', title: 'The Guild Hall', onBack: onBack },
+        h('div', { className: 'shoal-scene-hotspot-row' },
+          GUILD_HALL_ROOMS.map(function (r) {
+            return h(SceneHotspot, { key: r.id, emoji: r.emoji, label: r.label, sublabel: r.sublabel, onClick: function () { setRoom(r.id); } });
+          })
+        )
+      );
+    }
+
+    var roomInfo = GUILD_HALL_ROOMS.find(function (r) { return r.id === room; });
+    return h(Scene, { themeClass: 'shoal-scene-guildhall', title: roomInfo.label, onBack: function () { setRoom(null); }, backLabel: 'Guild Hall' },
+      h(GuildTab, { save: save, handle: handle, onRefreshSave: onRefreshSave, room: room })
+    );
+  }
+
   function ShoalTalesScreen(props) {
     var handle = props.userProfile && props.userProfile.handle;
     var isStaff = !!(props.userProfile && props.userProfile.role === 'superadmin');
@@ -1956,6 +2102,33 @@
     var _countdown = useState(0); var countdown = _countdown[0]; var setCountdown = _countdown[1];
     var _curioChoosingBin = useState(null); var curioChoosingBin = _curioChoosingBin[0]; var setCurioChoosingBin = _curioChoosingBin[1];
     var _lastFoundLetter = useState(null); var lastFoundLetter = _lastFoundLetter[0]; var setLastFoundLetter = _lastFoundLetter[1];
+    // Point-and-click scene state: 'harbor' (default/hub) / 'ship' / 'town' /
+    // 'emporium' / 'guildhall' / 'dockboard' / 'visiting'. visitingHandle is
+    // only set while scene === 'visiting' (clicked a ship in the Harbor).
+    var _scene = useState('harbor'); var scene = _scene[0]; var setScene = _scene[1];
+    var _visitingHandle = useState(null); var visitingHandle = _visitingHandle[0]; var setVisitingHandle = _visitingHandle[1];
+    var _roster = useState([]); var roster = _roster[0]; var setRoster = _roster[1];
+    var presenceWsRef = useRef(null);
+
+    function goTo(nextScene) { setVisitingHandle(null); setScene(nextScene); }
+    function goToHarbor() { goTo('harbor'); }
+    function visitShip(targetHandle) { setVisitingHandle(targetHandle); setScene('visiting'); }
+
+    // One live presence connection per mount, reporting the current scene
+    // and listening for everyone else's (14-extras.md has no precedent for
+    // this - it's the new point-and-click Harbor, server.js task 35).
+    useEffect(function () {
+      if (!handle) return undefined;
+      var ws = shoalOpenPresenceSocket(handle, scene, function (newRoster) { setRoster(newRoster); });
+      presenceWsRef.current = ws;
+      apiGet('/api/shoal-tales/presence?handle=' + encodeURIComponent(handle)).then(function (d) { setRoster(d.roster || []); }).catch(function () {});
+      return function () { if (ws) ws.close(); presenceWsRef.current = null; };
+    }, [handle]);
+
+    useEffect(function () {
+      var ws = presenceWsRef.current;
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'SHOAL_SCENE', scene: scene }));
+    }, [scene]);
 
     var refresh = useCallback(function () {
       if (!handle) return Promise.resolve();
@@ -2331,6 +2504,57 @@
     }
     if (!save) return null;
 
+    // Point-and-click scene routing: Ship/Town/Emporium each wrap their
+    // existing panels (unchanged props/logic) in the shared Scene frame;
+    // Harbor and Guild Hall are their own components above since they carry
+    // real navigation state of their own (the live roster, the hall's rooms).
+    var sceneBody;
+    if (scene === 'ship') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Your Ship', onBack: goToHarbor },
+        h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
+        h(TrayPanel, {
+          save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult,
+          onScrub: handleScrub, onPry: handlePry, onUncork: handleUncork, onRelease: handleRelease,
+          onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort,
+          onStartPuzzle: handleStartPuzzle, onKeepBottle: handleKeepBottle
+        }),
+        h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
+        h(ShipwrightPanel, {
+          save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
+          onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,
+          onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
+        }),
+        h(CollectorsLogSummary, { save: save }),
+        save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire })
+      );
+    } else if (scene === 'town') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-town', title: 'The Town', onBack: goToHarbor },
+        h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
+        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
+        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy }),
+        h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff })
+      );
+    } else if (scene === 'emporium') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-emporium', title: 'Your Emporium', onBack: goToHarbor },
+        h(EmporiumPanel, { save: save, busy: busy, handlers: emporiumHandlers })
+      );
+    } else if (scene === 'guildhall') {
+      sceneBody = h(GuildHallScene, { save: save, handle: handle, onRefreshSave: refresh, onBack: goToHarbor });
+    } else if (scene === 'dockboard') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'The Dock Board', onBack: goToHarbor },
+        h(SocialPanel, {
+          save: save, handle: handle, onRefreshSave: refresh,
+          lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
+        })
+      );
+    } else if (scene === 'visiting') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-harbor', title: 'Visiting ' + visitingHandle, onBack: goToHarbor },
+        h(VisitTab, { key: 'visit-' + visitingHandle, save: save, handle: handle, initialTarget: visitingHandle })
+      );
+    } else {
+      sceneBody = h(HarborScene, { save: save, roster: roster, onEnter: goTo, onVisit: visitShip });
+    }
+
     return h('div', { className: 'shoal-tales-screen' },
       h('div', { className: 'shoal-header' },
         h('div', { className: 'shoal-header-title' }, h(Icons.Anchor, { className: 'shoal-header-icon' }), 'Shoal Tales', save.title ? (' — ' + save.title) : ''),
@@ -2340,32 +2564,7 @@
       error && h('div', { className: 'shoal-error-banner' }, error),
       h(TideEventBanner, { key: 'tide-event' }),
       h(NewPlayerHintBanner, { key: 'hint', save: save }),
-      h('div', { className: 'shoal-body' },
-        h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
-        h(TrayPanel, {
-          save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult,
-          onScrub: handleScrub, onPry: handlePry, onUncork: handleUncork, onRelease: handleRelease,
-          onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort,
-          onStartPuzzle: handleStartPuzzle, onKeepBottle: handleKeepBottle
-        }),
-        h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
-        h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
-        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
-        save.townOpen && h(EmporiumPanel, { save: save, busy: busy, handlers: emporiumHandlers }),
-        save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire }),
-        h(ShipwrightPanel, {
-          save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
-          onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,
-          onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
-        }),
-        h(CollectorsLogSummary, { save: save }),
-        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy }),
-        h(SocialPanel, {
-          save: save, handle: handle, onRefreshSave: refresh,
-          lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
-        }),
-        h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff })
-      )
+      sceneBody
     );
   }
 
@@ -2407,6 +2606,10 @@
     QuestBookTab: QuestBookTab,
     SettingsTab: SettingsTab,
     StaffTab: StaffTab,
+    Scene: Scene,
+    SceneHotspot: SceneHotspot,
+    HarborScene: HarborScene,
+    GuildHallScene: GuildHallScene,
     formatCoins: formatCoins
   };
 })(typeof window !== 'undefined' ? window : this);
