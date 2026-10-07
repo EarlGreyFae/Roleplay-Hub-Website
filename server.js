@@ -567,6 +567,69 @@ function shoalNewTrayId(i) {
   return 'tray_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
 }
 
+// --- Bonus system (09-economy.md "All bonus types"): every Collector's
+// Log set, magic curio, and Emporium decoration carries a named bonus
+// (payout/time/curio/luck/rarity/basket/streakCap/streakStep/townPrice/
+// fish/crate/kindness/forgive/doubleScrub/extraItem/letters/magic/bin).
+// This was tracked (completedSetIds, magicCurios, pedestals) but never
+// actually SUMMED OR APPLIED anywhere beyond a few hand-picked payout
+// sources (retirement/party/guild/tide/event/pet) - these two functions
+// are the general-purpose version every other bonus-consuming call site
+// below reads from.
+
+// Parses one bonus string from collectors-sets.csv/decorations.csv. Formats
+// seen: "payout +5%", "+15% sorted plastic", "+1 basket slot", and (for
+// decorations, which have no type prefix) "+0.5%" - pass defaultType for
+// that last shape.
+function shoalParseBonusString(str, defaultType) {
+  if (!str) return null;
+  let m = str.match(/^\+(\d+(?:\.\d+)?)%\s+sorted\s+(\w+)$/i);
+  if (m) return { type: 'bin', bin: m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase(), amount: parseFloat(m[1]) / 100 };
+  m = str.match(/^\+(\d+)\s+basket\s+slot$/i);
+  if (m) return { type: 'basket', amount: parseInt(m[1], 10) };
+  m = str.match(/^(\w+)\s+\+(\d+(?:\.\d+)?)%$/);
+  if (m) return { type: m[1], amount: parseFloat(m[2]) / 100 };
+  m = str.match(/^\+(\d+(?:\.\d+)?)%$/);
+  if (m && defaultType) return { type: defaultType, amount: parseFloat(m[1]) / 100 };
+  return null;
+}
+
+// Sums every completed-set/magic-curio/decoration/back-room bonus by type.
+// Does NOT include retirement/party/guild/tide/event/pet bonuses (those
+// were already correctly wired as payout-only - shoalPayoutBonus still
+// composes those itself, on top of this function's 'payout' total).
+function shoalCollectedBonuses(save) {
+  const totals = {};
+  function add(parsed) {
+    if (!parsed) return;
+    if (parsed.type === 'bin') {
+      totals.bin = totals.bin || {};
+      totals.bin[parsed.bin] = (totals.bin[parsed.bin] || 0) + parsed.amount;
+    } else {
+      totals[parsed.type] = (totals[parsed.type] || 0) + parsed.amount;
+    }
+  }
+  (save.completedSetIds || []).forEach(setId => {
+    const set = ShoalTalesData.sets.find(s => s.id === setId);
+    if (set) add(shoalParseBonusString(set.completionBonus));
+  });
+  (save.magicCurios || []).forEach(id => {
+    const m = ShoalTalesData.magicCurios.find(x => x.id === id);
+    if (m) add({ type: m.bonus, amount: m.amount });
+  });
+  if (save.emporiumOpen && save.emporium && Array.isArray(save.emporium.pedestals)) {
+    save.emporium.pedestals.forEach(decId => {
+      if (!decId) return;
+      const dec = ShoalTalesData.decorations.find(d => d.id === decId);
+      if (dec) add(shoalParseBonusString(dec.valueBonusOnDisplay, 'payout'));
+    });
+  }
+  if (save.emporiumOpen && save.emporium && save.emporium.backRoomBuilt) {
+    totals.payout = (totals.payout || 0) + 0.02;
+  }
+  return totals;
+}
+
 // --- Retiring (docs/shoal-tales-spec/11-retiring.md): "+10% value on
 // everything (payout bonus)" and "3% faster dredging", both "all time
 // bonuses capped at 50% total" per retirement. Luck is endgame-only (past
@@ -582,7 +645,8 @@ function shoalPayoutBonus(save) {
   // Completing an event's Collector's Log set "gives a small lasting bonus
   // of about +2%" - stacks per event completed, like a guild set.
   const eventBonus = (save.completedEventIds || []).length * 0.02;
-  return Math.min(0.5, retireBonus + petBonus + partyBonus + guildBonus + tideBonus + eventBonus);
+  const collectedBonus = shoalCollectedBonuses(save).payout || 0;
+  return Math.min(0.5, retireBonus + petBonus + partyBonus + guildBonus + tideBonus + eventBonus + collectedBonus);
 }
 
 // --- Extras (docs/shoal-tales-spec/14-extras.md): Tides, Events ---
@@ -626,7 +690,7 @@ function shoalQuestProgress(save, quest) {
     case 'hauls': return { have: save.allTimeStats.hauls || 0, need: t.amount };
     case 'coinsOnHand': return { have: save.coins || 0, need: t.amount };
     case 'coinsEarnedThisRun': return { have: save.lifetimeCoinsThisRun || 0, need: t.amount };
-    case 'basketSize': return { have: ShoalTalesEngine.basketSize(save.basketLevel, 0), need: t.amount };
+    case 'basketSize': return { have: ShoalTalesEngine.basketSize(save.basketLevel, shoalCollectedBonuses(save).basket || 0), need: t.amount };
     case 'upgradeLevel': {
       const field = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' }[t.target];
       return { have: field ? save[field] : 0, need: t.amount };
@@ -1098,6 +1162,7 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
   const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
   if (itemIndex < 0) return { status: 404, body: { error: 'That item is not in the tray.' } };
   const item = save.tray[itemIndex];
+  const collected = shoalCollectedBonuses(save);
 
   if (item.kind === 'fish') {
     if (bin !== 'cooler') {
@@ -1107,7 +1172,8 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
     const goldenEligible = save.retirements >= 8;
     const golden = goldenEligible && Math.random() < 0.01;
     const value = ShoalTalesEngine.fishValue({
-      base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: shoalPayoutBonus(save), bFish: 0, golden: golden
+      base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: shoalPayoutBonus(save), bFish: collected.fish || 0,
+      bStreakCap: collected.streakCap || 0, bStreakStep: collected.streakStep || 0, golden: golden
     });
     save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, stage: 'raw', caughtAt: new Date().toISOString() });
     save.streak += 1;
@@ -1157,11 +1223,12 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
   let value;
   if (correct) {
     value = ShoalTalesEngine.correctSortValue({
-      base: item.baseCoins, streakCount: save.streak, bPayout: shoalPayoutBonus(save), bBin: 0, movedByStation: movedByStation, area: item.areaMultiplier
+      base: item.baseCoins, streakCount: save.streak, bPayout: shoalPayoutBonus(save), bBin: (collected.bin && collected.bin[bin]) || 0,
+      bStreakCap: collected.streakCap || 0, bStreakStep: collected.streakStep || 0, movedByStation: movedByStation, area: item.areaMultiplier
     });
     save.streak += 1;
   } else {
-    value = ShoalTalesEngine.wrongSortValue(item.baseCoins, 0, item.areaMultiplier);
+    value = ShoalTalesEngine.wrongSortValue(item.baseCoins, collected.forgive || 0, item.areaMultiplier);
     save.streak = 0;
   }
   save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
@@ -1210,10 +1277,14 @@ function shoalCheckSeasonRollover() {
 }
 
 function shoalTimeBonus(save) {
-  return Math.min(0.5, (save.retirements || 0) * 0.03);
+  const retireBonus = (save.retirements || 0) * 0.03;
+  const collectedBonus = shoalCollectedBonuses(save).time || 0;
+  return Math.min(0.5, retireBonus + collectedBonus);
 }
 function shoalLuckBonus(save) {
-  return save.retirements > 8 ? (save.retirements - 8) * 0.03 : 0;
+  const retireBonus = save.retirements > 8 ? (save.retirements - 8) * 0.03 : 0;
+  const collectedBonus = shoalCollectedBonuses(save).luck || 0;
+  return retireBonus + collectedBonus;
 }
 
 function shoalRetirementTitle(retirements) {
@@ -1393,9 +1464,11 @@ function generateShoalHaul(save) {
   const event = shoalActiveEvent();
   const springTideActive = tide && tide.type === 'spring';
   const glassTideActive = tide && tide.type === 'glass';
-  const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, 0, { isFirstHaulOfDay: isFirstHaulOfDay, springTideActive: springTideActive });
-  // Luck is endgame-only: "+3% luck" per retirement past the 8th (09-economy.md).
-  // Other luck sources (sets/magic curios/upgrades) aren't wired in yet.
+  const collected = shoalCollectedBonuses(save);
+  // "chance each haul brings one bonus item" (09-economy.md extraItem) -
+  // e.g. Tabletop set "extraItem +10%" - rolled once per haul, not per item.
+  const extraItemBonusHit = Math.random() < (collected.extraItem || 0);
+  const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, collected.basket || 0, { isFirstHaulOfDay: isFirstHaulOfDay, springTideActive: springTideActive, extraItemBonusHit: extraItemBonusHit });
   const luck = shoalLuckBonus(save);
 
   const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
@@ -1423,13 +1496,14 @@ function generateShoalHaul(save) {
     const id = shoalNewTrayId(i);
 
     const puzzleBoxChance = save.emporiumOpen ? 0.03 * (1 + 0.5 * save.depth) : 0;
-    const magicCurioChance = magicCuriosRemaining.length > 0 ? 0.006 * (1 + luck) * (1 + 0.5 * save.depth) : 0;
+    // "The Deep Ones" set: "magic +50%" - a chance bonus on finding a magic curio.
+    const magicCurioChance = magicCuriosRemaining.length > 0 ? 0.006 * (1 + luck) * (1 + (collected.magic || 0)) * (1 + 0.5 * save.depth) : 0;
     const roll = Math.random();
 
     if (roll < puzzleBoxChance) {
       // "Common/uncommon boxes are 3x3; rare/epic are 4x4" - reuses the
       // curio rarity distribution since the spec gives no separate table.
-      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(0));
+      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(collected.rarity || 0));
       const size = (rarity === 'Rare' || rarity === 'Epic') ? 4 : 3;
       tray.push({ id, kind: 'puzzleBox', name: 'Puzzle Box', rarity, size, areaMultiplier });
       continue;
@@ -2929,7 +3003,10 @@ const server = http.createServer(async (req, res) => {
           save[key] = { units: 0, value: 0 };
         }
       });
-      coinsEarned = Math.round(coinsEarned);
+      // "townPrice: + prices when selling in Town" (09-economy.md) - Full
+      // Breakfast set "townPrice +5%".
+      const townPriceBonus = shoalCollectedBonuses(save).townPrice || 0;
+      coinsEarned = Math.round(coinsEarned * (1 + townPriceBonus));
       save.coins += coinsEarned;
       save.lifetimeCoinsThisRun += coinsEarned;
       save.allTimeStats.coinsEarned += coinsEarned;
@@ -3018,6 +3095,23 @@ const server = http.createServer(async (req, res) => {
       if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
       const item = save.tray[itemIndex];
 
+      if (item.kind !== 'magicCurio' && (item.kind !== 'curio' || item.identified)) {
+        return sendJson(res, 400, { error: 'Nothing to scrub here.' });
+      }
+
+      // "Scrub it clean (4 clicks)" (06-curios.md) - progress is tracked on
+      // the tray item itself and only the 4th click actually identifies it.
+      // Hedge Witch set "doubleScrub +15%" gives each click a chance to
+      // count as two.
+      const collected = shoalCollectedBonuses(save);
+      const SCRUBS_NEEDED = 4;
+      item.scrubProgress = (item.scrubProgress || 0) + 1;
+      if (item.scrubProgress < SCRUBS_NEEDED && Math.random() < (collected.doubleScrub || 0)) item.scrubProgress += 1;
+      if (item.scrubProgress < SCRUBS_NEEDED) {
+        saveDatabase();
+        return sendJson(res, 200, { success: true, kind: 'scrubbing', trayItemId, scrubProgress: item.scrubProgress, scrubsNeeded: SCRUBS_NEEDED });
+      }
+
       if (item.kind === 'magicCurio') {
         const remaining = ShoalTalesData.magicCurios.filter(m => save.magicCurios.indexOf(m.id) === -1);
         if (remaining.length === 0) return sendJson(res, 400, { error: 'All magic curios are already found.' });
@@ -3030,9 +3124,6 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { success: true, kind: 'magicCurio', magicCurio: found, allSixFound: save.magicCurios.length >= 6 });
       }
 
-      if (item.kind !== 'curio' || item.identified) {
-        return sendJson(res, 400, { error: 'Nothing to scrub here.' });
-      }
       const area = shoalAreaById(save.area);
       const activeEventForScrub = shoalActiveEvent();
       let curioPool = item.curioSource === 'party' ? ShoalTalesData.curios.filter(c => c.set === 'Party Favours')
@@ -3045,8 +3136,7 @@ const server = http.createServer(async (req, res) => {
       if (curioPool.length === 0) return sendJson(res, 500, { error: 'No curios available to identify in this area.' });
       const picked = curioPool[Math.floor(Math.random() * curioPool.length)];
       const goldenEligible = save.retirements >= 8;
-      const rarityShift = 0; // no rarity-boosting bonuses wired in yet (Glowing Pearl / set bonuses) - Economy phase.
-      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(rarityShift));
+      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(collected.rarity || 0));
 
       item.identified = true;
       item.name = picked.name;
@@ -3080,11 +3170,12 @@ const server = http.createServer(async (req, res) => {
       const area = shoalAreaById(save.area);
       save.tray.splice(itemIndex, 1);
       save.allTimeStats.cratesOpened += 1;
+      const crateBonus = shoalCollectedBonuses(save).crate || 0;
 
       const roll = Math.random();
       let result;
       if (roll < 0.5) {
-        const coins = Math.round((5 + Math.random() * 20) * item.areaMultiplier);
+        const coins = Math.round((5 + Math.random() * 20) * (1 + crateBonus) * item.areaMultiplier);
         save.coins += coins;
         save.allTimeStats.coinsEarned += coins;
         save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
@@ -3139,7 +3230,9 @@ const server = http.createServer(async (req, res) => {
       const pool = unfoundStatic.map(l => ({ kind: 'static', letter: l, weight: 1 }))
         .concat(eventLetters.map(l => ({ kind: 'static', letter: l, weight: 1 })))
         .concat(playerLetters.map(l => ({ kind: 'player', letter: l, weight: 1 + l.heartCount * 0.1 })));
-      if (Math.random() < 0.35 && pool.length > 0) {
+      // "35% a letter (x letter bonus)" (06-curios.md) - Film Noir set "letters +25%".
+      const lettersBonus = shoalCollectedBonuses(save).letters || 0;
+      if (Math.random() < (0.35 * (1 + lettersBonus)) && pool.length > 0) {
         const totalWeight = pool.reduce((s, p) => s + p.weight, 0);
         let roll = Math.random() * totalWeight;
         let chosen = pool[pool.length - 1];
@@ -3181,7 +3274,8 @@ const server = http.createServer(async (req, res) => {
       const item = save.tray[itemIndex];
       if (item.kind !== 'seaCreature') return sendJson(res, 400, { error: 'That is not a sea creature.' });
 
-      const coins = Math.round((2 + Math.random() * 4) * item.areaMultiplier);
+      const kindnessBonus = shoalCollectedBonuses(save).kindness || 0;
+      const coins = Math.round((2 + Math.random() * 4) * (1 + kindnessBonus) * item.areaMultiplier);
       save.coins += coins;
       save.allTimeStats.coinsEarned += coins;
       save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
@@ -3210,7 +3304,8 @@ const server = http.createServer(async (req, res) => {
       if (item.kind !== 'curio' || !item.identified) {
         return sendJson(res, 400, { error: 'Scrub this curio first.' });
       }
-      const fullValue = ShoalTalesEngine.curioValue(item.baseCoins, item.rarity, 0) * (item.golden ? 3 : 1);
+      const collected = shoalCollectedBonuses(save);
+      const fullValue = ShoalTalesEngine.curioValue(item.baseCoins, item.rarity, collected.curio || 0) * (item.golden ? 3 : 1);
       const RARITY_RANK = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3 };
 
       if (action === 'log') {
@@ -3243,7 +3338,7 @@ const server = http.createServer(async (req, res) => {
       if (action === 'sort') {
         if (!bin || !ShoalTalesEngine.BINS.includes(bin)) return sendJson(res, 400, { error: 'Not a real bin.' });
         const correct = bin === item.bin;
-        const streakMult = ShoalTalesEngine.streakMultiplier(save.streak, 0, 0);
+        const streakMult = ShoalTalesEngine.streakMultiplier(save.streak, collected.streakCap || 0, collected.streakStep || 0);
         const value = ShoalTalesEngine.curioSortValue(fullValue, streakMult, correct);
         save.streak = correct ? save.streak + 1 : 0;
         save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);

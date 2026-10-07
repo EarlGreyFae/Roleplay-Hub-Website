@@ -373,7 +373,7 @@
       }
       if (item.kind === 'magicCurio') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn shoal-action-btn-magic' },
-          h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub'));
+          h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/4)' : '')));
       }
       if (item.kind === 'puzzleBox') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onStartPuzzle(item.id); }, className: 'shoal-action-btn' },
@@ -382,7 +382,7 @@
       if (item.kind === 'curio') {
         if (!item.identified) {
           return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn' },
-            h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub'));
+            h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/4)' : '')));
         }
         if (curioChoosingBin === item.id) {
           return ENGINE.BINS.map(function (bin) {
@@ -2183,14 +2183,22 @@
     }
 
     function handleScrub(trayItemId) {
-      runAction(apiPost('/api/shoal-tales/scrub', { handle: handle, trayItemId: trayItemId })).then(function (data) {
-        if (!data) return;
-        if (data.kind === 'magicCurio') {
+      // Doesn't go through the generic runAction, which always clears the
+      // tray selection - "Scrub it clean (4 clicks)" (06-curios.md) needs
+      // the item to stay selected/visible between clicks so Scrub can be
+      // tapped again immediately, not re-selected from the grid each time.
+      setBusy(true);
+      apiPost('/api/shoal-tales/scrub', { handle: handle, trayItemId: trayItemId }).then(function (data) {
+        if (data.kind === 'scrubbing') {
+          setLastResult({ ok: true, message: 'Scrubbing... (' + data.scrubProgress + '/' + data.scrubsNeeded + ')' });
+        } else if (data.kind === 'magicCurio') {
+          setSelectedId(null);
           setLastResult({ ok: true, message: '✨ Found ' + data.magicCurio.name + '! ' + data.magicCurio.description });
         } else {
           setLastResult({ ok: true, message: 'Scrubbed clean: ' + data.item.name + ' (' + data.item.rarity + (data.item.golden ? ', golden!' : '') + ')' });
         }
-      });
+        return refresh();
+      }).catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
     }
 
     function handlePry(trayItemId) {
