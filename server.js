@@ -273,7 +273,7 @@ function defaultShoalTalesSave(handle) {
     lastHaulDate: null,
     allTimeStats: { hauls: 0, junkSorted: 0, fishOnIce: 0, coinsEarned: 0, bestStreak: 0, curiosScrubbed: 0, cratesOpened: 0, creaturesReleased: 0 },
     // Kept for good across retiring (docs/shoal-tales-spec/11-retiring.md) -
-    // not reset by anything in this phase since retiring itself isn't built yet.
+    // shoalApplyRetire() never touches these.
     collectorsLog: { curios: {}, fish: {} },
     magicCurios: [],
     creaturesSeen: [],
@@ -461,6 +461,60 @@ function shoalNewTrayId(i) {
   return 'tray_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
 }
 
+// --- Retiring (docs/shoal-tales-spec/11-retiring.md): "+10% value on
+// everything (payout bonus)" and "3% faster dredging", both "all time
+// bonuses capped at 50% total" per retirement. Luck is endgame-only (past
+// the 8th retirement, +3% per further retirement) - see 09-economy.md.
+function shoalPayoutBonus(save) {
+  return Math.min(0.5, (save.retirements || 0) * 0.10);
+}
+function shoalTimeBonus(save) {
+  return Math.min(0.5, (save.retirements || 0) * 0.03);
+}
+function shoalLuckBonus(save) {
+  return save.retirements > 8 ? (save.retirements - 8) * 0.03 : 0;
+}
+
+function shoalRetirementTitle(retirements) {
+  const titles = ShoalTalesData.retirementTitles;
+  return titles[Math.min(retirements, titles.length - 1)];
+}
+
+// Resets "this run only" state and grants the next area/depth/title, per
+// 11-retiring.md's reset table. Everything NOT touched here (Collector's
+// Log, magic curios, Creatures Seen, Golden Log, Stored Curios, rare
+// materials, requests/standing orders done, the Emporium and everything in
+// it, letters, all-time stats, best streak ever) is "kept for good" simply
+// by not being reset. Returns the new title.
+function shoalApplyRetire(save) {
+  const bins = {};
+  ShoalTalesEngine.BINS.forEach(b => { bins[b] = { units: 0, value: 0 }; });
+  save.coins = 0;
+  save.lifetimeCoinsThisRun = 0;
+  save.tray = [];
+  save.basketLevel = 0;
+  save.winchLevel = 0;
+  save.brushLevel = 0;
+  save.charmLevel = 0;
+  save.stationsInstalled = [];
+  save.sortedGoods = bins;
+  save.cooler = [];
+  save.streak = 0;
+  save.bestStreakThisRun = 0;
+  save.stationProgress = 0;
+  save.knickKnacks = { units: 0, value: 0 };
+  save.ingots = { units: 0, value: 0 };
+  save.materials = { units: 0, value: 0 };
+  save.area = 'shoalbay';
+  save.depth = 0;
+
+  save.retirements += 1;
+  save.unlockedAreas = ShoalTalesData.mapAreas.filter(a => a.opensAtRetirement <= save.retirements).map(a => a.id);
+  save.unlockedDepths = ShoalTalesData.depths.filter(d => d.opensAtRetirement <= save.retirements).map(d => d.level);
+
+  return shoalRetirementTitle(save.retirements);
+}
+
 // --- The Emporium (docs/shoal-tales-spec/10-emporium.md) ---
 
 const EMPORIUM_OPEN_COST = 6000;
@@ -568,7 +622,9 @@ function generateShoalHaul(save) {
   const isFirstHaulOfDay = save.lastHaulDate !== new Date().toISOString().slice(0, 10);
   const isVeryFirstHaul = save.allTimeStats.hauls === 0;
   const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, 0, { isFirstHaulOfDay: isFirstHaulOfDay });
-  const luck = 0; // no luck-bonus sources wired in yet (sets/magic curios/upgrades) - see 09-economy.md bonus stacking, deferred to the Economy phase.
+  // Luck is endgame-only: "+3% luck" per retirement past the 8th (09-economy.md).
+  // Other luck sources (sets/magic curios/upgrades) aren't wired in yet.
+  const luck = shoalLuckBonus(save);
 
   const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
   const fishPool = ShoalTalesData.fish.filter(f => {
@@ -1990,9 +2046,9 @@ const server = http.createServer(async (req, res) => {
       const handle = query.get('handle') || '';
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
       const save = getOrCreateShoalTalesSave(handle);
-      // nextStation is derived (never persisted) so the stored save stays
-      // clean - it's recomputed fresh on every GET.
-      const withDerived = Object.assign({}, save, { nextStation: shoalNextStationInfo(save) });
+      // nextStation/title are derived (never persisted) so the stored save
+      // stays clean - both are recomputed fresh on every GET.
+      const withDerived = Object.assign({}, save, { nextStation: shoalNextStationInfo(save), title: shoalRetirementTitle(save.retirements) });
       return sendJson(res, 200, { success: true, save: withDerived });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
@@ -2007,7 +2063,7 @@ const server = http.createServer(async (req, res) => {
       if (save.tray.length > 0) {
         return sendJson(res, 400, { error: 'Clear your tray before dropping the dredge again.' });
       }
-      const dredgeTimeSeconds = ShoalTalesEngine.dredgeTimeSeconds(save.depth, save.winchLevel, 0);
+      const dredgeTimeSeconds = ShoalTalesEngine.dredgeTimeSeconds(save.depth, save.winchLevel, shoalTimeBonus(save));
       const tray = generateShoalHaul(save);
       save.tray = tray;
       save.lastHaulDate = new Date().toISOString().slice(0, 10);
@@ -2032,12 +2088,11 @@ const server = http.createServer(async (req, res) => {
         if (bin !== 'cooler') {
           return sendJson(res, 400, { error: 'Fish can only go in the cooler.' });
         }
-        // Golden finds are endgame-only (8th retirement+, 09-economy.md); this
-        // stays inert (golden never true) until the Retiring phase lands.
+        // Golden finds are endgame-only (8th retirement+, 09-economy.md).
         const goldenEligible = save.retirements >= 8;
         const golden = goldenEligible && Math.random() < 0.01;
         const value = ShoalTalesEngine.fishValue({
-          base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: 0, bFish: 0, golden: golden
+          base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: shoalPayoutBonus(save), bFish: 0, golden: golden
         });
         save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, stage: 'raw', caughtAt: new Date().toISOString() });
         save.streak += 1;
@@ -2076,7 +2131,7 @@ const server = http.createServer(async (req, res) => {
       let value;
       if (correct) {
         value = ShoalTalesEngine.correctSortValue({
-          base: item.baseCoins, streakCount: save.streak, bPayout: 0, bBin: 0, movedByStation: movedByStation, area: item.areaMultiplier
+          base: item.baseCoins, streakCount: save.streak, bPayout: shoalPayoutBonus(save), bBin: 0, movedByStation: movedByStation, area: item.areaMultiplier
         });
         save.streak += 1;
       } else {
@@ -2855,7 +2910,7 @@ const server = http.createServer(async (req, res) => {
       const customer = emp.counterCustomers[idx];
       const area = shoalAreaById(save.area).valueMultiplier;
       const correctDrink = drink.base === customer.drink.base && drink.flavour === customer.drink.flavour && drink.finish === customer.drink.finish;
-      let pay = ShoalTalesEngine.counterDrinkPay({ correctDrink, customerTip: customer.tip, area, bPayout: 0 });
+      let pay = ShoalTalesEngine.counterDrinkPay({ correctDrink, customerTip: customer.tip, area, bPayout: shoalPayoutBonus(save) });
       let mealGiven = false;
       if (customer.wantsMeal && coolerItemId) {
         const meal = save.cooler.find(f => f.id === coolerItemId && f.stage === 'meal');
@@ -2910,7 +2965,7 @@ const server = http.createServer(async (req, res) => {
       let coinsEarned = 0, decoration = null;
       if (solved) {
         const area = shoalAreaById(save.area).valueMultiplier;
-        coinsEarned = Math.round(ShoalTalesEngine.puzzleSolvePay(puzzle.rarity, area, 0));
+        coinsEarned = Math.round(ShoalTalesEngine.puzzleSolvePay(puzzle.rarity, area, shoalPayoutBonus(save)));
         save.coins += coinsEarned;
         save.allTimeStats.coinsEarned += coinsEarned;
         decoration = shoalGrantRandomDecoration(save, ShoalTalesEngine.weightedPick(PRIZE_BOXES.common.weights));
@@ -3089,12 +3144,49 @@ const server = http.createServer(async (req, res) => {
       const emp = save.emporium;
       const hoursAway = (Date.now() - new Date(emp.lastVisit).getTime()) / 3600000;
       const area = shoalAreaById(save.area).valueMultiplier;
-      const earnings = Math.round(ShoalTalesEngine.awayEarnings(hoursAway, area, 0));
+      const earnings = Math.round(ShoalTalesEngine.awayEarnings(hoursAway, area, shoalPayoutBonus(save)));
       save.coins += earnings;
       save.allTimeStats.coinsEarned += earnings;
       emp.lastVisit = new Date().toISOString();
       saveDatabase();
       return sendJson(res, 200, { success: true, hoursAway: Math.min(hoursAway, 8), earnings });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Retiring (docs/shoal-tales-spec/11-retiring.md) ---
+
+  // "Announced to everyone in the game" isn't wired up - there's no guild/
+  // social broadcast channel yet (that's task 24, Social features); this
+  // still fully resets/grants everything the spec calls for on its own.
+  if (reqPath === '/api/shoal-tales/retire' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium must be open first.' });
+      if (save.stationsInstalled.length < ShoalTalesData.stations.length) {
+        return sendJson(res, 400, { error: 'All four stations must be installed first.' });
+      }
+      if (save.basketLevel < 29) {
+        return sendJson(res, 400, { error: 'The basket must be fully upgraded (to 32 items) first.' });
+      }
+      const goal = ShoalTalesEngine.retireGoalForRun(save.retirements + 1);
+      if (save.coins < goal.coinsToRetire) {
+        return sendJson(res, 400, { error: `Not enough coins to retire (need ${goal.coinsToRetire}, have ${Math.floor(save.coins)}).` });
+      }
+      const previousAreas = save.unlockedAreas.length;
+      const previousDepths = save.unlockedDepths.length;
+      const title = shoalApplyRetire(save);
+      const newArea = save.unlockedAreas.length > previousAreas ? save.unlockedAreas[save.unlockedAreas.length - 1] : null;
+      const newDepth = save.unlockedDepths.length > previousDepths ? save.unlockedDepths[save.unlockedDepths.length - 1] : null;
+      saveDatabase();
+      return sendJson(res, 200, {
+        success: true, retirements: save.retirements, title,
+        newArea: newArea ? shoalAreaById(newArea).name : null,
+        newDepth: newDepth != null ? ShoalTalesData.depths.find(d => d.level === newDepth).name : null
+      });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

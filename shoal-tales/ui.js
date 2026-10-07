@@ -753,6 +753,47 @@
     );
   }
 
+  // --- Retiring (11-retiring.md): the prestige/NG+ reset. Only shown once
+  // the Emporium is open, since that's required anyway. A two-click confirm
+  // (matches the app's existing pattern for big/consequential actions, e.g.
+  // Sell Everything, station installs) since this resets so much. ---
+  function RetirePanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onRetire = props.onRetire;
+    var _confirm = useState(false); var confirming = _confirm[0]; var setConfirming = _confirm[1];
+
+    if (!save.emporiumOpen) return null;
+
+    var stationsReady = save.stationsInstalled.length >= DATA.stations.length;
+    var basketReady = save.basketLevel >= 29;
+    var goal = ENGINE.retireGoalForRun(save.retirements + 1);
+    var coinsReady = save.coins >= goal.coinsToRetire;
+    var allReady = stationsReady && basketReady && coinsReady;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Retire the Boat'),
+      h('p', { className: 'shoal-hint' },
+        'Current title: ', save.title || 'Deckhand', ' (', save.retirements, ' retirement', save.retirements === 1 ? '' : 's', ')'),
+      h('div', { className: 'shoal-emporium-checklist' },
+        h('div', { className: 'shoal-checklist-row' }, stationsReady ? '✓' : '○', ' All 4 stations installed'),
+        h('div', { className: 'shoal-checklist-row' }, basketReady ? '✓' : '○', ' Basket upgraded to 32 items'),
+        h('div', { className: 'shoal-checklist-row' }, coinsReady ? '✓' : '○', ' ', formatCoins(goal.coinsToRetire), ' coins on hand (have ', formatCoins(save.coins), ')')
+      ),
+      confirming
+        ? h('button', {
+            type: 'button', disabled: busy,
+            onClick: function () { setConfirming(false); onRetire(); },
+            className: 'shoal-dredge-btn'
+          }, 'Confirm: Retire Now (resets this run)')
+        : h('button', {
+            type: 'button', disabled: busy || !allReady,
+            onClick: function () { setConfirming(true); },
+            className: 'shoal-dredge-btn'
+          }, 'Retire')
+    );
+  }
+
   function DredgeControls(props) {
     var save = props.save;
     var onDredge = props.onDredge;
@@ -1123,6 +1164,16 @@
       }
     };
 
+    function handleRetire() {
+      runAction(apiPost('/api/shoal-tales/retire', { handle: handle })).then(function (data) {
+        if (!data) return;
+        var message = 'Retired! New title: ' + data.title + '.'
+          + (data.newArea ? (' ' + data.newArea + ' is now open!') : '')
+          + (data.newDepth ? (' ' + data.newDepth + ' is now open!') : '');
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
     if (loading) {
       return h('div', { className: 'shoal-tales-screen shoal-loading' }, 'Loading Shoal Tales...');
     }
@@ -1133,7 +1184,7 @@
 
     return h('div', { className: 'shoal-tales-screen' },
       h('div', { className: 'shoal-header' },
-        h('div', { className: 'shoal-header-title' }, h(Icons.Anchor, { className: 'shoal-header-icon' }), 'Shoal Tales'),
+        h('div', { className: 'shoal-header-title' }, h(Icons.Anchor, { className: 'shoal-header-icon' }), 'Shoal Tales', save.title ? (' — ' + save.title) : ''),
         h('div', { className: 'shoal-header-coins' }, h(Icons.Coins, { className: 'shoal-coin-icon' }), formatCoins(save.coins)),
         save.streak > 0 && h('div', { className: 'shoal-header-streak' }, h(Icons.Zap, { className: 'shoal-streak-icon' }), 'x', save.streak)
       ),
@@ -1150,6 +1201,7 @@
         h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
         h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
         save.townOpen && h(EmporiumPanel, { save: save, busy: busy, handlers: emporiumHandlers }),
+        save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire }),
         h(CollectorsLogSummary, { save: save }),
         h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy })
       )
@@ -1174,6 +1226,7 @@
     PrizeCounterPanel: PrizeCounterPanel,
     WorkOrdersPanel: WorkOrdersPanel,
     EmporiumPanel: EmporiumPanel,
+    RetirePanel: RetirePanel,
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,
