@@ -876,19 +876,21 @@
     );
   }
 
-  // --- Cosmetics / the Shipwright (12-cosmetics.md). Premium (Seal Token)
-  // looks, the Season Champion flag, and event sets are NOT shown as
-  // purchasable here - see server.js's matching comment: Seal Tokens are a
-  // real-money-adjacent decision for the site owner, never built by
-  // default, and Season/events need a leaderboard this build doesn't have
-  // yet (Social, task 24). A short note says so rather than silently
-  // omitting the category. The radio has no real audio yet either - that
-  // needs original/licensed tracks, a content decision, not code. ---
+  // --- Cosmetics / the Shipwright (12-cosmetics.md). This build replaces
+  // the original's real-money-adjacent Seal Token shop with a coin-priced
+  // Premium Looks catalog instead (site owner's call - see server.js's
+  // matching comment): any look with a `cost` field is bought with coins,
+  // no retirement required, same as the exotic woods above it. The Season
+  // Champion flag and other event/season looks still aren't buyable (they
+  // need a leaderboard/seasons system, or an event completed). The radio
+  // has no real audio yet either - that needs original/licensed tracks, a
+  // content decision, not code. ---
 
   function shoalLookUnlockHint(item) {
     if (item.unlocksAtRetirement > 0) return 'Unlocks at retirement ' + item.unlocksAtRetirement;
     if (item.id === 'season-champion') return "This month's top 3 coin earners";
     if (item.eventReward) return 'Complete the ' + (item.eventRewardName || 'event') + ' at the Shipwright';
+    if (item.cost) return 'Buy for ' + formatCoins(item.cost) + ' coins, below';
     return null;
   }
 
@@ -923,6 +925,7 @@
     var busy = props.busy;
     var onEquipWood = props.onEquipWood;
     var onBuyWood = props.onBuyWood;
+    var onBuyLook = props.onBuyLook;
     var onEquipSail = props.onEquipSail;
     var onEquipFlag = props.onEquipFlag;
     var onEquipPet = props.onEquipPet;
@@ -940,6 +943,13 @@
     }
 
     var buyableWoods = DATA.woods.filter(function (w) { return !w.free && c.unlockedWoods.indexOf(w.id) === -1; });
+    // Premium Looks: any sail/flag/pet/badge with a `cost` - coin-priced,
+    // no retirement gate, in place of the original's Seal Token shop.
+    var buyableLooks = []
+      .concat(DATA.sails.filter(function (s) { return s.cost && c.unlockedSails.indexOf(s.id) === -1; }).map(function (item) { return { category: 'sail', item: item }; }))
+      .concat(DATA.flags.filter(function (f) { return f.cost && c.unlockedFlags.indexOf(f.id) === -1; }).map(function (item) { return { category: 'flag', item: item }; }))
+      .concat(DATA.pets.filter(function (p) { return p.cost && c.unlockedPets.indexOf(p.id) === -1; }).map(function (item) { return { category: 'pet', item: item }; }))
+      .concat(DATA.chatBadges.filter(function (b) { return b.cost && c.unlockedBadges.indexOf(b.id) === -1; }).map(function (item) { return { category: 'badge', item: item }; }));
     var todayStr = new Date().toISOString().slice(0, 10);
     var pattedToday = c.petPattedDate === todayStr;
     var treatActive = !!c.petTreatExpiresAt && Date.now() < new Date(c.petTreatExpiresAt).getTime();
@@ -1012,9 +1022,19 @@
       ),
 
       h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Premium Looks (Seal Tokens)'),
-        h('p', { className: 'shoal-hint' },
-          'Not available here. Seal Tokens are a real-money-adjacent currency from the original game - whether/how to sell them on Roleplay Hub is a decision for the site owner, not something built by default. The Season Champion flag and event looks also aren’t available yet (they need a leaderboard/seasons system).')
+        h('div', { className: 'shoal-shipwright-subtitle' }, 'Premium Looks'),
+        h('p', { className: 'shoal-hint' }, "Steep, coin-priced extras for a boat that stands out - no retirement required, just the coins. Bought looks join their category above."),
+        buyableLooks.length === 0
+          ? h('p', { className: 'shoal-hint' }, "You've bought every premium look.")
+          : h('div', { className: 'shoal-buy-wood-list' },
+              buyableLooks.map(function (entry) {
+                return h('button', {
+                  key: entry.category + '-' + entry.item.id, type: 'button', disabled: busy || save.coins < entry.item.cost,
+                  onClick: function () { onBuyLook(entry.category, entry.item.id); },
+                  className: 'shoal-action-btn'
+                }, 'Buy ' + (entry.item.emoji ? (entry.item.emoji + ' ') : '') + entry.item.name + ' (' + formatCoins(entry.item.cost) + 'c)');
+              })
+            )
       )
     );
   }
@@ -2275,6 +2295,12 @@
         setLastResult({ ok: true, message: 'Bought for ' + formatCoins(data.coinsSpent) + ' coins.' });
       });
     }
+    function handleBuyLook(category, id) {
+      runAction(apiPost('/api/shoal-tales/cosmetics/buy-look', { handle: handle, category: category, id: id })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Bought for ' + formatCoins(data.coinsSpent) + ' coins.' });
+      });
+    }
     function handleEquipSail(sailId) {
       runAction(apiPost('/api/shoal-tales/cosmetics/equip-sail', { handle: handle, sailId: sailId }));
     }
@@ -2328,7 +2354,7 @@
         save.townOpen && h(EmporiumPanel, { save: save, busy: busy, handlers: emporiumHandlers }),
         save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire }),
         h(ShipwrightPanel, {
-          save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood,
+          save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
           onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,
           onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
         }),

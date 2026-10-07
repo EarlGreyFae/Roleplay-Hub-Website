@@ -3940,12 +3940,17 @@ const server = http.createServer(async (req, res) => {
   }
 
   // --- Cosmetics / the Shipwright (docs/shoal-tales-spec/12-cosmetics.md) ---
-  // Premium (Seal Token) looks, the Season Champion flag, and event sets are
-  // NOT implemented - Seal Tokens are an explicitly-flagged real-money-
-  // adjacent currency decision for the site owner, not something to build by
-  // default, and Season/events need a leaderboard this build doesn't have
-  // (Social, task 24). "Try It On" previews need no endpoint at all - it's a
-  // client-only, never-persisted 30s timer per the spec.
+  // The spec's Seal Token shop is a real-money-adjacent currency decision
+  // for the site owner, not something to build by default - this build
+  // instead sells the same premium looks for coins (steep, late-game
+  // prices, no retirement gate), via buy-exotic-wood below (already
+  // retirement-gate-agnostic when unlocksAtRetirement is null) for woods
+  // and the generic buy-look endpoint for sails/flags/pets/badges. The
+  // Season Champion flag and other event/season looks are still NOT
+  // purchasable - those need a leaderboard this build doesn't have
+  // (Social, task 24) or an event completed. "Try It On" previews need no
+  // endpoint at all - it's a client-only, never-persisted 30s timer per
+  // the spec.
 
   if (reqPath === '/api/shoal-tales/cosmetics/equip-wood' && req.method === 'POST') {
     try {
@@ -3976,6 +3981,37 @@ const server = http.createServer(async (req, res) => {
       save.cosmetics.unlockedWoods.push(woodId);
       saveDatabase();
       return sendJson(res, 200, { success: true, coinsSpent: wood.cost });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Generic Premium Looks purchase for sails/flags/pets/badges - the
+  // coin-priced catalog item (any entry with a `cost` field) replacing the
+  // spec's Seal Token shop for these 4 categories; woods have their own
+  // buy-exotic-wood above since they're bought per-wood but cover all 4
+  // ship parts at once.
+  if (reqPath === '/api/shoal-tales/cosmetics/buy-look' && req.method === 'POST') {
+    try {
+      const { handle, category, id } = await parseJsonBody(req);
+      if (!handle || !category || !id) return sendJson(res, 400, { error: 'Missing handle, category or id' });
+      const catMap = {
+        sail: { table: 'sails', field: 'unlockedSails' },
+        flag: { table: 'flags', field: 'unlockedFlags' },
+        pet: { table: 'pets', field: 'unlockedPets' },
+        badge: { table: 'chatBadges', field: 'unlockedBadges' }
+      };
+      const mapping = catMap[category];
+      if (!mapping) return sendJson(res, 400, { error: 'Not a buyable look category.' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const item = ShoalTalesData[mapping.table].find(i => i.id === id);
+      if (!item || !item.cost) return sendJson(res, 400, { error: 'Not a purchasable look.' });
+      if (save.cosmetics[mapping.field].indexOf(id) !== -1) return sendJson(res, 400, { error: 'Already owned.' });
+      if (save.coins < item.cost) return sendJson(res, 400, { error: `Not enough coins (need ${item.cost}, have ${Math.floor(save.coins)}).` });
+      save.coins -= item.cost;
+      save.cosmetics[mapping.field].push(id);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, coinsSpent: item.cost });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

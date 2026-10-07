@@ -4317,6 +4317,20 @@
       "free": false,
       "cost": 5000,
       "unlocksAtRetirement": 8
+    },
+    {
+      "id": "livingwood",
+      "name": "Livingwood",
+      "free": false,
+      "cost": 30000,
+      "unlocksAtRetirement": null
+    },
+    {
+      "id": "dreamwood",
+      "name": "Dreamwood",
+      "free": false,
+      "cost": 30000,
+      "unlocksAtRetirement": null
     }
   ],
   "woodParts": [
@@ -4380,6 +4394,18 @@
       "id": "rose",
       "name": "Rose",
       "unlocksAtRetirement": 8
+    },
+    {
+      "id": "starlight-sail",
+      "name": "Starlight",
+      "unlocksAtRetirement": null,
+      "cost": 15000
+    },
+    {
+      "id": "kraken-ink-sail",
+      "name": "Kraken Ink",
+      "unlocksAtRetirement": null,
+      "cost": 15000
     }
   ],
   "flags": [
@@ -4439,6 +4465,18 @@
       "unlocksAtRetirement": null,
       "eventReward": true,
       "eventRewardName": "Tide Lantern Festival"
+    },
+    {
+      "id": "golden-wake-flag",
+      "name": "Golden Wake",
+      "unlocksAtRetirement": null,
+      "cost": 15000
+    },
+    {
+      "id": "abyssal-banner-flag",
+      "name": "Abyssal Banner",
+      "unlocksAtRetirement": null,
+      "cost": 15000
     }
   ],
   "pets": [
@@ -4489,6 +4527,20 @@
       "name": "Siamese Cat (Pearl)",
       "emoji": "🐈‍⬛",
       "unlocksAtRetirement": 8
+    },
+    {
+      "id": "bramble",
+      "name": "Harbour Seal (Bramble)",
+      "emoji": "🦭",
+      "unlocksAtRetirement": null,
+      "cost": 20000
+    },
+    {
+      "id": "pebble",
+      "name": "River Otter (Pebble)",
+      "emoji": "🦦",
+      "unlocksAtRetirement": null,
+      "cost": 20000
     }
   ],
   "chatBadges": [
@@ -4539,6 +4591,20 @@
       "name": "Legend Star",
       "emoji": "⭐",
       "unlocksAtRetirement": 8
+    },
+    {
+      "id": "kraken-badge",
+      "name": "Kraken",
+      "emoji": "🐙",
+      "unlocksAtRetirement": null,
+      "cost": 12000
+    },
+    {
+      "id": "compass-rose-badge",
+      "name": "Compass Rose",
+      "emoji": "🧭",
+      "unlocksAtRetirement": null,
+      "cost": 12000
     }
   ],
   "radioTracks": [
