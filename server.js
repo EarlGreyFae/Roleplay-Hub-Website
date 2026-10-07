@@ -774,6 +774,47 @@ function shoalBroadcastToGroup(members, type, groupId, chatMessage) {
   }
 }
 
+// Live presence for the point-and-click Harbor: a connected client reports
+// its current scene ('ship'/'town'/'emporium'/'guildhall'/'harbor') via a
+// SHOAL_SCENE websocket message, stored on ws.shoalScene (null/unset means
+// "not currently in Shoal Tales" - e.g. on another Roleplay Hub tab - and
+// such a client is simply invisible to everyone's roster). The roster is
+// computed per-viewer, not broadcast once for everyone, because visibility
+// depends on the VIEWER's own relationship to each owner (shoalCanVisit
+// mirrors the same privacy rule the existing /visit endpoint already uses).
+function shoalPresenceRosterFor(viewerHandle) {
+  const seen = new Map();
+  for (const ws of wsClients) {
+    if (ws.readyState !== 1 || !ws.userHandle || !ws.shoalScene) continue;
+    if (ws.userHandle === viewerHandle) continue;
+    if (seen.has(ws.userHandle)) continue; // dedupe a player connected from multiple tabs
+    const ownerSave = db.shoalTalesSaves[ws.userHandle];
+    if (!ownerSave) continue;
+    if (!shoalCanVisit(viewerHandle, ownerSave)) continue;
+    seen.set(ws.userHandle, {
+      handle: ws.userHandle,
+      title: shoalDisplayTitle(ownerSave),
+      scene: ws.shoalScene,
+      retirements: ownerSave.retirements,
+      cosmetics: { equippedFlag: ownerSave.cosmetics.equippedFlag, equippedSail: ownerSave.cosmetics.equippedSail, hullWood: ownerSave.cosmetics.equippedWood.hull }
+    });
+  }
+  return Array.from(seen.values());
+}
+
+// Pushed whenever any connected client's scene changes, connects while
+// already in a scene, or disconnects - so everyone else currently in the
+// Harbor (or any Shoal Tales scene) sees ships/rooms appear and disappear
+// live, without polling. Personalized per-recipient (see above).
+function shoalBroadcastPresence() {
+  for (const ws of wsClients) {
+    try {
+      if (ws.readyState !== 1 || !ws.userHandle || !ws.shoalScene) continue;
+      ws.send(JSON.stringify({ type: 'SHOAL_PRESENCE_UPDATE', roster: shoalPresenceRosterFor(ws.userHandle) }));
+    } catch (e) { /* ignore a single bad client */ }
+  }
+}
+
 // Guild quest progress contribution - called from the gameplay endpoints
 // that match a quest type (dredge/sort/scrub/dress/make-meal/process-junk/
 // sell). A no-op unless the player is in a guild AND that guild has a
@@ -4593,6 +4634,21 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Point-and-click Harbor: the initial roster snapshot on first load (the
+  // same personalized, privacy-filtered list shoalBroadcastPresence pushes
+  // live afterwards over the websocket) - needed because a client mounting
+  // the Harbor scene has no roster yet until the next broadcast happens to
+  // fire, which could be a while if nobody else's scene changes meanwhile.
+  if (reqPath === '/api/shoal-tales/presence' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      return sendJson(res, 200, { success: true, roster: shoalPresenceRosterFor(handle) });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // --- Visits (13-social.md) ---
 
   if (reqPath === '/api/shoal-tales/visit' && req.method === 'GET') {
@@ -5206,16 +5262,21 @@ try {
         const parsed = JSON.parse(msgData.toString());
         if (parsed.type === 'IDENTIFY') {
           ws.userHandle = parsed.handle;
+        } else if (parsed.type === 'SHOAL_SCENE') {
+          ws.shoalScene = parsed.scene || null;
+          shoalBroadcastPresence();
         }
       } catch (e) {}
     });
 
     ws.on('close', () => {
       wsClients.delete(ws);
+      if (ws.shoalScene) shoalBroadcastPresence();
     });
 
     ws.on('error', () => {
       wsClients.delete(ws);
+      if (ws.shoalScene) shoalBroadcastPresence();
     });
   });
 
@@ -5333,6 +5394,7 @@ try {
         if (opcode === 8) {
           socket.destroy();
           wsClients.delete(client);
+          if (client.shoalScene) shoalBroadcastPresence();
           return;
         } else if (opcode === 9) {
           socket.write(Buffer.from([0x8a, 0x00]));
@@ -5341,6 +5403,9 @@ try {
             const parsed = JSON.parse(payloadData.toString('utf8'));
             if (parsed.type === 'IDENTIFY') {
               client.userHandle = parsed.handle;
+            } else if (parsed.type === 'SHOAL_SCENE') {
+              client.shoalScene = parsed.scene || null;
+              shoalBroadcastPresence();
             }
           } catch (e) {}
         }
@@ -5349,10 +5414,12 @@ try {
 
     socket.on('close', () => {
       wsClients.delete(client);
+      if (client.shoalScene) shoalBroadcastPresence();
     });
 
     socket.on('error', () => {
       wsClients.delete(client);
+      if (client.shoalScene) shoalBroadcastPresence();
     });
   });
 }
