@@ -2510,6 +2510,10 @@
     // real navigation state of their own (the live roster, the hall's rooms).
     var sceneBody;
     if (scene === 'ship') {
+      // The ship is what you decorate and work from deck to deck: dredging,
+      // the tray/goods, Stations, the Work Table, the Shipwright (including
+      // Radio/music), the Desk (quest book/stats/feats/settings), and your
+      // Collector's Log all live here.
       sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Your Ship', onBack: goToHarbor },
         h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
         h(TrayPanel, {
@@ -2519,20 +2523,22 @@
           onStartPuzzle: handleStartPuzzle, onKeepBottle: handleKeepBottle
         }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
+        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
+        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy }),
         h(ShipwrightPanel, {
           save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
           onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,
           onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
         }),
         h(CollectorsLogSummary, { save: save }),
+        h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff }),
         save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire })
       );
     } else if (scene === 'town') {
+      // Just the villagers: sell goods/fish to them, fulfil story requests
+      // and daily requests (their "work orders").
       sceneBody = h(Scene, { themeClass: 'shoal-scene-town', title: 'The Town', onBack: goToHarbor },
-        h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
-        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
-        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy }),
-        h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff })
+        h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily })
       );
     } else if (scene === 'emporium') {
       sceneBody = h(Scene, { themeClass: 'shoal-scene-emporium', title: 'Your Emporium', onBack: goToHarbor },
