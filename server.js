@@ -545,7 +545,9 @@ function shoalTrackStationProgress(save, type, amount, bin) {
 
 // Vague progress hint for the pending station, never exact numbers (per
 // 08-stations-upgrades.md) - once requiresAmount is met the real cost is
-// shown instead, ready to install.
+// shown instead, ready to install. Once the Emporium is open, "the winch
+// and the Desk show a progress bar toward the goal" - exact numbers, same
+// hint spirit, more precise this far in.
 function shoalNextStationInfo(save) {
   const station = shoalNextStationDef(save);
   if (!station) return null;
@@ -560,6 +562,9 @@ function shoalNextStationInfo(save) {
     : frac < 0.5 ? "You're getting somewhere."
     : frac < 0.75 ? 'More than halfway there.'
     : 'Almost there!';
+  if (save.emporiumOpen) {
+    return { id: station.id, name: station.name, unlocked: false, hint, progress, requiresAmount: station.requiresAmount };
+  }
   return { id: station.id, name: station.name, unlocked: false, hint };
 }
 
@@ -3051,6 +3056,41 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // "Buy What I Can Afford" (08-stations-upgrades.md): "buys as many levels
+  // in a row as coins cover". The two-click confirm itself is a UI concern
+  // (the client previews the same loop locally with ShoalTalesEngine before
+  // calling this), but the actual spend is authoritative here.
+  if (reqPath === '/api/shoal-tales/upgrade-max' && req.method === 'POST') {
+    try {
+      const { handle, upgradeId } = await parseJsonBody(req);
+      if (!handle || !upgradeId) return sendJson(res, 400, { error: 'Missing handle or upgradeId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const LEVEL_FIELD = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' };
+      const MAX_LEVEL = { 'bigger-basket': 29, 'faster-winch': 12, 'soft-brush': 3, 'lucky-charm': 10 };
+      const field = LEVEL_FIELD[upgradeId];
+      if (!field) return sendJson(res, 400, { error: 'Unknown upgrade.' });
+      const unlockScale = ShoalTalesEngine.retireGoalForRun(save.retirements + 1).unlockScale;
+      let levelsBought = 0;
+      let coinsSpent = 0;
+      while (save[field] < MAX_LEVEL[upgradeId]) {
+        const cost = ShoalTalesEngine.upgradeCost(upgradeId, save[field], unlockScale);
+        if (save.coins - coinsSpent < cost) break;
+        coinsSpent += cost;
+        save[field] += 1;
+        levelsBought += 1;
+      }
+      if (levelsBought === 0) {
+        return sendJson(res, 400, { error: save[field] >= MAX_LEVEL[upgradeId] ? 'Already at max level.' : 'Not enough coins to buy even one level.' });
+      }
+      save.coins -= coinsSpent;
+      shoalMarkHintSeen(save, 'work-table');
+      saveDatabase();
+      return sendJson(res, 200, { success: true, upgradeId, levelsBought, newLevel: save[field], coinsSpent, coins: save.coins });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   if (reqPath === '/api/shoal-tales/depth' && req.method === 'POST') {
     try {
       const { handle, depth } = await parseJsonBody(req);
@@ -3100,11 +3140,13 @@ const server = http.createServer(async (req, res) => {
       }
 
       // "Scrub it clean (4 clicks)" (06-curios.md) - progress is tracked on
-      // the tray item itself and only the 4th click actually identifies it.
-      // Hedge Witch set "doubleScrub +15%" gives each click a chance to
-      // count as two.
+      // the tray item itself and only the final click actually identifies
+      // it. Soft Brush (08-stations-upgrades.md: "One fewer scrub per
+      // curio, 4 down to 1") lowers that count by one per level; Hedge
+      // Witch set "doubleScrub +15%" gives each click a chance to count
+      // as two on top of that.
       const collected = shoalCollectedBonuses(save);
-      const SCRUBS_NEEDED = 4;
+      const SCRUBS_NEEDED = Math.max(1, 4 - (save.brushLevel || 0));
       item.scrubProgress = (item.scrubProgress || 0) + 1;
       if (item.scrubProgress < SCRUBS_NEEDED && Math.random() < (collected.doubleScrub || 0)) item.scrubProgress += 1;
       if (item.scrubProgress < SCRUBS_NEEDED) {

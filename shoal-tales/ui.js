@@ -300,6 +300,10 @@
     var onKeepBottle = props.onKeepBottle;
     var busy = props.busy;
     var lastResult = props.lastResult;
+    // Soft Brush (08-stations-upgrades.md: "One fewer scrub per curio, 4
+    // down to 1") lowers the click count the Scrub button advertises -
+    // matches the server's own SCRUBS_NEEDED in the /scrub endpoint.
+    var scrubsNeeded = Math.max(1, 4 - (save.brushLevel || 0));
 
     if (save.tray.length === 0) return null;
 
@@ -373,7 +377,7 @@
       }
       if (item.kind === 'magicCurio') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn shoal-action-btn-magic' },
-          h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/4)' : '')));
+          h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/' + scrubsNeeded + ')' : '')));
       }
       if (item.kind === 'puzzleBox') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onStartPuzzle(item.id); }, className: 'shoal-action-btn' },
@@ -382,7 +386,7 @@
       if (item.kind === 'curio') {
         if (!item.identified) {
           return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn' },
-            h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/4)' : '')));
+            h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/' + scrubsNeeded + ')' : '')));
         }
         if (curioChoosingBin === item.id) {
           return ENGINE.BINS.map(function (bin) {
@@ -647,10 +651,10 @@
   var PROCESS_STATION_FOR_BIN = { Wood: 'carpentry', Metal: 'crucible', Mixed: 'recycling' };
   var RESOURCE_FOR_BIN = { Wood: 'knickKnacks', Metal: 'ingots', Mixed: 'materials' };
 
-  // --- Stations: installed list, the next pending station (vague hint, or
-  // Install once unlocked - never exact progress numbers, per 08-stations-
-  // upgrades.md), and a Process button for each installed station with
-  // stock on hand to convert. ---
+  // --- Stations: installed list, the next pending station (a vague hint
+  // pre-Emporium, an exact progress bar once it's open, or Install once
+  // unlocked - per 08-stations-upgrades.md), and a Process button for each
+  // installed station with stock on hand to convert. ---
   function StationsPanel(props) {
     var save = props.save;
     var busy = props.busy;
@@ -668,11 +672,20 @@
           );
         })
       ),
-      next ? h('div', { className: 'shoal-station-row' },
-        h('span', null, next.name),
-        next.unlocked
-          ? h('button', { type: 'button', disabled: busy, onClick: onInstall, className: 'shoal-action-btn' }, 'Install (', formatCoins(next.cost), 'c)')
-          : h('span', { className: 'shoal-station-hint' }, next.hint)
+      next ? h('div', { className: 'shoal-station-next' },
+        h('div', { className: 'shoal-station-row' },
+          h('span', null, next.name),
+          next.unlocked
+            ? h('button', { type: 'button', disabled: busy, onClick: onInstall, className: 'shoal-action-btn' }, 'Install (', formatCoins(next.cost), 'c)')
+            : h('span', { className: 'shoal-station-hint' }, next.hint)
+        ),
+        // Once the Emporium is open, the vague hint sharpens into an exact
+        // progress bar (08-stations-upgrades.md: "the winch and the Desk
+        // show a progress bar toward the goal").
+        !next.unlocked && next.requiresAmount != null && h('div', { className: 'shoal-progress-bar' },
+          h('div', { className: 'shoal-progress-bar-fill', style: { width: Math.min(100, Math.round(100 * next.progress / next.requiresAmount)) + '%' } })
+        ),
+        !next.unlocked && next.requiresAmount != null && h('p', { className: 'shoal-hint' }, next.progress, ' / ', next.requiresAmount)
       ) : h('p', { className: 'shoal-hint' }, 'All stations installed.'),
       Object.keys(PROCESS_STATION_FOR_BIN).filter(function (bin) {
         return save.stationsInstalled.indexOf(PROCESS_STATION_FOR_BIN[bin]) !== -1 && save.sortedGoods[bin].units > 0;
@@ -1191,10 +1204,26 @@
   function UpgradesPanel(props) {
     var save = props.save;
     var onBuy = props.onBuy;
+    var onBuyMax = props.onBuyMax;
     var busy = props.busy;
     var unlockScale = ENGINE.retireGoalForRun(save.retirements + 1).unlockScale;
+    var _confirmMax = useState(null); var confirmMaxId = _confirmMax[0]; var setConfirmMaxId = _confirmMax[1];
 
     var LEVEL_FIELD = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' };
+    var MAX_LEVEL = { 'bigger-basket': 29, 'faster-winch': 12, 'soft-brush': 3, 'lucky-charm': 10 };
+
+    // "'Buy What I Can Afford' buys as many levels in a row as coins cover"
+    // (08-stations-upgrades.md) - previewed locally with the same formula
+    // the server uses, so the first click can show exactly what it would buy.
+    function previewBuyMax(u, level) {
+      var l = level, spent = 0, bought = 0;
+      while (l < MAX_LEVEL[u.id]) {
+        var cost = Math.round(ENGINE.upgradeCost(u.id, l, unlockScale));
+        if (spent + cost > save.coins) break;
+        spent += cost; l += 1; bought += 1;
+      }
+      return { bought: bought, spent: spent };
+    }
 
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Work Table'),
@@ -1206,17 +1235,32 @@
           var maxed = level >= u.levels;
           var cost = maxed ? null : Math.round(ENGINE.upgradeCost(u.id, level, unlockScale));
           var affordable = !maxed && save.coins >= cost;
+          var confirmingMax = confirmMaxId === u.id;
+          var preview = !maxed && previewBuyMax(u, level);
           return h('div', { key: u.id, className: 'shoal-upgrade-row' },
             h('div', { className: 'shoal-upgrade-info' },
               h('div', { className: 'shoal-upgrade-name' }, u.name, ' ', h('span', { className: 'shoal-upgrade-level' }, 'Lv.', level, '/', u.levels)),
               h('div', { className: 'shoal-upgrade-effect' }, u.effectPerLevel)
             ),
-            h('button', {
-              type: 'button',
-              disabled: busy || maxed || !affordable,
-              onClick: function () { onBuy(u.id); },
-              className: 'shoal-upgrade-btn'
-            }, maxed ? 'MAX' : (formatCoins(cost) + 'c'))
+            h('div', { className: 'shoal-upgrade-buttons' },
+              h('button', {
+                type: 'button',
+                disabled: busy || maxed || !affordable,
+                onClick: function () { onBuy(u.id); },
+                className: 'shoal-upgrade-btn'
+              }, maxed ? 'MAX' : (formatCoins(cost) + 'c')),
+              !maxed && (confirmingMax
+                ? h('button', {
+                    type: 'button', disabled: busy || preview.bought === 0,
+                    onClick: function () { setConfirmMaxId(null); onBuyMax(u.id); },
+                    className: 'shoal-upgrade-btn'
+                  }, 'Confirm: +', preview.bought, ' for ', formatCoins(preview.spent), 'c')
+                : h('button', {
+                    type: 'button', disabled: busy || preview.bought === 0,
+                    onClick: function () { setConfirmMaxId(u.id); },
+                    className: 'shoal-upgrade-btn'
+                  }, 'Buy What I Can Afford'))
+            )
           );
         })
       )
@@ -2392,6 +2436,13 @@
         .catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
     }
 
+    function handleUpgradeMax(upgradeId) {
+      runAction(apiPost('/api/shoal-tales/upgrade-max', { handle: handle, upgradeId: upgradeId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Bought ' + data.levelsBought + ' level' + (data.levelsBought === 1 ? '' : 's') + ' for ' + formatCoins(data.coinsSpent) + ' coins.' });
+      });
+    }
+
     function handleAreaChange(area) {
       setBusy(true);
       apiPost('/api/shoal-tales/area', { handle: handle, area: area }).then(function () { return refresh(); })
@@ -2636,7 +2687,7 @@
         }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
         h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
-        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy }),
+        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, onBuyMax: handleUpgradeMax, busy: busy }),
         h(ShipwrightPanel, {
           save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
           onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,

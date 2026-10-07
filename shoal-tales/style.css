@@ -283,6 +283,8 @@
   font-size: 0.72rem;
 }
 .shoal-upgrade-btn:disabled { opacity: 0.4; border-color: var(--shoal-card-border); color: var(--shoal-foam); }
+.shoal-upgrade-buttons { display: flex; flex-direction: column; gap: 0.3rem; flex-shrink: 0; align-items: flex-end; }
+.shoal-upgrade-buttons .shoal-upgrade-btn { white-space: nowrap; }
 
 /* Collector's Log, curios/crates/bottles/creatures (added alongside the
    Fish/Curios/Collector's Log phase) */
@@ -445,6 +447,14 @@
   color: var(--shoal-good);
 }
 .shoal-station-hint { font-size: 0.68rem; color: rgba(232, 244, 248, 0.6); font-style: italic; }
+.shoal-station-next { display: flex; flex-direction: column; gap: 0.3rem; }
+.shoal-progress-bar {
+  height: 0.4rem;
+  border-radius: 0.2rem;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+.shoal-progress-bar-fill { height: 100%; background: var(--shoal-gold); }
 
 /* The Emporium */
 
