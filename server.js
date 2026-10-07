@@ -46,7 +46,11 @@ const defaultDb = {
   pushSubscriptions: [],
   vapidKeys: null,
   scratchpadNotes: [],
-  shoalTalesSaves: {}
+  shoalTalesSaves: {},
+  shoalTalesParties: {},
+  shoalTalesGuilds: {},
+  shoalTalesBottleLetters: {},
+  shoalTalesSeasonState: { lastProcessedMonth: new Date().toISOString().slice(0, 7) }
 };
 
 let db = { ...defaultDb };
@@ -88,7 +92,11 @@ function loadDatabaseFromFile() {
         pushSubscriptions: parsed.pushSubscriptions || [],
         vapidKeys: parsed.vapidKeys || null,
         scratchpadNotes: parsed.scratchpadNotes || [],
-        shoalTalesSaves: parsed.shoalTalesSaves || {}
+        shoalTalesSaves: parsed.shoalTalesSaves || {},
+        shoalTalesParties: parsed.shoalTalesParties || {},
+        shoalTalesGuilds: parsed.shoalTalesGuilds || {},
+        shoalTalesBottleLetters: parsed.shoalTalesBottleLetters || {},
+        shoalTalesSeasonState: parsed.shoalTalesSeasonState || { lastProcessedMonth: new Date().toISOString().slice(0, 7) }
       };
       if (!db.users['@earlgreyfae']) {
         db.users['@earlgreyfae'] = defaultDb.users['@earlgreyfae'];
@@ -178,7 +186,11 @@ async function initializeDatabase() {
           pushSubscriptions: pgData.pushSubscriptions || [],
           vapidKeys: pgData.vapidKeys || null,
           scratchpadNotes: pgData.scratchpadNotes || [],
-          shoalTalesSaves: pgData.shoalTalesSaves || {}
+          shoalTalesSaves: pgData.shoalTalesSaves || {},
+          shoalTalesParties: pgData.shoalTalesParties || {},
+          shoalTalesGuilds: pgData.shoalTalesGuilds || {},
+          shoalTalesBottleLetters: pgData.shoalTalesBottleLetters || {},
+          shoalTalesSeasonState: pgData.shoalTalesSeasonState || { lastProcessedMonth: new Date().toISOString().slice(0, 7) }
         };
         console.log('[DB] Restored database state from PostgreSQL (source of truth)');
         saveDatabaseSync();
@@ -318,16 +330,20 @@ function defaultShoalTalesSave(handle) {
       shellStreak: 0,
       activePuzzle: null,
       workOrders: [],
-      counterCustomers: []
+      counterCustomers: [],
+      // Filled by Visits (13-social.md) - was inert until task 24.
+      tipJar: 0
     },
     // Cosmetics / the Shipwright (docs/shoal-tales-spec/12-cosmetics.md).
     // Free woods/sails/flags are owned from the start; exotic woods and all
     // sails/flags/pets/badges past the free set are granted (sails/flags/
     // pets/badges, for free) or made buyable (exotic woods, 5,000 coins
     // each) by shoalGrantRetirementCosmetics() on each retirement. Premium
-    // (Seal Token) looks and Season Champion/event-set looks are NOT
-    // modeled here at all - see the comment on EMPORIUM note below; this is
-    // a deliberate scope cut, not an oversight.
+    // (Seal Token) looks and event-set looks are NOT modeled at all - a
+    // deliberate scope cut (Seal Tokens are a real-money-adjacent decision
+    // for the site owner). Season Champion IS modeled now (task 24) via
+    // shoalCheckSeasonRollover - the flag is granted directly, outside the
+    // retirement-unlock table.
     cosmetics: {
       unlockedWoods: ShoalTalesData.woods.filter(w => w.free).map(w => w.id),
       equippedWood: { hull: 'oak', deck: 'oak', railing: 'oak', mast: 'oak' },
@@ -343,13 +359,41 @@ function defaultShoalTalesSave(handle) {
       equippedTrack: null,
       petPattedDate: null,
       petTreatExpiresAt: null
-    }
+    },
+    // Social (docs/shoal-tales-spec/13-social.md). partyId/guildId point
+    // into db.shoalTalesParties/db.shoalTalesGuilds. lastDredgeAt backs both
+    // the party's "dredging at the same time" bonus and guilds' "active in
+    // the last 7 days" quest-goal scaling. completedSetIds backs Collector's
+    // Log set-completion announcements (new entries only, never re-fired).
+    partyId: null,
+    guildId: null,
+    pendingPartyInvites: [],
+    pendingGuildInvites: [],
+    visitorsEnabled: true,
+    announcementsEnabled: true,
+    lastDredgeAt: null,
+    completedSetIds: [],
+    monthlyPeriod: null,
+    monthlyCoinsEarned: 0,
+    monthlySetsCompleted: 0,
+    seasonChampionMonths: [],
+    // "The helper earns 1 arcade ticket per 5 good sorts" (Help Sort).
+    helpSortCount: 0,
+    // Bottle letters, player-written (13-social.md step 1-5). emptyBottlesKept
+    // holds bottles deliberately NOT sorted as junk, ready to trade for a
+    // writing kit; pendingLetterReplies are delivered via a forced tray item
+    // on the author's next dredge, same mechanism as "first haul of the day".
+    emptyBottlesKept: 0,
+    writingKits: 0,
+    heartedLetterIds: [],
+    pendingLetterReplies: []
   };
 }
 
 function getOrCreateShoalTalesSave(handle) {
   const key = (handle || '').trim();
   if (!key) return null;
+  shoalCheckSeasonRollover();
   if (!db.shoalTalesSaves[key]) {
     db.shoalTalesSaves[key] = defaultShoalTalesSave(key);
     saveDatabase();
@@ -492,16 +536,385 @@ function shoalNewTrayId(i) {
 function shoalPayoutBonus(save) {
   const retireBonus = (save.retirements || 0) * 0.10;
   const petBonus = shoalPetTreatActive(save) ? 0.05 : 0;
-  return Math.min(0.5, retireBonus + petBonus);
+  const partyBonus = shoalPartyDredgeBonus(save);
+  const guildBonus = shoalGuildPayoutBonus(save);
+  return Math.min(0.5, retireBonus + petBonus + partyBonus + guildBonus);
 }
 
 // "The owner's first pat each real-world day gives a treat: +5% value for
-// 10 minutes" (12-cosmetics.md) - petting other players' pets is a Visits
-// feature (task 24, not built yet), so this only covers patting your own.
+// 10 minutes" (12-cosmetics.md) - petting other players' pets is covered by
+// Visits (task 24, below).
 function shoalPetTreatActive(save) {
   const until = save.cosmetics && save.cosmetics.petTreatExpiresAt;
   return !!until && Date.now() < new Date(until).getTime();
 }
+
+// --- Social (docs/shoal-tales-spec/13-social.md) ---
+
+const SHOAL_ACTIVITY_WINDOW_MS = 3 * 60 * 1000; // "active in the last 3 minutes" (party dredge bonus)
+const SHOAL_GUILD_ACTIVITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // "active in the last 7 days" (guild quest scaling)
+
+function shoalIsRecentlyActive(save, windowMs) {
+  return !!save.lastDredgeAt && (Date.now() - new Date(save.lastDredgeAt).getTime()) < windowMs;
+}
+
+// "+5% value for each other member dredging at the same time (active in the
+// last 3 minutes), up to +15%" - counts other party members only, capped at 3.
+function shoalPartyDredgeBonus(save) {
+  if (!save.partyId) return 0;
+  const party = db.shoalTalesParties[save.partyId];
+  if (!party) return 0;
+  let others = 0;
+  party.members.forEach(h => {
+    if (h === save.handle) return;
+    const other = db.shoalTalesSaves[h];
+    if (other && shoalIsRecentlyActive(other, SHOAL_ACTIVITY_WINDOW_MS)) others++;
+  });
+  return Math.min(3, others) * 0.05;
+}
+
+// Guild Fund upgrade ("+1% value for every member", up to 5 levels) plus
+// "every guild set completed gives every member +2% value for good".
+function shoalGuildPayoutBonus(save) {
+  if (!save.guildId) return 0;
+  const guild = db.shoalTalesGuilds[save.guildId];
+  if (!guild) return 0;
+  return (guild.upgrades.guildFund || 0) * 0.01 + (guild.completedSets || []).length * 0.02;
+}
+
+function shoalGetParty(partyId) { return db.shoalTalesParties[partyId] || null; }
+function shoalGetGuild(guildId) { return db.shoalTalesGuilds[guildId] || null; }
+
+function shoalIsHandleOnline(handle) {
+  for (const ws of wsClients) {
+    if (ws.userHandle === handle && ws.readyState === 1) return true;
+  }
+  return false;
+}
+
+// Broadcasts to every connected client whose own save has announcements on
+// (13-social.md: "each player can switch these off"). Best-effort - if a
+// connected client never IDENTIFYs, or its save can't be found, it's simply
+// skipped rather than guessed at.
+function shoalBroadcastAnnouncement(message) {
+  for (const ws of wsClients) {
+    try {
+      if (ws.readyState !== 1 || !ws.userHandle) continue;
+      const save = db.shoalTalesSaves[ws.userHandle];
+      if (save && save.announcementsEnabled === false) continue;
+      ws.send(JSON.stringify({ type: 'SHOAL_ANNOUNCEMENT', message, at: new Date().toISOString() }));
+    } catch (e) { /* ignore a single bad client */ }
+  }
+}
+
+// Guild quest progress contribution - called from the gameplay endpoints
+// that match a quest type (dredge/sort/scrub/dress/make-meal/process-junk/
+// sell). A no-op unless the player is in a guild AND that guild has a
+// matching quest active today.
+function shoalContributeToGuildQuests(save, questType, amount) {
+  if (!save.guildId || !amount) return;
+  const guild = db.shoalTalesGuilds[save.guildId];
+  if (!guild) return;
+  shoalRollGuildDailyQuests(guild);
+  guild.dailyQuests.forEach(q => {
+    if (q.type === questType && q.progress < q.goal) {
+      q.progress = Math.min(q.goal, q.progress + amount);
+    }
+  });
+}
+
+const GUILD_QUEST_TYPES = [
+  { type: 'hauls', label: 'All Hands: haul up the dredge', baseGoal: 40 },
+  { type: 'sortedUnits', label: 'Sorting Day: sort units of junk', baseGoal: 400 },
+  { type: 'fishOnIce', label: 'Full Coolers: put fish on ice', baseGoal: 60 },
+  { type: 'curiosScrubbed', label: 'Scrub Club: clean curios', baseGoal: 12 },
+  { type: 'fishDressed', label: 'Knife Work: dress fish', baseGoal: 40 },
+  { type: 'mealsBaked', label: 'Supper Rush: bake meals', baseGoal: 20 },
+  { type: 'goodsMade', label: "Makers' Day: make knick-knacks, ingots, or materials", baseGoal: 60 },
+  { type: 'coinsEarnedSelling', label: 'Good Trade: earn coins selling', baseGoal: 20000 }
+];
+
+function shoalGuildActiveMemberCount(guild) {
+  let count = 0;
+  guild.members.forEach(h => {
+    const s = db.shoalTalesSaves[h];
+    if (s && shoalIsRecentlyActive(s, SHOAL_GUILD_ACTIVITY_WINDOW_MS)) count++;
+  });
+  return Math.max(1, count);
+}
+
+// Re-rolls the guild's daily quests exactly once per real-world day - "3 a
+// day" plus +1 per Busy Noticeboard level, goals scaled by active members:
+// "x(1 + 0.5 per extra active member)".
+function shoalRollGuildDailyQuests(guild) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (guild.dailyQuestsDate === today) return;
+  guild.dailyQuestsDate = today;
+  const slotCount = Math.min(GUILD_QUEST_TYPES.length, 3 + (guild.upgrades.busyNoticeboard || 0));
+  const activeMembers = shoalGuildActiveMemberCount(guild);
+  const scale = 1 + 0.5 * Math.max(0, activeMembers - 1);
+  const pool = GUILD_QUEST_TYPES.slice();
+  const picked = [];
+  while (picked.length < slotCount && pool.length > 0) {
+    picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  }
+  guild.dailyQuests = picked.map(q => ({
+    type: q.type, label: q.label, goal: Math.round(q.baseGoal * scale), progress: 0, claimedBy: []
+  }));
+}
+
+// How many Collector's Log sets a save has fully completed - shared by the
+// Leaderboards ("Sets Completed"/"This Month's Sets") and the set-completion
+// announcement check below. Mirrors ui.js's CollectorsLogSummary exactly.
+function shoalCountCompletedSets(save) {
+  return ShoalTalesData.sets.filter(s => {
+    const curiosDone = s.curioNames.every(n => {
+      const c = ShoalTalesData.curios.find(x => x.name === n);
+      return c && save.collectorsLog.curios[c.id];
+    });
+    const fishDone = s.fishNames.every(n => {
+      const f = ShoalTalesData.fish.find(x => x.name === n);
+      return f && save.collectorsLog.fish[f.id];
+    });
+    return curiosDone && fishDone;
+  }).map(s => s.id);
+}
+
+// Diffs completed sets against what was already known, announces each newly
+// completed set (and, the moment every set is done, the whole Log), and
+// flags "golden sets" (every item in the set logged golden) for the
+// Golden Touch feat. Called right after every collectorsLog mutation.
+function shoalUpdateCompletedSets(save, handle) {
+  const current = shoalCountCompletedSets(save);
+  const previous = save.completedSetIds || [];
+  const newlyCompleted = current.filter(id => previous.indexOf(id) === -1);
+  if (newlyCompleted.length === 0) return;
+  const wasWholeLogDone = previous.length === ShoalTalesData.sets.length;
+  save.completedSetIds = current;
+  save.monthlySetsCompleted = (save.monthlySetsCompleted || 0) + newlyCompleted.length;
+  newlyCompleted.forEach(setId => {
+    const set = ShoalTalesData.sets.find(s => s.id === setId);
+    if (!set) return;
+    shoalBroadcastAnnouncement(`${handle} completed the ${set.name} set!`);
+    const allGolden = set.curioNames.every(n => {
+      const c = ShoalTalesData.curios.find(x => x.name === n);
+      return c && save.collectorsLog.curios[c.id] && save.collectorsLog.curios[c.id].golden;
+    }) && set.fishNames.every(n => {
+      const f = ShoalTalesData.fish.find(x => x.name === n);
+      return f && save.collectorsLog.fish[f.id] && save.collectorsLog.fish[f.id].golden;
+    });
+    if (allGolden) shoalBroadcastAnnouncement(`${handle} completed a GOLDEN ${set.name} set!`);
+  });
+  if (!wasWholeLogDone && current.length === ShoalTalesData.sets.length) {
+    shoalBroadcastAnnouncement(`${handle} completed the entire Collector's Log!`);
+  }
+}
+
+// Guild Log equivalent (13-social.md): "every guild set completed gives
+// every member +2% value for good" - shoalGuildPayoutBonus reads
+// guild.completedSets.length directly, so this just needs to keep it
+// accurate; no golden-set tracking at guild level (donations don't carry it).
+function shoalUpdateGuildCompletedSets(guild) {
+  const current = ShoalTalesData.sets.filter(s => {
+    const curiosDone = s.curioNames.every(n => {
+      const c = ShoalTalesData.curios.find(x => x.name === n);
+      return c && guild.guildLog.curios[c.id];
+    });
+    const fishDone = s.fishNames.every(n => {
+      const f = ShoalTalesData.fish.find(x => x.name === n);
+      return f && guild.guildLog.fish[f.id];
+    });
+    return curiosDone && fishDone;
+  }).map(s => s.id);
+  const previous = guild.completedSets || [];
+  const newlyCompleted = current.filter(id => previous.indexOf(id) === -1);
+  guild.completedSets = current;
+  newlyCompleted.forEach(setId => {
+    const set = ShoalTalesData.sets.find(s => s.id === setId);
+    if (set) shoalBroadcastAnnouncement(`${guild.name} completed the ${set.name} set in their Guild Log!`);
+  });
+}
+
+// Bottle letters, player-written (13-social.md). Never the finder's own
+// letter, never one they've already found.
+function shoalEligiblePlayerLetters(handle) {
+  return Object.values(db.shoalTalesBottleLetters).filter(l =>
+    l.status === 'approved' && l.authorHandle !== handle && l.foundBy.indexOf(handle) === -1
+  );
+}
+
+// "Anyone can look round anyone's boat unless that player switched visitors
+// off. Party members and guild-mates are always welcome." - visiting your
+// own boat is always allowed too (there's no reason to lock a player out of
+// their own Emporium preview).
+function shoalCanVisit(visitorHandle, ownerSave) {
+  if (visitorHandle === ownerSave.handle) return true;
+  if (ownerSave.visitorsEnabled !== false) return true;
+  const visitorSave = db.shoalTalesSaves[visitorHandle];
+  if (!visitorSave) return false;
+  if (ownerSave.partyId && visitorSave.partyId === ownerSave.partyId) return true;
+  if (ownerSave.guildId && visitorSave.guildId === ownerSave.guildId) return true;
+  return false;
+}
+
+// Cost-of-next-level formulas for Guild Bank upgrades (13-social.md), keyed
+// by level ALREADY owned (L=0 is the first purchase).
+const GUILD_UPGRADES = {
+  guildFund: { maxLevel: 5, cost: L => 5000 * Math.pow(2, L) },
+  busyNoticeboard: { maxLevel: 2, cost: L => 10000 * (L + 1) },
+  betterRewards: { maxLevel: 4, cost: L => 4000 * (L + 1) }
+};
+
+// The real body of POST /emporium/counter/serve, factored out so a Visit
+// (13-social.md: "Emporium owners can invite visitors, who can serve at the
+// Counter") can run it against the OWNER's save - same "it's still the
+// host's business" rule as Help Sort, so the coins earned are the owner's.
+function shoalPerformCounterServe(save, customerId, drink, coolerItemId) {
+  if (!save.emporiumOpen) return { status: 400, body: { error: 'The Emporium is not open yet.' } };
+  const emp = save.emporium;
+  const idx = emp.counterCustomers.findIndex(c => c.id === customerId);
+  if (idx < 0) return { status: 404, body: { error: 'That customer is not waiting.' } };
+  const customer = emp.counterCustomers[idx];
+  const area = shoalAreaById(save.area).valueMultiplier;
+  const correctDrink = drink.base === customer.drink.base && drink.flavour === customer.drink.flavour && drink.finish === customer.drink.finish;
+  let pay = ShoalTalesEngine.counterDrinkPay({ correctDrink, customerTip: customer.tip, area, bPayout: shoalPayoutBonus(save) });
+  let mealGiven = false;
+  if (customer.wantsMeal && coolerItemId) {
+    const meal = save.cooler.find(f => f.id === coolerItemId && f.stage === 'meal');
+    if (meal) {
+      pay += ShoalTalesEngine.counterMealBonus(meal.value);
+      save.cooler = save.cooler.filter(f => f.id !== coolerItemId);
+      mealGiven = true;
+    }
+  }
+  pay = Math.round(pay);
+  save.coins += pay;
+  save.allTimeStats.coinsEarned += pay;
+  save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + pay;
+  emp.counterCustomers.splice(idx, 1);
+  return { status: 200, body: { success: true, correctDrink, mealGiven, coinsEarned: pay } };
+}
+
+// The real body of POST /sort, factored out so Parties' Help Sort (13-social.md:
+// "a party member can sort the host's tray. Coins, streak, and Log stay the
+// host's") can run the exact same logic against the HOST's save while only
+// the caller decides who gets credited for anything outside of `save` itself
+// (the ticket reward for helping, handled by the /party/help-sort endpoint).
+// Returns {status, body} instead of touching `res` directly - callers do
+// their own saveDatabase() once, after this returns, and send the response.
+function shoalPerformSort(save, handle, trayItemId, bin) {
+  const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+  if (itemIndex < 0) return { status: 404, body: { error: 'That item is not in the tray.' } };
+  const item = save.tray[itemIndex];
+
+  if (item.kind === 'fish') {
+    if (bin !== 'cooler') {
+      return { status: 400, body: { error: 'Fish can only go in the cooler.' } };
+    }
+    // Golden finds are endgame-only (8th retirement+, 09-economy.md).
+    const goldenEligible = save.retirements >= 8;
+    const golden = goldenEligible && Math.random() < 0.01;
+    const value = ShoalTalesEngine.fishValue({
+      base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: shoalPayoutBonus(save), bFish: 0, golden: golden
+    });
+    save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, stage: 'raw', caughtAt: new Date().toISOString() });
+    save.streak += 1;
+    save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
+    save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
+    save.allTimeStats.fishOnIce += 1;
+    save.allTimeStats.bestStreak = Math.max(save.allTimeStats.bestStreak, save.streak);
+    save.tray.splice(itemIndex, 1);
+    shoalContributeToGuildQuests(save, 'fishOnIce', 1);
+
+    // "The first catch of each fish species logs it in the Collector's
+    // Log" - automatic, unlike curios which require an explicit Log choice.
+    const fishData = ShoalTalesData.fish.find(f => f.name === item.name);
+    let newlyLogged = false;
+    if (fishData) {
+      const existing = save.collectorsLog.fish[fishData.id];
+      if (!existing || (golden && !existing.golden)) {
+        save.collectorsLog.fish[fishData.id] = { foundAt: new Date().toISOString(), golden: golden };
+        newlyLogged = !existing;
+        if (golden) save.goldenLog.push({ kind: 'fish', id: fishData.id, foundAt: new Date().toISOString() });
+        shoalUpdateCompletedSets(save, handle);
+      }
+      // Fish donate to the Guild Log automatically, same as the
+      // player's own (no separate action, unlike curios) - 13-social.md.
+      if (save.guildId) {
+        const guild = db.shoalTalesGuilds[save.guildId];
+        if (guild && !guild.guildLog.fish[fishData.id]) {
+          guild.guildLog.fish[fishData.id] = { donatedBy: handle, foundAt: new Date().toISOString() };
+          shoalUpdateGuildCompletedSets(guild);
+        }
+      }
+    }
+    return { status: 200, body: { success: true, correct: true, kind: 'fish', value, newStreak: save.streak, golden, newlyLogged } };
+  }
+
+  // Junk: validate the target is one of the 7 real bins (never 'cooler').
+  if (!ShoalTalesEngine.BINS.includes(bin)) {
+    return { status: 400, body: { error: 'Not a real bin.' } };
+  }
+  const move = ShoalTalesEngine.stationMoveFor(item.name);
+  const stationInstalled = !!(move && save.stationsInstalled.includes(move.station));
+  const effectiveCorrectBin = stationInstalled ? move.newBin : item.bin;
+  const correct = bin === effectiveCorrectBin;
+  const movedByStation = correct && stationInstalled;
+
+  let value;
+  if (correct) {
+    value = ShoalTalesEngine.correctSortValue({
+      base: item.baseCoins, streakCount: save.streak, bPayout: shoalPayoutBonus(save), bBin: 0, movedByStation: movedByStation, area: item.areaMultiplier
+    });
+    save.streak += 1;
+  } else {
+    value = ShoalTalesEngine.wrongSortValue(item.baseCoins, 0, item.areaMultiplier);
+    save.streak = 0;
+  }
+  save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
+  save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
+  save.allTimeStats.bestStreak = Math.max(save.allTimeStats.bestStreak, save.streak);
+  save.sortedGoods[bin].units += (1 + item.weight);
+  save.sortedGoods[bin].value += value;
+  save.allTimeStats.junkSorted += 1;
+  if (correct) {
+    shoalTrackStationProgress(save, 'sortedBin', 1 + item.weight, bin);
+    shoalContributeToGuildQuests(save, 'sortedUnits', 1 + item.weight);
+  }
+  save.tray.splice(itemIndex, 1);
+  return { status: 200, body: { success: true, correct, kind: 'junk', value, newStreak: save.streak, effectiveCorrectBin, bin } };
+}
+
+// Leaderboards (13-social.md): all-time boards read straight off every save;
+// monthly boards need a rollover that crowns the Season Champion BEFORE
+// anyone's own save lazily resets its monthly counters - done here as one
+// global pass, guarded so it only ever runs once per real month.
+function shoalCheckSeasonRollover() {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  if (!db.shoalTalesSeasonState) db.shoalTalesSeasonState = { lastProcessedMonth: currentMonth };
+  if (db.shoalTalesSeasonState.lastProcessedMonth === currentMonth) return;
+  const endedMonth = db.shoalTalesSeasonState.lastProcessedMonth;
+  const ranked = Object.values(db.shoalTalesSaves)
+    .filter(s => (s.monthlyCoinsEarned || 0) > 0)
+    .sort((a, b) => b.monthlyCoinsEarned - a.monthlyCoinsEarned)
+    .slice(0, 3);
+  ranked.forEach(s => {
+    if (!s.seasonChampionMonths) s.seasonChampionMonths = [];
+    if (s.seasonChampionMonths.indexOf(endedMonth) === -1) s.seasonChampionMonths.push(endedMonth);
+    if (s.cosmetics && s.cosmetics.unlockedFlags.indexOf('season-champion') === -1) {
+      s.cosmetics.unlockedFlags.push('season-champion');
+    }
+    shoalBroadcastAnnouncement(`${s.handle} is a Season Champion for ${endedMonth}!`);
+  });
+  Object.values(db.shoalTalesSaves).forEach(s => {
+    s.monthlyCoinsEarned = 0;
+    s.monthlySetsCompleted = 0;
+    s.monthlyPeriod = currentMonth;
+  });
+  db.shoalTalesSeasonState.lastProcessedMonth = currentMonth;
+  saveDatabase();
+}
+
 function shoalTimeBonus(save) {
   return Math.min(0.5, (save.retirements || 0) * 0.03);
 }
@@ -719,7 +1132,15 @@ function generateShoalHaul(save) {
       const f = fishPool[Math.floor(Math.random() * fishPool.length)];
       tray.push({ id, kind: 'fish', name: f.name, baseCoins: f.baseCoins, weight: f.weight, description: f.description, areaMultiplier });
     } else if (kind === 'curio') {
-      tray.push({ id, kind: 'curio', name: 'Encrusted Curio', identified: false, areaMultiplier });
+      // "15% of curio rolls come from the party-only Party Favours set"
+      // (13-social.md) - a symmetric 15% is inferred for Guild Keepsakes,
+      // since the spec gives no explicit number for it. Real identity
+      // (which specific curio) is still resolved lazily at /scrub time;
+      // this just tags which pool to scrub from.
+      const curioItem = { id, kind: 'curio', name: 'Encrusted Curio', identified: false, areaMultiplier };
+      if (save.partyId && Math.random() < 0.15) curioItem.curioSource = 'party';
+      else if (save.guildId && Math.random() < 0.15) curioItem.curioSource = 'guild';
+      tray.push(curioItem);
     } else if (kind === 'crate') {
       tray.push({ id, kind: 'crate', name: 'Sealed Crate', areaMultiplier });
     } else if (kind === 'bottle') {
@@ -2115,9 +2536,18 @@ const server = http.createServer(async (req, res) => {
       const tray = generateShoalHaul(save);
       save.tray = tray;
       save.lastHaulDate = new Date().toISOString().slice(0, 10);
+      save.lastDredgeAt = new Date().toISOString();
       save.allTimeStats.hauls += 1;
+      shoalContributeToGuildQuests(save, 'hauls', 1);
+      // A written reply to one of this player's bottle letters is delivered
+      // on their next haul (13-social.md step 5) - same forcing mechanism as
+      // "first haul of the day always includes a curio".
+      let deliveredReply = null;
+      if (save.pendingLetterReplies.length > 0) {
+        deliveredReply = save.pendingLetterReplies.shift();
+      }
       saveDatabase();
-      return sendJson(res, 200, { success: true, tray, dredgeTimeSeconds });
+      return sendJson(res, 200, { success: true, tray, dredgeTimeSeconds, deliveredReply });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -2128,74 +2558,9 @@ const server = http.createServer(async (req, res) => {
       const { handle, trayItemId, bin } = await parseJsonBody(req);
       if (!handle || !trayItemId || !bin) return sendJson(res, 400, { error: 'Missing handle, trayItemId or bin' });
       const save = getOrCreateShoalTalesSave(handle);
-      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
-      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
-      const item = save.tray[itemIndex];
-
-      if (item.kind === 'fish') {
-        if (bin !== 'cooler') {
-          return sendJson(res, 400, { error: 'Fish can only go in the cooler.' });
-        }
-        // Golden finds are endgame-only (8th retirement+, 09-economy.md).
-        const goldenEligible = save.retirements >= 8;
-        const golden = goldenEligible && Math.random() < 0.01;
-        const value = ShoalTalesEngine.fishValue({
-          base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: shoalPayoutBonus(save), bFish: 0, golden: golden
-        });
-        save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, stage: 'raw', caughtAt: new Date().toISOString() });
-        save.streak += 1;
-        save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
-        save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
-        save.allTimeStats.fishOnIce += 1;
-        save.allTimeStats.bestStreak = Math.max(save.allTimeStats.bestStreak, save.streak);
-        save.tray.splice(itemIndex, 1);
-
-        // "The first catch of each fish species logs it in the Collector's
-        // Log" - automatic, unlike curios which require an explicit Log choice.
-        const fishData = ShoalTalesData.fish.find(f => f.name === item.name);
-        let newlyLogged = false;
-        if (fishData) {
-          const existing = save.collectorsLog.fish[fishData.id];
-          if (!existing || (golden && !existing.golden)) {
-            save.collectorsLog.fish[fishData.id] = { foundAt: new Date().toISOString(), golden: golden };
-            newlyLogged = !existing;
-            if (golden) save.goldenLog.push({ kind: 'fish', id: fishData.id, foundAt: new Date().toISOString() });
-          }
-        }
-        saveDatabase();
-        return sendJson(res, 200, { success: true, correct: true, kind: 'fish', value, newStreak: save.streak, golden, newlyLogged });
-      }
-
-      // Junk: validate the target is one of the 7 real bins (never 'cooler').
-      if (!ShoalTalesEngine.BINS.includes(bin)) {
-        return sendJson(res, 400, { error: 'Not a real bin.' });
-      }
-      const move = ShoalTalesEngine.stationMoveFor(item.name);
-      const stationInstalled = !!(move && save.stationsInstalled.includes(move.station));
-      const effectiveCorrectBin = stationInstalled ? move.newBin : item.bin;
-      const correct = bin === effectiveCorrectBin;
-      const movedByStation = correct && stationInstalled;
-
-      let value;
-      if (correct) {
-        value = ShoalTalesEngine.correctSortValue({
-          base: item.baseCoins, streakCount: save.streak, bPayout: shoalPayoutBonus(save), bBin: 0, movedByStation: movedByStation, area: item.areaMultiplier
-        });
-        save.streak += 1;
-      } else {
-        value = ShoalTalesEngine.wrongSortValue(item.baseCoins, 0, item.areaMultiplier);
-        save.streak = 0;
-      }
-      save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
-      save.bestStreakEver = Math.max(save.bestStreakEver, save.streak);
-      save.allTimeStats.bestStreak = Math.max(save.allTimeStats.bestStreak, save.streak);
-      save.sortedGoods[bin].units += (1 + item.weight);
-      save.sortedGoods[bin].value += value;
-      save.allTimeStats.junkSorted += 1;
-      if (correct) shoalTrackStationProgress(save, 'sortedBin', 1 + item.weight, bin);
-      save.tray.splice(itemIndex, 1);
+      const result = shoalPerformSort(save, handle, trayItemId, bin);
       saveDatabase();
-      return sendJson(res, 200, { success: true, correct, kind: 'junk', value, newStreak: save.streak, effectiveCorrectBin, bin });
+      return sendJson(res, result.status, result.body);
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -2234,6 +2599,8 @@ const server = http.createServer(async (req, res) => {
       save.coins += coinsEarned;
       save.lifetimeCoinsThisRun += coinsEarned;
       save.allTimeStats.coinsEarned += coinsEarned;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coinsEarned;
+      shoalContributeToGuildQuests(save, 'coinsEarnedSelling', coinsEarned);
       saveDatabase();
       return sendJson(res, 200, { success: true, coinsEarned, coins: save.coins });
     } catch (e) {
@@ -2319,6 +2686,7 @@ const server = http.createServer(async (req, res) => {
         save.magicCurios.push(found.id);
         save.tray.splice(itemIndex, 1);
         save.allTimeStats.curiosScrubbed += 1;
+        shoalContributeToGuildQuests(save, 'curiosScrubbed', 1);
         saveDatabase();
         return sendJson(res, 200, { success: true, kind: 'magicCurio', magicCurio: found, allSixFound: save.magicCurios.length >= 6 });
       }
@@ -2327,7 +2695,9 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: 'Nothing to scrub here.' });
       }
       const area = shoalAreaById(save.area);
-      const curioPool = ShoalTalesData.curios.filter(c => c.area === area.name);
+      const curioPool = item.curioSource === 'party' ? ShoalTalesData.curios.filter(c => c.set === 'Party Favours')
+        : item.curioSource === 'guild' ? ShoalTalesData.curios.filter(c => c.set === 'Guild Keepsakes')
+        : ShoalTalesData.curios.filter(c => c.area === area.name);
       if (curioPool.length === 0) return sendJson(res, 500, { error: 'No curios available to identify in this area.' });
       const picked = curioPool[Math.floor(Math.random() * curioPool.length)];
       const goldenEligible = save.retirements >= 8;
@@ -2344,6 +2714,7 @@ const server = http.createServer(async (req, res) => {
       item.curioId = picked.id;
       item.golden = goldenEligible && Math.random() < 0.01;
       save.allTimeStats.curiosScrubbed += 1;
+      shoalContributeToGuildQuests(save, 'curiosScrubbed', 1);
       saveDatabase();
       return sendJson(res, 200, { success: true, kind: 'curio', item });
     } catch (e) {
@@ -2372,6 +2743,7 @@ const server = http.createServer(async (req, res) => {
         const coins = Math.round((5 + Math.random() * 20) * item.areaMultiplier);
         save.coins += coins;
         save.allTimeStats.coinsEarned += coins;
+        save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
         result = { outcome: 'coins', coins };
       } else if (roll < 0.8) {
         const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
@@ -2408,15 +2780,37 @@ const server = http.createServer(async (req, res) => {
       if (item.kind !== 'bottle') return sendJson(res, 400, { error: 'That is not a bottle.' });
 
       save.tray.splice(itemIndex, 1);
-      const unfoundLetters = ShoalTalesData.bottleLetters.filter(l => save.bottleLettersFound.indexOf(l.id) === -1);
-      if (Math.random() < 0.35 && unfoundLetters.length > 0) {
-        const letter = unfoundLetters[Math.floor(Math.random() * unfoundLetters.length)];
-        save.bottleLettersFound.push(letter.id);
+      // The 35% letter roll now blends the original static letters with
+      // approved player-written ones (13-social.md) - never the player's
+      // own, never one they've already found, weighted up by hearts
+      // ("hearted letters wash up more often").
+      const unfoundStatic = ShoalTalesData.bottleLetters.filter(l => save.bottleLettersFound.indexOf(l.id) === -1);
+      const playerLetters = shoalEligiblePlayerLetters(handle);
+      const pool = unfoundStatic.map(l => ({ kind: 'static', letter: l, weight: 1 }))
+        .concat(playerLetters.map(l => ({ kind: 'player', letter: l, weight: 1 + l.heartCount * 0.1 })));
+      if (Math.random() < 0.35 && pool.length > 0) {
+        const totalWeight = pool.reduce((s, p) => s + p.weight, 0);
+        let roll = Math.random() * totalWeight;
+        let chosen = pool[pool.length - 1];
+        for (const p of pool) { roll -= p.weight; if (roll <= 0) { chosen = p; break; } }
+        if (chosen.kind === 'static') {
+          save.bottleLettersFound.push(chosen.letter.id);
+          saveDatabase();
+          return sendJson(res, 200, { success: true, outcome: 'letter', letter: chosen.letter, tray: save.tray });
+        }
+        chosen.letter.foundBy.push(handle);
         saveDatabase();
-        return sendJson(res, 200, { success: true, outcome: 'letter', letter, tray: save.tray });
+        return sendJson(res, 200, {
+          success: true, outcome: 'letter', isPlayerWritten: true,
+          letter: { id: chosen.letter.id, text: chosen.letter.text, authorHandle: chosen.letter.anonymous ? null : chosen.letter.authorHandle },
+          tray: save.tray
+        });
       }
+      // An empty bottle: kind 'emptyBottle' (not plain 'junk') so the UI can
+      // offer "keep it for a writing kit" alongside the usual Glass sort -
+      // /sort still accepts it exactly like junk if the player sorts it instead.
       const glassBottle = ShoalTalesData.junk.find(j => j.name === 'Glass Bottle');
-      const newItem = { id: shoalNewTrayId('bottleglass'), kind: 'junk', name: glassBottle.name, bin: glassBottle.bin, baseCoins: glassBottle.baseCoins, weight: glassBottle.weight, description: glassBottle.description, areaMultiplier: item.areaMultiplier };
+      const newItem = { id: shoalNewTrayId('bottleglass'), kind: 'emptyBottle', name: glassBottle.name, bin: glassBottle.bin, baseCoins: glassBottle.baseCoins, weight: glassBottle.weight, description: glassBottle.description, areaMultiplier: item.areaMultiplier };
       save.tray.push(newItem);
       saveDatabase();
       return sendJson(res, 200, { success: true, outcome: 'emptyBottle', item: newItem, tray: save.tray });
@@ -2439,6 +2833,7 @@ const server = http.createServer(async (req, res) => {
       const coins = Math.round((2 + Math.random() * 4) * item.areaMultiplier);
       save.coins += coins;
       save.allTimeStats.coinsEarned += coins;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
       save.allTimeStats.creaturesReleased += 1;
       const newlySeen = save.creaturesSeen.indexOf(item.creatureId) === -1;
       if (newlySeen) save.creaturesSeen.push(item.creatureId);
@@ -2472,6 +2867,7 @@ const server = http.createServer(async (req, res) => {
         if (better) {
           save.collectorsLog.curios[item.curioId] = { rarity: item.rarity, golden: item.golden, foundAt: new Date().toISOString() };
           if (item.golden) save.goldenLog.push({ kind: 'curio', id: item.curioId, foundAt: new Date().toISOString() });
+          shoalUpdateCompletedSets(save, handle);
         }
         save.tray.splice(itemIndex, 1);
         saveDatabase();
@@ -2481,6 +2877,7 @@ const server = http.createServer(async (req, res) => {
         const coins = Math.round(fullValue);
         save.coins += coins;
         save.allTimeStats.coinsEarned += coins;
+        save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
         save.tray.splice(itemIndex, 1);
         saveDatabase();
         return sendJson(res, 200, { success: true, action: 'sell', coins });
@@ -2505,8 +2902,22 @@ const server = http.createServer(async (req, res) => {
         saveDatabase();
         return sendJson(res, 200, { success: true, action: 'sort', correct, value, newStreak: save.streak });
       }
-      // 'donate' needs a guild (Social phase, not built yet).
-      return sendJson(res, 400, { error: 'Unknown or not-yet-available action.' });
+      // Donate to the Guild Log (13-social.md): a shared log, same "better
+      // copy wins" rule as the player's own Log. Completing a guild set
+      // grants every member +2% value for good (shoalGuildPayoutBonus).
+      if (action === 'donate') {
+        if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+        const guild = db.shoalTalesGuilds[save.guildId];
+        if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+        const existing = guild.guildLog.curios[item.curioId];
+        const better = !existing || RARITY_RANK[item.rarity] > RARITY_RANK[existing.rarity];
+        if (better) guild.guildLog.curios[item.curioId] = { rarity: item.rarity, donatedBy: handle, foundAt: new Date().toISOString() };
+        shoalUpdateGuildCompletedSets(guild);
+        save.tray.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'donate', logged: better });
+      }
+      return sendJson(res, 400, { error: 'Unknown action.' });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -2537,6 +2948,7 @@ const server = http.createServer(async (req, res) => {
       fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'dressed', mult);
       fish.stage = 'dressed';
       shoalTrackStationProgress(save, 'fishDressed', 1);
+      shoalContributeToGuildQuests(save, 'fishDressed', 1);
 
       let newLetter = null;
       if (!save.anyFishDressed) {
@@ -2572,6 +2984,7 @@ const server = http.createServer(async (req, res) => {
       fish.rawValue = rawValue;
       fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'meal', mult);
       fish.stage = 'meal';
+      shoalContributeToGuildQuests(save, 'mealsBaked', 1);
       saveDatabase();
       return sendJson(res, 200, { success: true, fish });
     } catch (e) {
@@ -2615,6 +3028,7 @@ const server = http.createServer(async (req, res) => {
       save[resourceKey].units += producedUnits;
       save[resourceKey].value += producedValue;
       save.sortedGoods[bin] = { units: 0, value: 0 };
+      shoalContributeToGuildQuests(save, 'goodsMade', producedUnits);
       saveDatabase();
       return sendJson(res, 200, { success: true, bin, resource: resourceKey, producedUnits, producedValue });
     } catch (e) {
@@ -2675,6 +3089,7 @@ const server = http.createServer(async (req, res) => {
         if (req2.reward.type === 'coins') {
           save.coins += req2.reward.amount;
           save.allTimeStats.coinsEarned += req2.reward.amount;
+          save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + req2.reward.amount;
           rewardMessage = req2.reward.amount + ' coins';
         } else {
           save.rareMaterials[req2.reward.material] = (save.rareMaterials[req2.reward.material] || 0) + 1;
@@ -2704,6 +3119,7 @@ const server = http.createServer(async (req, res) => {
       const reward = Math.round(amount * 3); // placeholder, see comment above
       save.coins += reward;
       save.allTimeStats.coinsEarned += reward;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + reward;
       saveDatabase();
       return sendJson(res, 200, { success: true, kind: 'standing', personId, amount, reward });
     } catch (e) {
@@ -2760,6 +3176,7 @@ const server = http.createServer(async (req, res) => {
       const reward = 50; // placeholder, see standing-order comment above - not specified in the extracted spec.
       save.coins += reward;
       save.allTimeStats.coinsEarned += reward;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + reward;
       saveDatabase();
       return sendJson(res, 200, { success: true, personId, reward });
     } catch (e) {
@@ -2951,29 +3368,9 @@ const server = http.createServer(async (req, res) => {
       const { handle, customerId, drink, coolerItemId } = await parseJsonBody(req);
       if (!handle || !customerId || !drink) return sendJson(res, 400, { error: 'Missing handle, customerId or drink' });
       const save = getOrCreateShoalTalesSave(handle);
-      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
-      const emp = save.emporium;
-      const idx = emp.counterCustomers.findIndex(c => c.id === customerId);
-      if (idx < 0) return sendJson(res, 404, { error: 'That customer is not waiting.' });
-      const customer = emp.counterCustomers[idx];
-      const area = shoalAreaById(save.area).valueMultiplier;
-      const correctDrink = drink.base === customer.drink.base && drink.flavour === customer.drink.flavour && drink.finish === customer.drink.finish;
-      let pay = ShoalTalesEngine.counterDrinkPay({ correctDrink, customerTip: customer.tip, area, bPayout: shoalPayoutBonus(save) });
-      let mealGiven = false;
-      if (customer.wantsMeal && coolerItemId) {
-        const meal = save.cooler.find(f => f.id === coolerItemId && f.stage === 'meal');
-        if (meal) {
-          pay += ShoalTalesEngine.counterMealBonus(meal.value);
-          save.cooler = save.cooler.filter(f => f.id !== coolerItemId);
-          mealGiven = true;
-        }
-      }
-      pay = Math.round(pay);
-      save.coins += pay;
-      save.allTimeStats.coinsEarned += pay;
-      emp.counterCustomers.splice(idx, 1);
+      const result = shoalPerformCounterServe(save, customerId, drink, coolerItemId);
       saveDatabase();
-      return sendJson(res, 200, { success: true, correctDrink, mealGiven, coinsEarned: pay });
+      return sendJson(res, result.status, result.body);
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -3016,6 +3413,7 @@ const server = http.createServer(async (req, res) => {
         coinsEarned = Math.round(ShoalTalesEngine.puzzleSolvePay(puzzle.rarity, area, shoalPayoutBonus(save)));
         save.coins += coinsEarned;
         save.allTimeStats.coinsEarned += coinsEarned;
+        save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coinsEarned;
         decoration = shoalGrantRandomDecoration(save, ShoalTalesEngine.weightedPick(PRIZE_BOXES.common.weights));
         save.emporium.activePuzzle = null;
       }
@@ -3150,6 +3548,7 @@ const server = http.createServer(async (req, res) => {
       const pay = Math.round(value * 2);
       save.coins += pay;
       save.allTimeStats.coinsEarned += pay;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + pay;
       let decoration = null;
       if (Math.random() < 0.25) decoration = shoalGrantRandomDecoration(save, ShoalTalesEngine.weightedPick(PRIZE_BOXES.common.weights));
       emp.workOrders[idx] = shoalGenerateWorkOrder(save);
@@ -3195,6 +3594,7 @@ const server = http.createServer(async (req, res) => {
       const earnings = Math.round(ShoalTalesEngine.awayEarnings(hoursAway, area, shoalPayoutBonus(save)));
       save.coins += earnings;
       save.allTimeStats.coinsEarned += earnings;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + earnings;
       emp.lastVisit = new Date().toISOString();
       saveDatabase();
       return sendJson(res, 200, { success: true, hoursAway: Math.min(hoursAway, 8), earnings });
@@ -3371,6 +3771,768 @@ const server = http.createServer(async (req, res) => {
       save.cosmetics.equippedTrack = trackId || null;
       saveDatabase();
       return sendJson(res, 200, { success: true, equippedTrack: save.cosmetics.equippedTrack });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Social: settings (docs/shoal-tales-spec/13-social.md) ---
+
+  if (reqPath === '/api/shoal-tales/settings/visitors' && req.method === 'POST') {
+    try {
+      const { handle, enabled } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      save.visitorsEnabled = !!enabled;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, visitorsEnabled: save.visitorsEnabled });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/settings/announcements' && req.method === 'POST') {
+    try {
+      const { handle, enabled } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      save.announcementsEnabled = !!enabled;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, announcementsEnabled: save.announcementsEnabled });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Parties (13-social.md) ---
+
+  if (reqPath === '/api/shoal-tales/party/state' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.partyId) return sendJson(res, 200, { success: true, party: null });
+      const party = shoalGetParty(save.partyId);
+      if (!party) return sendJson(res, 200, { success: true, party: null });
+      const members = party.members.map(h => {
+        const s = db.shoalTalesSaves[h];
+        return {
+          handle: h, title: s ? shoalRetirementTitle(s.retirements) : null, active: s ? shoalIsRecentlyActive(s, SHOAL_ACTIVITY_WINDOW_MS) : false,
+          // A member's own tray is exposed to the rest of the party (and only
+          // the party) so Help Sort has something to show - fair game inside
+          // a trusted group of up to 4.
+          tray: s ? s.tray : []
+        };
+      });
+      return sendJson(res, 200, { success: true, party: { id: party.id, members, chat: party.chat.slice(-50) }, dredgeBonus: shoalPartyDredgeBonus(save) });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/party/create' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.partyId) return sendJson(res, 400, { error: 'Already in a party.' });
+      const id = 'party_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      db.shoalTalesParties[id] = { id, createdAt: new Date().toISOString(), members: [handle], chat: [] };
+      save.partyId = id;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, partyId: id });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/party/invite' && req.method === 'POST') {
+    try {
+      const { handle, toHandle } = await parseJsonBody(req);
+      if (!handle || !toHandle) return sendJson(res, 400, { error: 'Missing handle or toHandle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.partyId) return sendJson(res, 400, { error: 'You are not in a party. Create one first.' });
+      const party = shoalGetParty(save.partyId);
+      if (!party) return sendJson(res, 400, { error: 'Your party no longer exists.' });
+      if (party.members.length >= 4) return sendJson(res, 400, { error: 'The party is full (4 max).' });
+      const target = getOrCreateShoalTalesSave(toHandle);
+      if (target.partyId) return sendJson(res, 400, { error: 'That player is already in a party.' });
+      if (target.pendingPartyInvites.indexOf(save.partyId) !== -1) return sendJson(res, 400, { error: 'Already invited.' });
+      target.pendingPartyInvites.push(save.partyId);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/party/accept-invite' && req.method === 'POST') {
+    try {
+      const { handle, partyId } = await parseJsonBody(req);
+      if (!handle || !partyId) return sendJson(res, 400, { error: 'Missing handle or partyId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.pendingPartyInvites.indexOf(partyId) === -1) return sendJson(res, 400, { error: 'No such invite.' });
+      if (save.partyId) return sendJson(res, 400, { error: 'Leave your current party first.' });
+      const party = shoalGetParty(partyId);
+      if (!party) return sendJson(res, 404, { error: 'That party no longer exists.' });
+      if (party.members.length >= 4) return sendJson(res, 400, { error: 'The party is full (4 max).' });
+      save.pendingPartyInvites = save.pendingPartyInvites.filter(id => id !== partyId);
+      party.members.push(handle);
+      save.partyId = partyId;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, partyId });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/party/decline-invite' && req.method === 'POST') {
+    try {
+      const { handle, partyId } = await parseJsonBody(req);
+      if (!handle || !partyId) return sendJson(res, 400, { error: 'Missing handle or partyId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      save.pendingPartyInvites = save.pendingPartyInvites.filter(id => id !== partyId);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/party/leave' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.partyId) return sendJson(res, 400, { error: 'You are not in a party.' });
+      const party = shoalGetParty(save.partyId);
+      if (party) {
+        party.members = party.members.filter(h => h !== handle);
+        if (party.members.length === 0) delete db.shoalTalesParties[party.id];
+      }
+      save.partyId = null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/party/chat' && req.method === 'POST') {
+    try {
+      const { handle, text } = await parseJsonBody(req);
+      if (!handle || !text) return sendJson(res, 400, { error: 'Missing handle or text' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.partyId) return sendJson(res, 400, { error: 'You are not in a party.' });
+      const party = shoalGetParty(save.partyId);
+      if (!party) return sendJson(res, 400, { error: 'Your party no longer exists.' });
+      party.chat.push({ handle, text: String(text).slice(0, 500), at: new Date().toISOString() });
+      if (party.chat.length > 200) party.chat = party.chat.slice(-200);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "A party member can sort the host's tray. Coins, streak, and Log stay
+  // the host's; the helper earns 1 arcade ticket per 5 good sorts."
+  if (reqPath === '/api/shoal-tales/party/help-sort' && req.method === 'POST') {
+    try {
+      const { handle, hostHandle, trayItemId, bin } = await parseJsonBody(req);
+      if (!handle || !hostHandle || !trayItemId || !bin) return sendJson(res, 400, { error: 'Missing handle, hostHandle, trayItemId or bin' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const hostSave = getOrCreateShoalTalesSave(hostHandle);
+      if (!save.partyId || save.partyId !== hostSave.partyId) return sendJson(res, 400, { error: 'You are not in the same party as the host.' });
+      const result = shoalPerformSort(hostSave, hostHandle, trayItemId, bin);
+      let ticketsEarned = 0;
+      if (result.status === 200 && result.body.correct) {
+        save.helpSortCount = (save.helpSortCount || 0) + 1;
+        if (save.helpSortCount % 5 === 0) {
+          save.emporium.tickets += 1;
+          ticketsEarned = 1;
+        }
+      }
+      saveDatabase();
+      return sendJson(res, result.status, Object.assign({}, result.body, { ticketsEarned }));
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Guilds (13-social.md) ---
+
+  if (reqPath === '/api/shoal-tales/guild/state' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 200, { success: true, guild: null });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 200, { success: true, guild: null });
+      shoalRollGuildDailyQuests(guild);
+      const members = guild.members.map(h => {
+        const s = db.shoalTalesSaves[h];
+        return { handle: h, role: guild.memberRoles[h] || 'member', title: s ? shoalRetirementTitle(s.retirements) : null, active: s ? shoalIsRecentlyActive(s, SHOAL_GUILD_ACTIVITY_WINDOW_MS) : false };
+      });
+      saveDatabase();
+      return sendJson(res, 200, {
+        success: true,
+        guild: {
+          id: guild.id, name: guild.name, tag: guild.tag, tagColor: guild.tagColor,
+          bannerColor: guild.bannerColor, bannerPattern: guild.bannerPattern,
+          members, chat: guild.chat.slice(-50), dailyQuests: guild.dailyQuests,
+          upgrades: guild.upgrades, bank: { coins: guild.bank.coins, log: guild.bank.log.slice(-50) },
+          completedSets: guild.completedSets
+        },
+        myRole: guild.memberRoles[handle] || 'member',
+        payoutBonus: shoalGuildPayoutBonus(save)
+      });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/found' && req.method === 'POST') {
+    try {
+      const { handle, name, tag, tagColor, bannerColor, bannerPattern } = await parseJsonBody(req);
+      if (!handle || !name || !tag) return sendJson(res, 400, { error: 'Missing handle, name or tag' });
+      if (tag.length < 2 || tag.length > 4) return sendJson(res, 400, { error: 'Tag must be 2-4 letters.' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.guildId) return sendJson(res, 400, { error: 'Already in a guild.' });
+      const GUILD_FOUND_COST = 1500; // "A guild costs 1,500 coins" - 09-economy.md
+      if (save.coins < GUILD_FOUND_COST) return sendJson(res, 400, { error: `Not enough coins (need ${GUILD_FOUND_COST}, have ${save.coins}).` });
+      save.coins -= GUILD_FOUND_COST;
+      const id = 'guild_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      db.shoalTalesGuilds[id] = {
+        id, name: String(name).slice(0, 40), tag: String(tag).slice(0, 4).toUpperCase(),
+        tagColor: tagColor || '#4a90d9', bannerColor: bannerColor || '#4a90d9', bannerPattern: bannerPattern || 'plain',
+        createdAt: new Date().toISOString(), members: [handle], memberRoles: { [handle]: 'owner' },
+        guildLog: { curios: {}, fish: {} }, completedSets: [],
+        dailyQuests: [], dailyQuestsDate: null,
+        upgrades: { guildFund: 0, busyNoticeboard: 0, betterRewards: 0 },
+        bank: { coins: 0, log: [] }, chat: []
+      };
+      save.guildId = id;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, guildId: id });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/invite' && req.method === 'POST') {
+    try {
+      const { handle, toHandle } = await parseJsonBody(req);
+      if (!handle || !toHandle) return sendJson(res, 400, { error: 'Missing handle or toHandle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      const target = getOrCreateShoalTalesSave(toHandle);
+      if (target.guildId) return sendJson(res, 400, { error: 'That player is already in a guild.' });
+      if (target.pendingGuildInvites.indexOf(save.guildId) !== -1) return sendJson(res, 400, { error: 'Already invited.' });
+      target.pendingGuildInvites.push(save.guildId);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/accept-invite' && req.method === 'POST') {
+    try {
+      const { handle, guildId } = await parseJsonBody(req);
+      if (!handle || !guildId) return sendJson(res, 400, { error: 'Missing handle or guildId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (save.pendingGuildInvites.indexOf(guildId) === -1) return sendJson(res, 400, { error: 'No such invite.' });
+      if (save.guildId) return sendJson(res, 400, { error: 'Leave your current guild first.' });
+      const guild = shoalGetGuild(guildId);
+      if (!guild) return sendJson(res, 404, { error: 'That guild no longer exists.' });
+      save.pendingGuildInvites = save.pendingGuildInvites.filter(id => id !== guildId);
+      guild.members.push(handle);
+      guild.memberRoles[handle] = 'member';
+      save.guildId = guildId;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, guildId });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/decline-invite' && req.method === 'POST') {
+    try {
+      const { handle, guildId } = await parseJsonBody(req);
+      if (!handle || !guildId) return sendJson(res, 400, { error: 'Missing handle or guildId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      save.pendingGuildInvites = save.pendingGuildInvites.filter(id => id !== guildId);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/leave' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (guild) {
+        const wasOwner = guild.memberRoles[handle] === 'owner';
+        guild.members = guild.members.filter(h => h !== handle);
+        delete guild.memberRoles[handle];
+        if (guild.members.length === 0) {
+          delete db.shoalTalesGuilds[guild.id];
+        } else if (wasOwner) {
+          // No ownership-transfer UI is specced, so leaving owner hands the
+          // crown to the longest-standing officer (or else member) instead
+          // of leaving the guild leaderless.
+          const nextOwner = guild.members.find(h => guild.memberRoles[h] === 'officer') || guild.members[0];
+          guild.memberRoles[nextOwner] = 'owner';
+        }
+      }
+      save.guildId = null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/promote' && req.method === 'POST') {
+    try {
+      const { handle, targetHandle } = await parseJsonBody(req);
+      if (!handle || !targetHandle) return sendJson(res, 400, { error: 'Missing handle or targetHandle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      if (guild.memberRoles[handle] !== 'owner') return sendJson(res, 400, { error: 'Only the guild owner can promote members.' });
+      if (guild.memberRoles[targetHandle] !== 'member') return sendJson(res, 400, { error: 'That member cannot be promoted.' });
+      guild.memberRoles[targetHandle] = 'officer';
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/demote' && req.method === 'POST') {
+    try {
+      const { handle, targetHandle } = await parseJsonBody(req);
+      if (!handle || !targetHandle) return sendJson(res, 400, { error: 'Missing handle or targetHandle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      if (guild.memberRoles[handle] !== 'owner') return sendJson(res, 400, { error: 'Only the guild owner can demote officers.' });
+      if (guild.memberRoles[targetHandle] !== 'officer') return sendJson(res, 400, { error: 'That member is not an officer.' });
+      guild.memberRoles[targetHandle] = 'member';
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/disband' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      if (guild.memberRoles[handle] !== 'owner') return sendJson(res, 400, { error: 'Only the guild owner can disband it.' });
+      guild.members.forEach(h => {
+        const s = db.shoalTalesSaves[h];
+        if (s) s.guildId = null;
+      });
+      delete db.shoalTalesGuilds[guild.id];
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/chat' && req.method === 'POST') {
+    try {
+      const { handle, text } = await parseJsonBody(req);
+      if (!handle || !text) return sendJson(res, 400, { error: 'Missing handle or text' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      guild.chat.push({ handle, text: String(text).slice(0, 500), at: new Date().toISOString() });
+      if (guild.chat.length > 200) guild.chat = guild.chat.slice(-200);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "Each member claims each finished quest once for coins (300 x area x
+  // payout) and 3 tickets" - Better Rewards adds +25% coins per level.
+  if (reqPath === '/api/shoal-tales/guild/quest-claim' && req.method === 'POST') {
+    try {
+      const { handle, questType } = await parseJsonBody(req);
+      if (!handle || !questType) return sendJson(res, 400, { error: 'Missing handle or questType' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      shoalRollGuildDailyQuests(guild);
+      const q = guild.dailyQuests.find(q => q.type === questType);
+      if (!q) return sendJson(res, 400, { error: 'No such quest active today.' });
+      if (q.progress < q.goal) return sendJson(res, 400, { error: 'That quest is not finished yet.' });
+      if (q.claimedBy.indexOf(handle) !== -1) return sendJson(res, 400, { error: 'Already claimed.' });
+      q.claimedBy.push(handle);
+      const area = shoalAreaById(save.area);
+      const betterRewardsBonus = (guild.upgrades.betterRewards || 0) * 0.25;
+      const coins = Math.round(300 * area.valueMultiplier * (1 + shoalPayoutBonus(save)) * (1 + betterRewardsBonus));
+      save.coins += coins;
+      save.allTimeStats.coinsEarned += coins;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
+      save.emporium.tickets += 3;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, coins, tickets: 3 });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/bank/deposit' && req.method === 'POST') {
+    try {
+      const { handle, amount } = await parseJsonBody(req);
+      if (!handle || !amount) return sendJson(res, 400, { error: 'Missing handle or amount' });
+      if ([100, 1000, 5000].indexOf(amount) === -1) return sendJson(res, 400, { error: 'Deposit must be 100, 1,000, or 5,000 coins.' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      if (save.coins < amount) return sendJson(res, 400, { error: `Not enough coins (need ${amount}, have ${save.coins}).` });
+      save.coins -= amount;
+      guild.bank.coins += amount;
+      guild.bank.log.push({ type: 'deposit', handle, amount, at: new Date().toISOString() });
+      if (guild.bank.log.length > 200) guild.bank.log = guild.bank.log.slice(-200);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, bankCoins: guild.bank.coins });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/guild/bank/purchase-upgrade' && req.method === 'POST') {
+    try {
+      const { handle, upgradeId } = await parseJsonBody(req);
+      if (!handle || !upgradeId) return sendJson(res, 400, { error: 'Missing handle or upgradeId' });
+      const def = GUILD_UPGRADES[upgradeId];
+      if (!def) return sendJson(res, 400, { error: 'Unknown upgradeId.' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+      const guild = shoalGetGuild(save.guildId);
+      if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+      const role = guild.memberRoles[handle];
+      if (role !== 'owner' && role !== 'officer') return sendJson(res, 400, { error: 'Only the owner or officers can buy upgrades.' });
+      const level = guild.upgrades[upgradeId] || 0;
+      if (level >= def.maxLevel) return sendJson(res, 400, { error: 'That upgrade is already at max level.' });
+      const cost = def.cost(level);
+      if (guild.bank.coins < cost) return sendJson(res, 400, { error: `Not enough in the Guild Bank (need ${cost}, have ${guild.bank.coins}).` });
+      guild.bank.coins -= cost;
+      guild.upgrades[upgradeId] = level + 1;
+      guild.bank.log.push({ type: 'purchase', handle, upgradeId, cost, newLevel: level + 1, at: new Date().toISOString() });
+      if (guild.bank.log.length > 200) guild.bank.log = guild.bank.log.slice(-200);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, upgradeId, newLevel: level + 1, coinsSpent: cost, bankCoins: guild.bank.coins });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Visits (13-social.md) ---
+
+  if (reqPath === '/api/shoal-tales/visit' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      const ownerHandle = query.get('ownerHandle') || '';
+      if (!ownerHandle) return sendJson(res, 400, { error: 'Missing ownerHandle' });
+      const ownerSave = getOrCreateShoalTalesSave(ownerHandle);
+      if (!shoalCanVisit(handle, ownerSave)) return sendJson(res, 400, { error: 'You are not welcome to visit this boat.' });
+      const guild = ownerSave.guildId ? shoalGetGuild(ownerSave.guildId) : null;
+      return sendJson(res, 200, {
+        success: true,
+        boat: {
+          handle: ownerHandle, title: shoalRetirementTitle(ownerSave.retirements), retirements: ownerSave.retirements,
+          cosmetics: ownerSave.cosmetics, bestStreakEver: ownerSave.bestStreakEver,
+          setsCompleted: shoalCountCompletedSets(ownerSave).length,
+          emporiumOpen: ownerSave.emporiumOpen,
+          decorationsOwned: ownerSave.emporiumOpen ? ownerSave.emporium.decorationsOwned : null,
+          tipJar: ownerSave.emporiumOpen ? ownerSave.emporium.tipJar : 0,
+          guild: guild ? { name: guild.name, tag: guild.tag, tagColor: guild.tagColor } : null,
+          // "After the first retirement, Emporium owners can invite visitors,
+          // who can serve at the Counter (owner online) and tip." - the
+          // waiting customers are exposed so a visitor has something to pick
+          // a drink order against.
+          counterCustomers: ownerSave.emporiumOpen ? ownerSave.emporium.counterCustomers : [],
+          canServeCounter: ownerSave.emporiumOpen && ownerSave.retirements >= 1 && shoalIsHandleOnline(ownerHandle),
+          canTip: ownerSave.emporiumOpen && ownerSave.retirements >= 1
+        }
+      });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/visit/tip' && req.method === 'POST') {
+    try {
+      const { handle, ownerHandle, amount } = await parseJsonBody(req);
+      if (!handle || !ownerHandle || !amount) return sendJson(res, 400, { error: 'Missing handle, ownerHandle or amount' });
+      if (handle === ownerHandle) return sendJson(res, 400, { error: "You can't tip yourself." });
+      if (amount <= 0) return sendJson(res, 400, { error: 'Tip must be a positive amount.' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const ownerSave = getOrCreateShoalTalesSave(ownerHandle);
+      if (!ownerSave.emporiumOpen || ownerSave.retirements < 1) return sendJson(res, 400, { error: 'This player is not accepting tips yet.' });
+      if (!shoalCanVisit(handle, ownerSave)) return sendJson(res, 400, { error: 'You are not welcome to visit this boat.' });
+      if (save.coins < amount) return sendJson(res, 400, { error: `Not enough coins (need ${amount}, have ${save.coins}).` });
+      save.coins -= amount;
+      // Tips go straight into the owner's coins (it's real money for their
+      // shop) - tipJar is kept alongside as a running "lifetime tips" total
+      // for display, since nothing in 13-social.md calls for a separate
+      // jar-collection step.
+      ownerSave.coins += amount;
+      ownerSave.allTimeStats.coinsEarned += amount;
+      ownerSave.monthlyCoinsEarned = (ownerSave.monthlyCoinsEarned || 0) + amount;
+      ownerSave.emporium.tipJar = (ownerSave.emporium.tipJar || 0) + amount;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, tipJar: ownerSave.emporium.tipJar });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/visit/serve-counter' && req.method === 'POST') {
+    try {
+      const { handle, ownerHandle, customerId, drink, coolerItemId } = await parseJsonBody(req);
+      if (!handle || !ownerHandle || !customerId || !drink) return sendJson(res, 400, { error: 'Missing handle, ownerHandle, customerId or drink' });
+      const ownerSave = getOrCreateShoalTalesSave(ownerHandle);
+      if (ownerSave.retirements < 1) return sendJson(res, 400, { error: 'This player cannot invite visitors to the Counter yet (needs a first retirement).' });
+      if (!shoalIsHandleOnline(ownerHandle)) return sendJson(res, 400, { error: 'The owner must be online to be helped at the Counter.' });
+      if (!shoalCanVisit(handle, ownerSave)) return sendJson(res, 400, { error: 'You are not welcome to visit this boat.' });
+      const result = shoalPerformCounterServe(ownerSave, customerId, drink, coolerItemId);
+      saveDatabase();
+      return sendJson(res, result.status, result.body);
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Gifts (13-social.md) ---
+
+  if (reqPath === '/api/shoal-tales/gift/send' && req.method === 'POST') {
+    try {
+      const { handle, toHandle, storedCurioId } = await parseJsonBody(req);
+      if (!handle || !toHandle || !storedCurioId) return sendJson(res, 400, { error: 'Missing handle, toHandle or storedCurioId' });
+      if (handle === toHandle) return sendJson(res, 400, { error: "You can't gift yourself." });
+      const save = getOrCreateShoalTalesSave(handle);
+      const idx = save.storedCurios.findIndex(c => c.id === storedCurioId);
+      if (idx < 0) return sendJson(res, 404, { error: 'That stored curio was not found.' });
+      if (!shoalIsHandleOnline(toHandle)) return sendJson(res, 400, { error: 'That player must be online to receive a gift.' });
+      const target = getOrCreateShoalTalesSave(toHandle);
+      const curio = save.storedCurios[idx];
+      save.storedCurios.splice(idx, 1);
+      target.storedCurios.push(Object.assign({}, curio, { id: 'stored_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), giftedBy: handle }));
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Bottle letters, player-written (13-social.md) ---
+
+  if (reqPath === '/api/shoal-tales/bottle/keep' && req.method === 'POST') {
+    try {
+      const { handle, trayItemId } = await parseJsonBody(req);
+      if (!handle || !trayItemId) return sendJson(res, 400, { error: 'Missing handle or trayItemId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
+      if (save.tray[itemIndex].kind !== 'emptyBottle') return sendJson(res, 400, { error: 'That is not an empty bottle.' });
+      save.tray.splice(itemIndex, 1);
+      save.emptyBottlesKept = (save.emptyBottlesKept || 0) + 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, emptyBottlesKept: save.emptyBottlesKept });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/bottle/trade-for-kit' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if ((save.emptyBottlesKept || 0) < 1) return sendJson(res, 400, { error: 'You have no kept empty bottles to trade.' });
+      save.emptyBottlesKept -= 1;
+      save.writingKits = (save.writingKits || 0) + 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, emptyBottlesKept: save.emptyBottlesKept, writingKits: save.writingKits });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "Staff read every letter before it can wash up; at most 3 can wait for
+  // review at once" - read literally, the cap is global (across all
+  // authors), not per-author.
+  if (reqPath === '/api/shoal-tales/letters/write' && req.method === 'POST') {
+    try {
+      const { handle, text, anonymous } = await parseJsonBody(req);
+      if (!handle || !text) return sendJson(res, 400, { error: 'Missing handle or text' });
+      const trimmed = String(text).trim();
+      if (trimmed.length === 0 || trimmed.length > 900) return sendJson(res, 400, { error: 'A letter must be 1-900 characters.' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if ((save.writingKits || 0) < 1) return sendJson(res, 400, { error: 'You need a writing kit (trade a kept empty bottle for one).' });
+      const pendingCount = Object.values(db.shoalTalesBottleLetters).filter(l => l.status === 'pending').length;
+      if (pendingCount >= 3) return sendJson(res, 400, { error: 'The review queue is full right now (max 3) - try again later.' });
+      save.writingKits -= 1;
+      const id = 'letter_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      db.shoalTalesBottleLetters[id] = {
+        id, authorHandle: handle, text: trimmed, anonymous: !!anonymous, status: 'pending',
+        heartCount: 0, foundBy: [], createdAt: new Date().toISOString()
+      };
+      saveDatabase();
+      return sendJson(res, 200, { success: true, letterId: id, writingKits: save.writingKits });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // Staff moderation queue - plain API endpoints gated by isSuperAdminHandle
+  // rather than a dedicated admin web app (not built in this pass; see the
+  // task's status report for the scope note).
+  if (reqPath === '/api/shoal-tales/letters/moderate/list-pending' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      const pending = Object.values(db.shoalTalesBottleLetters).filter(l => l.status === 'pending');
+      return sendJson(res, 200, { success: true, letters: pending });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/letters/moderate/approve' && req.method === 'POST') {
+    try {
+      const { handle, letterId } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      const letter = db.shoalTalesBottleLetters[letterId];
+      if (!letter) return sendJson(res, 404, { error: 'No such letter.' });
+      letter.status = 'approved';
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/letters/moderate/reject' && req.method === 'POST') {
+    try {
+      const { handle, letterId, reason } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      const letter = db.shoalTalesBottleLetters[letterId];
+      if (!letter) return sendJson(res, 404, { error: 'No such letter.' });
+      letter.status = 'rejected';
+      letter.rejectReason = reason || null;
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "A found letter can be hearted once; hearted letters wash up more often."
+  if (reqPath === '/api/shoal-tales/letters/heart' && req.method === 'POST') {
+    try {
+      const { handle, letterId } = await parseJsonBody(req);
+      if (!handle || !letterId) return sendJson(res, 400, { error: 'Missing handle or letterId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const letter = db.shoalTalesBottleLetters[letterId];
+      if (!letter || letter.foundBy.indexOf(handle) === -1) return sendJson(res, 400, { error: "You haven't found this letter." });
+      if ((save.heartedLetterIds || []).indexOf(letterId) !== -1) return sendJson(res, 400, { error: 'Already hearted.' });
+      save.heartedLetterIds.push(letterId);
+      letter.heartCount = (letter.heartCount || 0) + 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, heartCount: letter.heartCount });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "A letter can be reported with a reason, pulling it from the sea and
+  // sending it back to staff" - puts it back in the pending queue (so it
+  // stops surfacing to other players until re-approved).
+  if (reqPath === '/api/shoal-tales/letters/report' && req.method === 'POST') {
+    try {
+      const { handle, letterId, reason } = await parseJsonBody(req);
+      if (!handle || !letterId || !reason) return sendJson(res, 400, { error: 'Missing handle, letterId or reason' });
+      const letter = db.shoalTalesBottleLetters[letterId];
+      if (!letter || letter.foundBy.indexOf(handle) === -1) return sendJson(res, 400, { error: "You haven't found this letter." });
+      letter.status = 'pending';
+      letter.reportedBy = handle;
+      letter.reportReason = String(reason).slice(0, 500);
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "Players can write a reply to a found letter. Only the original writer
+  // finds the reply, delivered on their next haul."
+  if (reqPath === '/api/shoal-tales/letters/reply' && req.method === 'POST') {
+    try {
+      const { handle, letterId, text } = await parseJsonBody(req);
+      if (!handle || !letterId || !text) return sendJson(res, 400, { error: 'Missing handle, letterId or text' });
+      const trimmed = String(text).trim();
+      if (trimmed.length === 0 || trimmed.length > 900) return sendJson(res, 400, { error: 'A reply must be 1-900 characters.' });
+      const letter = db.shoalTalesBottleLetters[letterId];
+      if (!letter || letter.foundBy.indexOf(handle) === -1) return sendJson(res, 400, { error: "You haven't found this letter." });
+      const authorSave = getOrCreateShoalTalesSave(letter.authorHandle);
+      authorSave.pendingLetterReplies.push({ letterId, from: handle, text: trimmed, at: new Date().toISOString() });
+      saveDatabase();
+      return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Leaderboards (13-social.md) ---
+
+  if (reqPath === '/api/shoal-tales/leaderboard' && req.method === 'GET') {
+    try {
+      const type = query.get('type') || 'lifetimeCoins';
+      const valueFns = {
+        retirements: s => s.retirements || 0,
+        setsCompleted: s => shoalCountCompletedSets(s).length,
+        bestStreak: s => s.bestStreakEver || 0,
+        lifetimeCoins: s => s.allTimeStats.coinsEarned || 0,
+        monthlyCoins: s => s.monthlyCoinsEarned || 0,
+        monthlySets: s => s.monthlySetsCompleted || 0
+      };
+      const valueFn = valueFns[type];
+      if (!valueFn) return sendJson(res, 400, { error: 'Unknown leaderboard type.' });
+      const rows = Object.values(db.shoalTalesSaves)
+        .map(s => ({ handle: s.handle, title: shoalRetirementTitle(s.retirements), value: valueFn(s) }))
+        .filter(r => r.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 20);
+      return sendJson(res, 200, { success: true, type, rows });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

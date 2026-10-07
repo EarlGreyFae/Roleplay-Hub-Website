@@ -80,11 +80,35 @@
     },
     Mail: function (props) {
       return Icon([h('rect', { key: 'r', x: '3', y: '5', width: '18', height: '14', rx: '2' }), h('path', { key: 'p', d: 'm3 7 9 6 9-6' })], props);
+    },
+    Users: function (props) {
+      return Icon([
+        h('path', { key: 'p1', d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }),
+        h('circle', { key: 'c1', cx: '9', cy: '7', r: '4' }),
+        h('path', { key: 'p2', d: 'M23 21v-2a4 4 0 0 0-3-3.87' }),
+        h('path', { key: 'p3', d: 'M16 3.13a4 4 0 0 1 0 7.75' })
+      ], props);
+    },
+    Flag: function (props) {
+      return Icon([h('path', { key: 'p1', d: 'M4 22V4' }), h('path', { key: 'p2', d: 'M4 4h14l-3 4 3 4H4' })], props);
+    },
+    Home: function (props) {
+      return Icon([h('path', { key: 'p1', d: 'm3 9 9-7 9 7' }), h('path', { key: 'p2', d: 'M5 10v10h14V10' })], props);
+    },
+    Trophy: function (props) {
+      return Icon([
+        h('path', { key: 'p1', d: 'M8 21h8' }), h('path', { key: 'p2', d: 'M12 17v4' }),
+        h('path', { key: 'p3', d: 'M7 4h10v5a5 5 0 0 1-10 0V4Z' }),
+        h('path', { key: 'p4', d: 'M5 5H3v2a4 4 0 0 0 4 4' }), h('path', { key: 'p5', d: 'M19 5h2v2a4 4 0 0 1-4 4' })
+      ], props);
+    },
+    Heart: function (props) {
+      return Icon([h('path', { key: 'p', d: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8Z' })], props);
     }
   };
 
   var TRAY_ICONS = {
-    junk: 'Anchor', fish: 'Fish', curio: 'Gem', crate: 'Box', bottle: 'Bottle', seaCreature: 'Creature', magicCurio: 'Sparkle', puzzleBox: 'Box'
+    junk: 'Anchor', fish: 'Fish', curio: 'Gem', crate: 'Box', bottle: 'Bottle', seaCreature: 'Creature', magicCurio: 'Sparkle', puzzleBox: 'Box', emptyBottle: 'Bottle'
   };
   var RARITY_LABELS = { Common: 'Common', Uncommon: 'Uncommon', Rare: 'Rare', Epic: 'Epic' };
 
@@ -204,6 +228,7 @@
     var curioChoosingBin = props.curioChoosingBin;
     var onStartCurioSort = props.onStartCurioSort;
     var onStartPuzzle = props.onStartPuzzle;
+    var onKeepBottle = props.onKeepBottle;
     var busy = props.busy;
     var lastResult = props.lastResult;
 
@@ -250,6 +275,20 @@
             className: 'shoal-bin-btn'
           }, BIN_LABELS[bin]);
         });
+      }
+      // An empty bottle sorts like any other Glass junk, OR can be kept for
+      // a writing kit (13-social.md step 1) - the bottle-letter grind.
+      if (item.kind === 'emptyBottle') {
+        return [
+          h('button', {
+            key: 'glass', type: 'button', disabled: busy, onClick: function () { onSort(item.id, item.bin); },
+            className: 'shoal-bin-btn'
+          }, 'Sort (', BIN_LABELS[item.bin], ')'),
+          h('button', {
+            key: 'keep', type: 'button', disabled: busy, onClick: function () { onKeepBottle(item.id); },
+            className: 'shoal-action-btn'
+          }, h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Keep for a Writing Kit'))
+        ];
       }
       if (item.kind === 'crate') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onPry(item.id); }, className: 'shoal-action-btn' },
@@ -804,7 +843,9 @@
   // needs original/licensed tracks, a content decision, not code. ---
 
   function shoalLookUnlockHint(item) {
-    return item.unlocksAtRetirement > 0 ? ('Unlocks at retirement ' + item.unlocksAtRetirement) : null;
+    if (item.unlocksAtRetirement > 0) return 'Unlocks at retirement ' + item.unlocksAtRetirement;
+    if (item.id === 'season-champion') return "This month's top 3 coin earners";
+    return null;
   }
 
   // Shared grid for sails/flags/pets/badges/tracks - all "pick one from a
@@ -1007,6 +1048,466 @@
     );
   }
 
+  // --- Social (13-social.md): Parties, Guilds, Visits, Leaderboards, Bottle
+  // Letters. Self-contained: fetches its own sub-state (party/guild/visit/
+  // leaderboard don't live on the main `save` object) rather than routing
+  // everything through ShoalTalesScreen's single poll loop. `onRefreshSave`
+  // is called after anything that also changes fields on `save` itself
+  // (coins, partyId, guildId, writingKits, ...) so the rest of the screen
+  // stays in sync. ---
+
+  var SOCIAL_TABS = [
+    { id: 'party', label: 'Party', icon: 'Users' },
+    { id: 'guild', label: 'Guild', icon: 'Flag' },
+    { id: 'visit', label: 'Visit', icon: 'Home' },
+    { id: 'leaderboard', label: 'Leaderboards', icon: 'Trophy' },
+    { id: 'letters', label: 'Letters', icon: 'Mail' }
+  ];
+
+  function SocialPanel(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+    var lastFoundLetter = props.lastFoundLetter;
+    var onHeartLetter = props.onHeartLetter;
+    var onReportLetter = props.onReportLetter;
+    var onReplyLetter = props.onReplyLetter;
+
+    var _tab = useState('party'); var tab = _tab[0]; var setTab = _tab[1];
+
+    return h('div', { className: 'shoal-card shoal-social-card' },
+      h('div', { className: 'shoal-card-title' }, 'Social'),
+      h('div', { className: 'shoal-social-tabs' },
+        SOCIAL_TABS.map(function (t) {
+          return h('button', {
+            key: t.id, type: 'button',
+            className: 'shoal-social-tab' + (tab === t.id ? ' shoal-social-tab-active' : ''),
+            onClick: function () { setTab(t.id); }
+          }, h(Icons[t.icon], { className: 'shoal-social-tab-icon' }), t.label);
+        })
+      ),
+      tab === 'party' && h(PartyTab, { key: 'party-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
+      tab === 'guild' && h(GuildTab, { key: 'guild-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
+      tab === 'visit' && h(VisitTab, { key: 'visit-' + handle, save: save, handle: handle }),
+      tab === 'leaderboard' && h(LeaderboardTab, { key: 'lb' }),
+      tab === 'letters' && h(LettersTab, {
+        key: 'letters-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave,
+        lastFoundLetter: lastFoundLetter, onHeartLetter: onHeartLetter, onReportLetter: onReportLetter, onReplyLetter: onReplyLetter
+      })
+    );
+  }
+
+  function PartyTab(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+
+    var _party = useState(null); var party = _party[0]; var setParty = _party[1];
+    var _dredgeBonus = useState(0); var dredgeBonus = _dredgeBonus[0]; var setDredgeBonus = _dredgeBonus[1];
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
+    var _inviteHandle = useState(''); var inviteHandle = _inviteHandle[0]; var setInviteHandle = _inviteHandle[1];
+    var _chatText = useState(''); var chatText = _chatText[0]; var setChatText = _chatText[1];
+    var _helpItem = useState(null); var helpItem = _helpItem[0]; var setHelpItem = _helpItem[1];
+
+    var refresh = useCallback(function () {
+      return apiGet('/api/shoal-tales/party/state?handle=' + encodeURIComponent(handle)).then(function (data) {
+        setParty(data.party); setDredgeBonus(data.dredgeBonus || 0);
+      }).catch(function (e) { setMsg(e.message); });
+    }, [handle]);
+
+    useEffect(function () { refresh(); }, [handle, save.partyId]);
+
+    function run(promise, afterMsg) {
+      setBusy(true); setMsg(null);
+      return promise.then(function (data) {
+        setMsg(afterMsg || null);
+        return Promise.all([refresh(), onRefreshSave()]).then(function () { return data; });
+      }).catch(function (e) { setMsg(e.message); return null; }).finally(function () { setBusy(false); });
+    }
+
+    if (!party) {
+      return h('div', { className: 'shoal-social-tab-body' },
+        h('p', { className: 'shoal-hint' }, "You're not in a party. Parties give a dredge-together payout bonus, a shot at Party Favours curios, and let you help each other sort."),
+        (save.pendingPartyInvites || []).length > 0 && h('div', { className: 'shoal-invite-list' },
+          save.pendingPartyInvites.map(function (pid) {
+            return h('div', { key: pid, className: 'shoal-invite-row' },
+              h('span', null, 'Party invite'),
+              h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/party/accept-invite', { handle: handle, partyId: pid })); } }, 'Accept'),
+              h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/party/decline-invite', { handle: handle, partyId: pid })); } }, 'Decline')
+            );
+          })
+        ),
+        h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { run(apiPost('/api/shoal-tales/party/create', { handle: handle })); } }, 'Create a Party'),
+        msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+      );
+    }
+
+    var others = party.members.filter(function (m) { return m.handle !== handle; });
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-social-stat-row' },
+        h('span', null, party.members.length, '/4 members'),
+        h('span', null, 'Dredge bonus: +', Math.round(dredgeBonus * 100), '%')
+      ),
+      h('div', { className: 'shoal-member-list' },
+        party.members.map(function (m) {
+          return h('div', { key: m.handle, className: 'shoal-member-row' },
+            h('span', { className: 'shoal-member-dot' + (m.active ? ' shoal-member-dot-active' : '') }),
+            h('span', null, m.handle, m.handle === handle ? ' (you)' : ''),
+            h('span', { className: 'shoal-member-title' }, m.title)
+          );
+        })
+      ),
+      party.members.length < 4 && h('div', { className: 'shoal-invite-form' },
+        h('input', { type: 'text', placeholder: '@handle to invite', value: inviteHandle, onChange: function (e) { setInviteHandle(e.target.value); } }),
+        h('button', { type: 'button', disabled: busy || !inviteHandle, onClick: function () { run(apiPost('/api/shoal-tales/party/invite', { handle: handle, toHandle: inviteHandle })); setInviteHandle(''); } }, 'Invite')
+      ),
+      others.length > 0 && h('div', { className: 'shoal-help-sort-section' },
+        h('div', { className: 'shoal-subtitle' }, 'Help Sort'),
+        others.map(function (m) {
+          if (!m.tray || m.tray.length === 0) return h('div', { key: m.handle, className: 'shoal-hint' }, m.handle, "'s tray is empty.");
+          return h('div', { key: m.handle }, h('div', { className: 'shoal-hint' }, m.handle, "'s tray:"),
+            h('div', { className: 'shoal-tray-grid' },
+              m.tray.map(function (item) {
+                var isSel = helpItem && helpItem.hostHandle === m.handle && helpItem.itemId === item.id;
+                return h('button', {
+                  key: item.id, type: 'button', disabled: busy,
+                  onClick: function () { setHelpItem(isSel ? null : { hostHandle: m.handle, itemId: item.id, item: item }); },
+                  className: 'shoal-tray-item' + (isSel ? ' shoal-tray-item-selected' : '')
+                }, h(Icons[TRAY_ICONS[item.kind] || 'Anchor'], { className: 'shoal-tray-icon' }), h('span', { className: 'shoal-tray-name' }, item.name));
+              })
+            ),
+            helpItem && helpItem.hostHandle === m.handle && h('div', { className: 'shoal-bin-row' },
+              helpItem.item.kind === 'fish'
+                ? h('button', { type: 'button', disabled: busy, className: 'shoal-bin-btn', onClick: function () { run(apiPost('/api/shoal-tales/party/help-sort', { handle: handle, hostHandle: m.handle, trayItemId: helpItem.itemId, bin: 'cooler' })); setHelpItem(null); } }, 'Cooler')
+                : ENGINE.BINS.map(function (bin) {
+                  return h('button', { key: bin, type: 'button', disabled: busy, className: 'shoal-bin-btn', onClick: function () { run(apiPost('/api/shoal-tales/party/help-sort', { handle: handle, hostHandle: m.handle, trayItemId: helpItem.itemId, bin: bin })); setHelpItem(null); } }, BIN_LABELS[bin]);
+                })
+            )
+          );
+        })
+      ),
+      h('div', { className: 'shoal-chat-box' },
+        h('div', { className: 'shoal-chat-log' },
+          party.chat.map(function (m, i) { return h('div', { key: i, className: 'shoal-chat-line' }, h('b', null, m.handle, ': '), m.text); })
+        ),
+        h('div', { className: 'shoal-chat-input-row' },
+          h('input', { type: 'text', placeholder: 'Say something...', value: chatText, maxLength: 500, onChange: function (e) { setChatText(e.target.value); } }),
+          h('button', { type: 'button', disabled: busy || !chatText, onClick: function () { run(apiPost('/api/shoal-tales/party/chat', { handle: handle, text: chatText })); setChatText(''); } }, 'Send')
+        )
+      ),
+      h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/party/leave', { handle: handle })); } }, 'Leave Party'),
+      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
+  var GUILD_UPGRADE_INFO = {
+    guildFund: { name: 'Guild Fund', effect: '+1% value for every member' },
+    busyNoticeboard: { name: 'Busy Noticeboard', effect: '+1 daily quest' },
+    betterRewards: { name: 'Better Rewards', effect: '+25% daily quest coins' }
+  };
+
+  function GuildTab(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+
+    var _guild = useState(null); var guildInfo = _guild[0]; var setGuildInfo = _guild[1];
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
+    var _form = useState({ name: '', tag: '', tagColor: '#4a90d9' }); var form = _form[0]; var setForm = _form[1];
+    var _inviteHandle = useState(''); var inviteHandle = _inviteHandle[0]; var setInviteHandle = _inviteHandle[1];
+    var _chatText = useState(''); var chatText = _chatText[0]; var setChatText = _chatText[1];
+    var _depositAmt = useState(100); var depositAmt = _depositAmt[0]; var setDepositAmt = _depositAmt[1];
+
+    var refresh = useCallback(function () {
+      return apiGet('/api/shoal-tales/guild/state?handle=' + encodeURIComponent(handle)).then(function (data) {
+        setGuildInfo(data.guild ? { guild: data.guild, myRole: data.myRole, payoutBonus: data.payoutBonus } : null);
+      }).catch(function (e) { setMsg(e.message); });
+    }, [handle]);
+
+    useEffect(function () { refresh(); }, [handle, save.guildId]);
+
+    function run(promise, afterMsg) {
+      setBusy(true); setMsg(null);
+      return promise.then(function (data) {
+        setMsg(afterMsg || null);
+        return Promise.all([refresh(), onRefreshSave()]).then(function () { return data; });
+      }).catch(function (e) { setMsg(e.message); return null; }).finally(function () { setBusy(false); });
+    }
+
+    if (!guildInfo) {
+      return h('div', { className: 'shoal-social-tab-body' },
+        h('p', { className: 'shoal-hint' }, 'Guilds costs 1,500 coins to found. Members share a Guild Log, daily quests, and a Guild Bank that buys shared upgrades.'),
+        (save.pendingGuildInvites || []).length > 0 && h('div', { className: 'shoal-invite-list' },
+          save.pendingGuildInvites.map(function (gid) {
+            return h('div', { key: gid, className: 'shoal-invite-row' },
+              h('span', null, 'Guild invite'),
+              h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/guild/accept-invite', { handle: handle, guildId: gid })); } }, 'Accept'),
+              h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/guild/decline-invite', { handle: handle, guildId: gid })); } }, 'Decline')
+            );
+          })
+        ),
+        h('div', { className: 'shoal-guild-found-form' },
+          h('input', { type: 'text', placeholder: 'Guild name', value: form.name, onChange: function (e) { setForm(Object.assign({}, form, { name: e.target.value })); } }),
+          h('input', { type: 'text', placeholder: 'Tag (2-4 letters)', value: form.tag, maxLength: 4, onChange: function (e) { setForm(Object.assign({}, form, { tag: e.target.value })); } }),
+          h('input', { type: 'color', value: form.tagColor, onChange: function (e) { setForm(Object.assign({}, form, { tagColor: e.target.value })); } }),
+          h('button', {
+            type: 'button', disabled: busy || !form.name || form.tag.length < 2 || save.coins < 1500,
+            onClick: function () { run(apiPost('/api/shoal-tales/guild/found', { handle: handle, name: form.name, tag: form.tag, tagColor: form.tagColor })); }
+          }, 'Found Guild (1,500c)')
+        ),
+        msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+      );
+    }
+
+    var guild = guildInfo.guild, myRole = guildInfo.myRole;
+    var isOwner = myRole === 'owner', canManageBank = myRole === 'owner' || myRole === 'officer';
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-social-stat-row' },
+        h('span', { className: 'shoal-guild-tag', style: { background: guild.tagColor } }, '[', guild.tag, ']'),
+        h('span', null, guild.name),
+        h('span', null, 'Payout bonus: +', Math.round(guildInfo.payoutBonus * 100), '%')
+      ),
+      h('div', { className: 'shoal-member-list' },
+        guild.members.map(function (m) {
+          return h('div', { key: m.handle, className: 'shoal-member-row' },
+            h('span', { className: 'shoal-member-dot' + (m.active ? ' shoal-member-dot-active' : '') }),
+            h('span', null, m.handle, m.handle === handle ? ' (you)' : ''),
+            h('span', { className: 'shoal-member-role' }, m.role),
+            isOwner && m.handle !== handle && m.role === 'member' && h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/guild/promote', { handle: handle, targetHandle: m.handle })); } }, 'Promote'),
+            isOwner && m.handle !== handle && m.role === 'officer' && h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/guild/demote', { handle: handle, targetHandle: m.handle })); } }, 'Demote')
+          );
+        })
+      ),
+      h('div', { className: 'shoal-invite-form' },
+        h('input', { type: 'text', placeholder: '@handle to invite', value: inviteHandle, onChange: function (e) { setInviteHandle(e.target.value); } }),
+        h('button', { type: 'button', disabled: busy || !inviteHandle, onClick: function () { run(apiPost('/api/shoal-tales/guild/invite', { handle: handle, toHandle: inviteHandle })); setInviteHandle(''); } }, 'Invite')
+      ),
+      h('div', { className: 'shoal-subtitle' }, "Today's Quests"),
+      h('div', { className: 'shoal-quest-list' },
+        guild.dailyQuests.map(function (q) {
+          var done = q.progress >= q.goal;
+          var claimed = q.claimedBy.indexOf(handle) !== -1;
+          return h('div', { key: q.type, className: 'shoal-quest-row' },
+            h('div', { className: 'shoal-quest-label' }, q.label),
+            h('div', { className: 'shoal-quest-bar' }, h('div', { className: 'shoal-quest-bar-fill', style: { width: Math.min(100, Math.round(q.progress / q.goal * 100)) + '%' } })),
+            h('div', { className: 'shoal-quest-progress' }, q.progress, '/', q.goal),
+            h('button', { type: 'button', disabled: busy || !done || claimed, onClick: function () { run(apiPost('/api/shoal-tales/guild/quest-claim', { handle: handle, questType: q.type })); } }, claimed ? 'Claimed' : 'Claim')
+          );
+        })
+      ),
+      h('div', { className: 'shoal-subtitle' }, 'Guild Bank: ', formatCoins(guild.bank.coins), ' coins'),
+      h('div', { className: 'shoal-bank-row' },
+        [100, 1000, 5000].map(function (amt) {
+          return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { run(apiPost('/api/shoal-tales/guild/bank/deposit', { handle: handle, amount: amt })); } }, 'Deposit ', formatCoins(amt));
+        })
+      ),
+      canManageBank && h('div', { className: 'shoal-upgrade-list' },
+        Object.keys(GUILD_UPGRADE_INFO).map(function (uid) {
+          var level = guild.upgrades[uid] || 0;
+          var info = GUILD_UPGRADE_INFO[uid];
+          return h('div', { key: uid, className: 'shoal-upgrade-row' },
+            h('div', { className: 'shoal-upgrade-info' },
+              h('div', { className: 'shoal-upgrade-name' }, info.name, ' ', h('span', { className: 'shoal-upgrade-level' }, 'Lv.', level)),
+              h('div', { className: 'shoal-upgrade-effect' }, info.effect)
+            ),
+            h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/guild/bank/purchase-upgrade', { handle: handle, upgradeId: uid })); } }, 'Buy Next Level')
+          );
+        })
+      ),
+      h('div', { className: 'shoal-chat-box' },
+        h('div', { className: 'shoal-chat-log' },
+          guild.chat.map(function (m, i) { return h('div', { key: i, className: 'shoal-chat-line' }, h('b', null, m.handle, ': '), m.text); })
+        ),
+        h('div', { className: 'shoal-chat-input-row' },
+          h('input', { type: 'text', placeholder: 'Say something...', value: chatText, maxLength: 500, onChange: function (e) { setChatText(e.target.value); } }),
+          h('button', { type: 'button', disabled: busy || !chatText, onClick: function () { run(apiPost('/api/shoal-tales/guild/chat', { handle: handle, text: chatText })); setChatText(''); } }, 'Send')
+        )
+      ),
+      h('div', { className: 'shoal-action-row' },
+        h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/guild/leave', { handle: handle })); } }, 'Leave Guild'),
+        isOwner && h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/guild/disband', { handle: handle })); } }, 'Disband Guild')
+      ),
+      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
+  function VisitTab(props) {
+    var save = props.save;
+    var handle = props.handle;
+
+    var _target = useState(''); var target = _target[0]; var setTarget = _target[1];
+    var _boat = useState(null); var boat = _boat[0]; var setBoat = _boat[1];
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
+    var _tipAmount = useState(10); var tipAmount = _tipAmount[0]; var setTipAmount = _tipAmount[1];
+    var _drink = useState({ base: DRINK_PARTS.base[0], flavour: DRINK_PARTS.flavour[0], finish: DRINK_PARTS.finish[0] });
+    var drink = _drink[0]; var setDrink = _drink[1];
+
+    function doVisit() {
+      if (!target) return;
+      setBusy(true); setMsg(null);
+      apiGet('/api/shoal-tales/visit?handle=' + encodeURIComponent(handle) + '&ownerHandle=' + encodeURIComponent(target))
+        .then(function (data) { setBoat(data.boat); }).catch(function (e) { setMsg(e.message); setBoat(null); }).finally(function () { setBusy(false); });
+    }
+
+    function doTip() {
+      setBusy(true); setMsg(null);
+      apiPost('/api/shoal-tales/visit/tip', { handle: handle, ownerHandle: target, amount: tipAmount })
+        .then(function () { setMsg('Tipped ' + formatCoins(tipAmount) + ' coins!'); return doVisit(); })
+        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
+    }
+
+    function doServe(customerId) {
+      setBusy(true); setMsg(null);
+      apiPost('/api/shoal-tales/visit/serve-counter', { handle: handle, ownerHandle: target, customerId: customerId, drink: drink })
+        .then(function (data) { setMsg((data.correctDrink ? 'Correct drink! ' : 'Wrong drink. ') + '+' + formatCoins(data.coinsEarned) + ' coins for the host.'); return doVisit(); })
+        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
+    }
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-invite-form' },
+        h('input', { type: 'text', placeholder: '@handle to visit', value: target, onChange: function (e) { setTarget(e.target.value); } }),
+        h('button', { type: 'button', disabled: busy || !target, onClick: doVisit }, "Visit Boat")
+      ),
+      boat && h('div', { className: 'shoal-visit-boat' },
+        h('div', { className: 'shoal-subtitle' }, boat.handle, ' - ', boat.title, boat.guild ? (' [' + boat.guild.tag + ']') : ''),
+        h('div', { className: 'shoal-social-stat-row' },
+          h('span', null, boat.retirements, ' retirements'),
+          h('span', null, boat.setsCompleted, ' sets logged'),
+          h('span', null, 'Best streak x', boat.bestStreakEver)
+        ),
+        boat.emporiumOpen && h('div', { className: 'shoal-hint' }, 'Tip jar: ', formatCoins(boat.tipJar), ' coins'),
+        boat.canTip && h('div', { className: 'shoal-bank-row' },
+          [10, 25, 50, 100].map(function (amt) {
+            return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { setTipAmount(amt); doTip(); } }, 'Tip ', amt);
+          })
+        ),
+        boat.canServeCounter && boat.counterCustomers && boat.counterCustomers.length > 0 && h('div', null,
+          h('div', { className: 'shoal-subtitle' }, 'Serve at the Counter'),
+          h('div', { className: 'shoal-drink-picker' },
+            ['base', 'flavour', 'finish'].map(function (part) {
+              return h('select', {
+                key: part, value: drink[part],
+                onChange: function (e) { var d = {}; d[part] = e.target.value; setDrink(Object.assign({}, drink, d)); }
+              }, DRINK_PARTS[part].map(function (opt) { return h('option', { key: opt, value: opt }, opt); }));
+            })
+          ),
+          boat.counterCustomers.map(function (c) {
+            return h('div', { key: c.id, className: 'shoal-member-row' },
+              h('span', null, c.name, ' wants ', c.drink.base, ', ', c.drink.flavour, ', ', c.drink.finish),
+              h('button', { type: 'button', disabled: busy, onClick: function () { doServe(c.id); } }, 'Serve')
+            );
+          })
+        )
+      ),
+      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
+  var LEADERBOARD_TYPES = [
+    { id: 'retirements', label: 'Times Retired' },
+    { id: 'setsCompleted', label: 'Sets Completed' },
+    { id: 'bestStreak', label: 'Best Streak' },
+    { id: 'lifetimeCoins', label: 'Lifetime Coins' },
+    { id: 'monthlyCoins', label: "This Month's Coins" },
+    { id: 'monthlySets', label: "This Month's Sets" }
+  ];
+
+  function LeaderboardTab() {
+    var _type = useState('retirements'); var type = _type[0]; var setType = _type[1];
+    var _rows = useState([]); var rows = _rows[0]; var setRows = _rows[1];
+
+    useEffect(function () {
+      apiGet('/api/shoal-tales/leaderboard?type=' + type).then(function (data) { setRows(data.rows); }).catch(function () { setRows([]); });
+    }, [type]);
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-social-tabs' },
+        LEADERBOARD_TYPES.map(function (t) {
+          return h('button', {
+            key: t.id, type: 'button', className: 'shoal-social-tab' + (type === t.id ? ' shoal-social-tab-active' : ''),
+            onClick: function () { setType(t.id); }
+          }, t.label);
+        })
+      ),
+      h('div', { className: 'shoal-leaderboard-list' },
+        rows.length === 0 && h('p', { className: 'shoal-hint' }, 'Nobody on this board yet.'),
+        rows.map(function (r, i) {
+          return h('div', { key: r.handle, className: 'shoal-leaderboard-row' },
+            h('span', { className: 'shoal-leaderboard-rank' }, i + 1),
+            h('span', null, r.handle, ' (', r.title, ')'),
+            h('span', { className: 'shoal-leaderboard-value' }, formatCoins(r.value))
+          );
+        })
+      )
+    );
+  }
+
+  function LettersTab(props) {
+    var save = props.save;
+    var handle = props.handle;
+    var onRefreshSave = props.onRefreshSave;
+    var lastFoundLetter = props.lastFoundLetter;
+    var onHeartLetter = props.onHeartLetter;
+    var onReportLetter = props.onReportLetter;
+    var onReplyLetter = props.onReplyLetter;
+
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
+    var _text = useState(''); var text = _text[0]; var setText = _text[1];
+    var _anon = useState(false); var anon = _anon[0]; var setAnon = _anon[1];
+    var _replyText = useState(''); var replyText = _replyText[0]; var setReplyText = _replyText[1];
+
+    function run(promise, afterMsg) {
+      setBusy(true); setMsg(null);
+      return promise.then(function (data) {
+        setMsg(afterMsg || null);
+        return onRefreshSave().then(function () { return data; });
+      }).catch(function (e) { setMsg(e.message); return null; }).finally(function () { setBusy(false); });
+    }
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-social-stat-row' },
+        h('span', null, save.writingKits || 0, ' writing kit(s)'),
+        h('span', null, save.emptyBottlesKept || 0, ' empty bottle(s) kept')
+      ),
+      (save.emptyBottlesKept || 0) > 0 && h('button', {
+        type: 'button', disabled: busy, className: 'shoal-action-btn',
+        onClick: function () { run(apiPost('/api/shoal-tales/bottle/trade-for-kit', { handle: handle }), 'Traded a bottle for a writing kit.'); }
+      }, 'Trade a Bottle for a Writing Kit'),
+      h('div', { className: 'shoal-subtitle' }, 'Write a Letter'),
+      h('textarea', {
+        maxLength: 900, rows: 4, placeholder: 'Write something to toss out to sea...', value: text,
+        onChange: function (e) { setText(e.target.value); }
+      }),
+      h('div', { className: 'shoal-social-stat-row' },
+        h('span', null, text.length, '/900'),
+        h('label', null, h('input', { type: 'checkbox', checked: anon, onChange: function (e) { setAnon(e.target.checked); } }), ' Send anonymously')
+      ),
+      h('button', {
+        type: 'button', disabled: busy || !text.trim() || (save.writingKits || 0) < 1,
+        onClick: function () { run(apiPost('/api/shoal-tales/letters/write', { handle: handle, text: text, anonymous: anon }), 'Letter sent off for review.'); setText(''); }
+      }, 'Cork and Throw'),
+      lastFoundLetter && h('div', { className: 'shoal-found-letter' },
+        h('div', { className: 'shoal-subtitle' }, 'Last Letter Found'),
+        h('p', null, '"', lastFoundLetter.text, '"', lastFoundLetter.authorHandle ? (' - ' + lastFoundLetter.authorHandle) : ' - anonymous'),
+        h('div', { className: 'shoal-action-row' },
+          h('button', { type: 'button', disabled: busy, onClick: function () { onHeartLetter(lastFoundLetter.id); } }, h(Icons.Heart, { className: 'shoal-bin-icon' }), ' Heart'),
+          h('button', { type: 'button', disabled: busy, onClick: function () { onReportLetter(lastFoundLetter.id); } }, 'Report')
+        ),
+        h('div', { className: 'shoal-invite-form' },
+          h('input', { type: 'text', placeholder: 'Write a reply...', value: replyText, maxLength: 900, onChange: function (e) { setReplyText(e.target.value); } }),
+          h('button', { type: 'button', disabled: busy || !replyText.trim(), onClick: function () { onReplyLetter(lastFoundLetter.id, replyText); setReplyText(''); } }, 'Send Reply')
+        )
+      ),
+      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
   function ShoalTalesScreen(props) {
     var handle = props.userProfile && props.userProfile.handle;
     var _save = useState(null); var save = _save[0]; var setSave = _save[1];
@@ -1018,6 +1519,7 @@
     var _dredging = useState(false); var dredging = _dredging[0]; var setDredging = _dredging[1];
     var _countdown = useState(0); var countdown = _countdown[0]; var setCountdown = _countdown[1];
     var _curioChoosingBin = useState(null); var curioChoosingBin = _curioChoosingBin[0]; var setCurioChoosingBin = _curioChoosingBin[1];
+    var _lastFoundLetter = useState(null); var lastFoundLetter = _lastFoundLetter[0]; var setLastFoundLetter = _lastFoundLetter[1];
 
     var refresh = useCallback(function () {
       if (!handle) return Promise.resolve();
@@ -1095,9 +1597,43 @@
     function handleUncork(trayItemId) {
       runAction(apiPost('/api/shoal-tales/uncork', { handle: handle, trayItemId: trayItemId })).then(function (data) {
         if (!data) return;
-        var message = data.outcome === 'letter' ? ('Found a letter: "' + data.letter.title + '"') : 'Just an empty bottle.';
+        var message;
+        if (data.outcome === 'letter' && data.isPlayerWritten) {
+          message = 'Found a letter' + (data.letter.authorHandle ? (' from ' + data.letter.authorHandle) : ' (anonymous)') + ': "' + data.letter.text + '"';
+          setLastFoundLetter(data.letter);
+        } else if (data.outcome === 'letter') {
+          message = 'Found a letter: "' + data.letter.title + '"';
+        } else {
+          message = 'Just an empty bottle - sort it, or keep it for a writing kit.';
+        }
         setLastResult({ ok: true, message: message });
       });
+    }
+
+    function handleKeepBottle(trayItemId) {
+      runAction(apiPost('/api/shoal-tales/bottle/keep', { handle: handle, trayItemId: trayItemId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Kept (' + data.emptyBottlesKept + ' saved up for a writing kit).' });
+      });
+    }
+
+    function handleHeartLetter(letterId) {
+      setBusy(true);
+      apiPost('/api/shoal-tales/letters/heart', { handle: handle, letterId: letterId })
+        .then(function () { setLastResult({ ok: true, message: 'Hearted!' }); })
+        .catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
+    }
+    function handleReportLetter(letterId) {
+      setBusy(true);
+      apiPost('/api/shoal-tales/letters/report', { handle: handle, letterId: letterId, reason: 'Reported by finder' })
+        .then(function () { setLastResult({ ok: true, message: 'Reported - sent back to staff for review.' }); setLastFoundLetter(null); })
+        .catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
+    }
+    function handleReplyLetter(letterId, text) {
+      setBusy(true);
+      apiPost('/api/shoal-tales/letters/reply', { handle: handle, letterId: letterId, text: text })
+        .then(function () { setLastResult({ ok: true, message: 'Reply sent - the writer will find it on their next haul.' }); })
+        .catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
     }
 
     function handleRelease(trayItemId) {
@@ -1366,7 +1902,7 @@
           save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult,
           onScrub: handleScrub, onPry: handlePry, onUncork: handleUncork, onRelease: handleRelease,
           onCurioAction: handleCurioAction, curioChoosingBin: curioChoosingBin, onStartCurioSort: handleStartCurioSort,
-          onStartPuzzle: handleStartPuzzle
+          onStartPuzzle: handleStartPuzzle, onKeepBottle: handleKeepBottle
         }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
         h(TownPanel, { save: save, busy: busy, onFulfillRequest: handleFulfillRequest, onFulfillDaily: handleFulfillDaily }),
@@ -1379,7 +1915,11 @@
           onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
         }),
         h(CollectorsLogSummary, { save: save }),
-        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy })
+        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy }),
+        h(SocialPanel, {
+          save: save, handle: handle, onRefreshSave: refresh,
+          lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
+        })
       )
     );
   }
@@ -1408,6 +1948,12 @@
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,
+    SocialPanel: SocialPanel,
+    PartyTab: PartyTab,
+    GuildTab: GuildTab,
+    VisitTab: VisitTab,
+    LeaderboardTab: LeaderboardTab,
+    LettersTab: LettersTab,
     formatCoins: formatCoins
   };
 })(typeof window !== 'undefined' ? window : this);

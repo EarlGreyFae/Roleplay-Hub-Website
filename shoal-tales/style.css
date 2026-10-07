@@ -573,3 +573,231 @@
   color: #ffd166;
   font-weight: 700;
 }
+
+/* --- Social (13-social.md): Parties, Guilds, Visits, Leaderboards, Letters --- */
+
+.shoal-social-card { margin-top: 0.5rem; }
+
+.shoal-social-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+.shoal-social-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(0,0,0,0.2);
+  color: var(--shoal-foam);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.shoal-social-tab-icon { width: 0.9rem; height: 0.9rem; }
+.shoal-social-tab-active {
+  border-color: var(--shoal-gold-bright);
+  background: rgba(217, 164, 65, 0.2);
+  color: var(--shoal-gold-bright);
+}
+
+.shoal-social-tab-body { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.shoal-subtitle {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--shoal-gold-bright);
+  margin-top: 0.3rem;
+}
+
+.shoal-social-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  font-size: 0.72rem;
+  color: rgba(232, 244, 248, 0.85);
+}
+
+.shoal-member-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.shoal-member-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  font-size: 0.72rem;
+  flex-wrap: wrap;
+}
+.shoal-member-dot {
+  width: 0.5rem; height: 0.5rem; border-radius: 50%;
+  background: rgba(232, 244, 248, 0.25); flex-shrink: 0;
+}
+.shoal-member-dot-active { background: var(--shoal-good); box-shadow: 0 0 4px var(--shoal-good); }
+.shoal-member-title, .shoal-member-role { color: var(--shoal-gold-bright); font-size: 0.65rem; margin-left: auto; }
+
+.shoal-invite-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.shoal-invite-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(217, 164, 65, 0.1);
+  border: 1px solid var(--shoal-gold);
+  border-radius: 0.5rem;
+  font-size: 0.72rem;
+}
+.shoal-invite-row button, .shoal-invite-form button, .shoal-bank-row button, .shoal-guild-found-form button {
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(17, 69, 107, 0.6);
+  color: var(--shoal-foam);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.shoal-invite-form, .shoal-guild-found-form, .shoal-bank-row, .shoal-drink-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.shoal-invite-form input[type="text"], .shoal-guild-found-form input[type="text"] {
+  flex: 1;
+  min-width: 100px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  color: var(--shoal-foam);
+  font-size: 0.72rem;
+}
+
+.shoal-guild-tag {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  font-weight: 800;
+  font-size: 0.65rem;
+  color: #1a1203;
+}
+
+.shoal-help-sort-section { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.shoal-chat-box {
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.6rem;
+  padding: 0.4rem;
+  background: rgba(0,0,0,0.15);
+}
+.shoal-chat-log {
+  max-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  margin-bottom: 0.4rem;
+}
+.shoal-chat-line b { color: var(--shoal-gold-bright); }
+.shoal-chat-input-row { display: flex; gap: 0.4rem; }
+.shoal-chat-input-row input {
+  flex: 1;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  color: var(--shoal-foam);
+  font-size: 0.72rem;
+}
+.shoal-chat-input-row button {
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: var(--shoal-gold-bright);
+  color: #1a1203;
+  font-weight: 700;
+  font-size: 0.68rem;
+}
+
+.shoal-quest-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.shoal-quest-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  font-size: 0.68rem;
+}
+.shoal-quest-label { grid-column: 1 / -1; font-weight: 600; }
+.shoal-quest-bar {
+  width: 100%;
+  height: 0.4rem;
+  background: rgba(0,0,0,0.3);
+  border-radius: 0.3rem;
+  overflow: hidden;
+}
+.shoal-quest-bar-fill { height: 100%; background: var(--shoal-gold-bright); }
+.shoal-quest-progress { color: rgba(232, 244, 248, 0.7); white-space: nowrap; }
+.shoal-quest-row button {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--shoal-card-border);
+  background: rgba(63, 185, 127, 0.2);
+  color: #9ae6b4;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.shoal-quest-row button:disabled { opacity: 0.4; background: rgba(0,0,0,0.2); color: var(--shoal-foam); }
+
+.shoal-visit-boat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.6rem;
+}
+
+.shoal-leaderboard-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.shoal-leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  font-size: 0.72rem;
+}
+.shoal-leaderboard-rank { font-weight: 800; color: var(--shoal-gold-bright); width: 1.5rem; }
+.shoal-leaderboard-value { margin-left: auto; font-weight: 700; }
+
+.shoal-found-letter {
+  padding: 0.5rem;
+  background: rgba(217, 164, 65, 0.1);
+  border: 1px solid var(--shoal-gold);
+  border-radius: 0.6rem;
+  font-size: 0.72rem;
+}
+
+.shoal-action-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.shoal-action-btn-danger { border-color: var(--shoal-bad) !important; color: #ffb3b3 !important; }
+
+.shoal-social-tab-body textarea {
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  color: var(--shoal-foam);
+  font-size: 0.72rem;
+  resize: vertical;
+}

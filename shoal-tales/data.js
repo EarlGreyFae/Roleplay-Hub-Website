@@ -4427,6 +4427,11 @@
       "id": "the-deep-flag",
       "name": "The Deep",
       "unlocksAtRetirement": 8
+    },
+    {
+      "id": "season-champion",
+      "name": "Season Champion",
+      "unlocksAtRetirement": null
     }
   ],
   "pets": [
