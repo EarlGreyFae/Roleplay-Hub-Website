@@ -824,3 +824,17 @@
 .shoal-event-chip { background: rgba(255, 209, 102, 0.15); border: 1px solid #ffd166; color: #ffd166; }
 
 .shoal-quest-row-locked { opacity: 0.55; }
+
+.shoal-event-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.shoal-event-form input, .shoal-invite-form select {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  color: var(--shoal-foam);
+  font-size: 0.72rem;
+}

@@ -123,6 +123,9 @@
         h('line', { key: 'l2', x1: '18', y1: '20', x2: '18', y2: '4' }),
         h('line', { key: 'l3', x1: '6', y1: '20', x2: '6', y2: '16' })
       ], props);
+    },
+    Shield: function (props) {
+      return Icon([h('path', { key: 'p', d: 'M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z' })], props);
     }
   };
 
@@ -176,6 +179,27 @@
 
   function formatCoins(n) {
     return Math.round(n).toLocaleString();
+  }
+
+  // Party/guild chat: a lightweight, separate WebSocket connection (not
+  // routed through index.html's own App-level one - this file stays
+  // self-contained, per the header comment) that IDENTIFYs the same way the
+  // main app does and listens for just the one chat broadcast type it
+  // cares about. Returns null (rather than throwing) outside a browser.
+  function shoalOpenChatSocket(handle, messageType, groupId, onMessage) {
+    if (typeof root.WebSocket === 'undefined' || !root.location) return null;
+    try {
+      var protocol = root.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      var ws = new root.WebSocket(protocol + '//' + root.location.host + '/');
+      ws.onopen = function () { ws.send(JSON.stringify({ type: 'IDENTIFY', handle: handle })); };
+      ws.onmessage = function (event) {
+        try {
+          var data = JSON.parse(event.data);
+          if (data.type === messageType && data.id === groupId) onMessage(data.message);
+        } catch (e) { /* ignore a malformed frame */ }
+      };
+      return ws;
+    } catch (e) { return null; }
   }
 
   // --- Town/NPC display helpers. These mirror server.js's shoalTownspersonAppears/
@@ -1137,6 +1161,15 @@
 
     useEffect(function () { refresh(); }, [handle, save.partyId]);
 
+    // Live chat: open once a party is loaded, close on unmount/party change.
+    useEffect(function () {
+      if (!party || !party.id) return undefined;
+      var ws = shoalOpenChatSocket(handle, 'SHOAL_PARTY_CHAT', party.id, function (message) {
+        setParty(function (prev) { return prev ? Object.assign({}, prev, { chat: prev.chat.concat([message]) }) : prev; });
+      });
+      return function () { if (ws) ws.close(); };
+    }, [handle, party && party.id]);
+
     function run(promise, afterMsg) {
       setBusy(true); setMsg(null);
       return promise.then(function (data) {
@@ -1247,6 +1280,19 @@
     }, [handle]);
 
     useEffect(function () { refresh(); }, [handle, save.guildId]);
+
+    // Live chat: open once a guild is loaded, close on unmount/guild change.
+    useEffect(function () {
+      if (!guildInfo || !guildInfo.guild) return undefined;
+      var guildId = guildInfo.guild.id;
+      var ws = shoalOpenChatSocket(handle, 'SHOAL_GUILD_CHAT', guildId, function (message) {
+        setGuildInfo(function (prev) {
+          if (!prev || !prev.guild) return prev;
+          return Object.assign({}, prev, { guild: Object.assign({}, prev.guild, { chat: prev.guild.chat.concat([message]) }) });
+        });
+      });
+      return function () { if (ws) ws.close(); };
+    }, [handle, guildInfo && guildInfo.guild && guildInfo.guild.id]);
 
     function run(promise, afterMsg) {
       setBusy(true); setMsg(null);
@@ -1558,13 +1604,15 @@
     var save = props.save;
     var handle = props.handle;
     var onRefreshSave = props.onRefreshSave;
+    var isStaff = props.isStaff;
 
     var _tab = useState('stats'); var tab = _tab[0]; var setTab = _tab[1];
+    var tabs = isStaff ? EXTRAS_TABS.concat([{ id: 'staff', label: 'Staff', icon: 'Shield' }]) : EXTRAS_TABS;
 
     return h('div', { className: 'shoal-card shoal-social-card' },
       h('div', { className: 'shoal-card-title' }, 'The Desk'),
       h('div', { className: 'shoal-social-tabs' },
-        EXTRAS_TABS.map(function (t) {
+        tabs.map(function (t) {
           return h('button', {
             key: t.id, type: 'button',
             className: 'shoal-social-tab' + (tab === t.id ? ' shoal-social-tab-active' : ''),
@@ -1572,10 +1620,11 @@
           }, h(Icons[t.icon], { className: 'shoal-social-tab-icon' }), t.label);
         })
       ),
-      tab === 'stats' && h(StatsTab, { key: 'stats-' + handle, handle: handle }),
+      tab === 'stats' && h(StatsTab, { key: 'stats-' + handle, handle: handle, save: save }),
       tab === 'feats' && h(FeatsTab, { key: 'feats-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
       tab === 'quests' && h(QuestBookTab, { key: 'quests-' + handle, handle: handle, onRefreshSave: onRefreshSave }),
-      tab === 'settings' && h(SettingsTab, { key: 'settings-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave })
+      tab === 'settings' && h(SettingsTab, { key: 'settings-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
+      tab === 'staff' && isStaff && h(StaffTab, { key: 'staff-' + handle, handle: handle })
     );
   }
 
@@ -1590,11 +1639,15 @@
 
   function StatsTab(props) {
     var handle = props.handle;
+    var save = props.save;
     var _stats = useState(null); var stats = _stats[0]; var setStats = _stats[1];
 
+    // Refetches whenever the parent's `save` is replaced (every dredge/
+    // sort/sell/etc. refresh), not just once on mount - otherwise this tab
+    // goes stale the moment you do anything elsewhere on the page.
     useEffect(function () {
       apiGet('/api/shoal-tales/stats?handle=' + encodeURIComponent(handle)).then(function (d) { setStats(d.stats); }).catch(function () {});
-    }, [handle]);
+    }, [handle, save]);
 
     if (!stats) return h('div', { className: 'shoal-social-tab-body' }, h('p', { className: 'shoal-hint' }, 'Loading...'));
 
@@ -1735,8 +1788,92 @@
     );
   }
 
+  // Staff-only (superadmin). Wraps the letter-moderation and admin/tide,
+  // admin/event endpoints that already exist server-side - visible only
+  // when ShoalTalesScreen's own isStaff check (userProfile.role ===
+  // 'superadmin') passes, same gate the server itself re-checks.
+  function StaffTab(props) {
+    var handle = props.handle;
+    var _pending = useState([]); var pending = _pending[0]; var setPending = _pending[1];
+    var _tide = useState(null); var tide = _tide[0]; var setTide = _tide[1];
+    var _event = useState(null); var event = _event[0]; var setEvent = _event[1];
+    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
+    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
+    var _tideType = useState('spring'); var tideType = _tideType[0]; var setTideType = _tideType[1];
+    var _tideMinutes = useState(10); var tideMinutes = _tideMinutes[0]; var setTideMinutes = _tideMinutes[1];
+    var _eventForm = useState({ id: '', name: '', curioIds: '', fishIds: '', minutes: 1440 });
+    var eventForm = _eventForm[0]; var setEventForm = _eventForm[1];
+
+    var refresh = useCallback(function () {
+      return Promise.all([
+        apiGet('/api/shoal-tales/letters/moderate/list-pending?handle=' + encodeURIComponent(handle)).then(function (d) { setPending(d.letters || []); }).catch(function () {}),
+        apiGet('/api/shoal-tales/tide/status').then(function (d) { setTide(d.tide); }).catch(function () {}),
+        apiGet('/api/shoal-tales/event/status').then(function (d) { setEvent(d.event); }).catch(function () {})
+      ]);
+    }, [handle]);
+    useEffect(function () { refresh(); }, [handle]);
+
+    function run(promise, after) {
+      setBusy(true); setMsg(null);
+      return promise.then(function () { setMsg(after || null); return refresh(); })
+        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
+    }
+
+    return h('div', { className: 'shoal-social-tab-body' },
+      h('div', { className: 'shoal-subtitle' }, 'Pending Letters (', pending.length, '/3)'),
+      pending.length === 0 && h('p', { className: 'shoal-hint' }, 'Nothing waiting for review.'),
+      pending.map(function (l) {
+        return h('div', { key: l.id, className: 'shoal-found-letter' },
+          h('p', null, '"', l.text, '"', l.anonymous ? ' - anonymous' : (' - ' + l.authorHandle)),
+          h('div', { className: 'shoal-action-row' },
+            h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/letters/moderate/approve', { handle: handle, letterId: l.id }), 'Approved.'); } }, 'Approve'),
+            h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/letters/moderate/reject', { handle: handle, letterId: l.id, reason: 'Rejected by staff' }), 'Rejected.'); } }, 'Reject')
+          )
+        );
+      }),
+
+      h('div', { className: 'shoal-subtitle' }, 'Tides'),
+      tide
+        ? h('div', { className: 'shoal-member-row' },
+            h('span', null, tide.name, ': ', tide.effect, ' (ends ', new Date(tide.endsAt).toLocaleTimeString(), ')'),
+            h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/admin/tide/stop', { handle: handle }), 'Tide stopped.'); } }, 'Stop')
+          )
+        : h('div', { className: 'shoal-invite-form' },
+            h('select', { value: tideType, onChange: function (e) { setTideType(e.target.value); } },
+              DATA.tides.map(function (t) { return h('option', { key: t.id, value: t.id }, t.name); })
+            ),
+            h('input', { type: 'number', min: 1, max: 240, value: tideMinutes, onChange: function (e) { setTideMinutes(Number(e.target.value)); } }),
+            h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/admin/tide/start', { handle: handle, type: tideType, minutes: tideMinutes }), 'Tide started.'); } }, 'Start')
+          ),
+
+      h('div', { className: 'shoal-subtitle' }, 'Events'),
+      event
+        ? h('div', { className: 'shoal-member-row' },
+            h('span', null, event.name, ' (ends ', new Date(event.endsAt).toLocaleString(), ')'),
+            h('button', { type: 'button', disabled: busy, onClick: function () { run(apiPost('/api/shoal-tales/admin/event/end', { handle: handle }), 'Event ended.'); } }, 'End')
+          )
+        : h('div', { className: 'shoal-event-form' },
+            h('input', { type: 'text', placeholder: 'event id (e.g. summer-splash)', value: eventForm.id, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { id: e.target.value })); } }),
+            h('input', { type: 'text', placeholder: 'Event name', value: eventForm.name, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { name: e.target.value })); } }),
+            h('input', { type: 'text', placeholder: 'curio ids, comma-separated', value: eventForm.curioIds, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { curioIds: e.target.value })); } }),
+            h('input', { type: 'text', placeholder: 'fish ids, comma-separated', value: eventForm.fishIds, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { fishIds: e.target.value })); } }),
+            h('input', { type: 'number', min: 1, value: eventForm.minutes, onChange: function (e) { setEventForm(Object.assign({}, eventForm, { minutes: Number(e.target.value) })); } }),
+            h('button', {
+              type: 'button', disabled: busy || !eventForm.id || !eventForm.name,
+              onClick: function () {
+                var curioIds = eventForm.curioIds.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                var fishIds = eventForm.fishIds.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                run(apiPost('/api/shoal-tales/admin/event/start', { handle: handle, id: eventForm.id, name: eventForm.name, curioIds: curioIds, fishIds: fishIds, minutes: eventForm.minutes }), 'Event started.');
+              }
+            }, 'Start')
+          ),
+      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
   function ShoalTalesScreen(props) {
     var handle = props.userProfile && props.userProfile.handle;
+    var isStaff = !!(props.userProfile && props.userProfile.role === 'superadmin');
     var _save = useState(null); var save = _save[0]; var setSave = _save[1];
     var _loading = useState(true); var loading = _loading[0]; var setLoading = _loading[1];
     var _error = useState(null); var error = _error[0]; var setError = _error[1];
@@ -2148,7 +2285,7 @@
           save: save, handle: handle, onRefreshSave: refresh,
           lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
         }),
-        h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh })
+        h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff })
       )
     );
   }
@@ -2189,6 +2326,7 @@
     FeatsTab: FeatsTab,
     QuestBookTab: QuestBookTab,
     SettingsTab: SettingsTab,
+    StaffTab: StaffTab,
     formatCoins: formatCoins
   };
 })(typeof window !== 'undefined' ? window : this);

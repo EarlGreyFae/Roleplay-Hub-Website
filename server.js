@@ -759,6 +759,21 @@ function shoalBroadcastAnnouncement(message) {
   }
 }
 
+// Push a new party/guild chat line live to the group's other connected
+// members (the sender already has it from its own POST response) - same
+// best-effort "skip clients that never IDENTIFY" approach as announcements,
+// just scoped to a member list instead of everyone.
+function shoalBroadcastToGroup(members, type, groupId, chatMessage) {
+  for (const ws of wsClients) {
+    try {
+      if (ws.readyState !== 1 || !ws.userHandle) continue;
+      if (members.indexOf(ws.userHandle) === -1) continue;
+      if (ws.userHandle === chatMessage.handle) continue;
+      ws.send(JSON.stringify({ type: type, id: groupId, message: chatMessage }));
+    } catch (e) { /* ignore a single bad client */ }
+  }
+}
+
 // Guild quest progress contribution - called from the gameplay endpoints
 // that match a quest type (dredge/sort/scrub/dress/make-meal/process-junk/
 // sell). A no-op unless the player is in a guild AND that guild has a
@@ -4184,8 +4199,10 @@ const server = http.createServer(async (req, res) => {
       if (!save.partyId) return sendJson(res, 400, { error: 'You are not in a party.' });
       const party = shoalGetParty(save.partyId);
       if (!party) return sendJson(res, 400, { error: 'Your party no longer exists.' });
-      party.chat.push({ handle, text: String(text).slice(0, 500), at: new Date().toISOString() });
+      const chatMessage = { handle, text: String(text).slice(0, 500), at: new Date().toISOString() };
+      party.chat.push(chatMessage);
       if (party.chat.length > 200) party.chat = party.chat.slice(-200);
+      shoalBroadcastToGroup(party.members, 'SHOAL_PARTY_CHAT', party.id, chatMessage);
       saveDatabase();
       return sendJson(res, 200, { success: true });
     } catch (e) {
@@ -4425,8 +4442,10 @@ const server = http.createServer(async (req, res) => {
       if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
       const guild = shoalGetGuild(save.guildId);
       if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
-      guild.chat.push({ handle, text: String(text).slice(0, 500), at: new Date().toISOString() });
+      const chatMessage = { handle, text: String(text).slice(0, 500), at: new Date().toISOString() };
+      guild.chat.push(chatMessage);
       if (guild.chat.length > 200) guild.chat = guild.chat.slice(-200);
+      shoalBroadcastToGroup(guild.members, 'SHOAL_GUILD_CHAT', guild.id, chatMessage);
       saveDatabase();
       return sendJson(res, 200, { success: true });
     } catch (e) {
