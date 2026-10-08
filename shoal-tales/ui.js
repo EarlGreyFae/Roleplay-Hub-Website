@@ -285,9 +285,29 @@
     return { kind: 'standing', requires: requires, reward: { type: 'coins', amount: Math.round(amount * 3) } };
   }
 
+  // Which dock target (if any) a dragged/selected item can be dropped/sorted
+  // on, and what that does - the routing table behind drag-to-bin (16-
+  // minecraft-to-web.md: "Real UI: drag-to-bin sorting", and 17-open-
+  // items.md: "Every sort [in Minecraft] is two clicks... Drag-to-bin on
+  // the web may be faster"). Kept as a plain function, independent of any
+  // DOM/pointer code, so it's directly testable.
+  function isBinDockDraggable(item) {
+    return item.kind === 'fish' || item.kind === 'junk' || item.kind === 'emptyBottle' || (item.kind === 'curio' && item.identified);
+  }
+  // Returns true if targetKey was a valid drop for this item (and performs
+  // the sort); false if it wasn't (caller should treat the drop as a no-op).
+  function binDockDrop(item, targetKey, handlers) {
+    if (targetKey === 'cooler') { if (item.kind !== 'fish') return false; handlers.onSort(item.id, 'cooler'); return true; }
+    if (item.kind === 'junk' || item.kind === 'emptyBottle') { handlers.onSort(item.id, targetKey); return true; }
+    if (item.kind === 'curio' && item.identified) { handlers.onCurioAction(item.id, 'sort', targetKey); return true; }
+    return false;
+  }
+
   // --- The Tray: shows current haul, lets the player select an item then
   // act on it. Junk -> a bin; fish -> the cooler; curios need an extra scrub
-  // step before Log/Sell/Store/Sort; crates/bottles/creatures are one tap. ---
+  // step before Log/Sell/Store/Sort; crates/bottles/creatures are one tap.
+  // Junk/fish/identified-curios can also be dragged straight onto the bin
+  // dock instead of tapping twice. ---
   function TrayPanel(props) {
     var save = props.save;
     var selectedId = props.selectedId;
@@ -309,23 +329,90 @@
     // matches the server's own SCRUBS_NEEDED in the /scrub endpoint.
     var scrubsNeeded = Math.max(1, 4 - (save.brushLevel || 0));
 
+    // Drag-to-bin state. `dragRef` mirrors the `drag` state for use inside
+    // the window-level pointermove/pointerup listeners, which close over a
+    // stale `drag` otherwise. A tap (no movement past the threshold) still
+    // falls through to the plain onSelect toggle below - dragging is purely
+    // additive, nothing about tap-to-select-then-tap changes.
+    var _drag = useState(null); var drag = _drag[0]; var setDrag = _drag[1];
+    var dragRef = useRef(null);
+    var suppressClickRef = useRef(false);
+
     if (save.tray.length === 0) return null;
 
     var selectedItem = save.tray.find(function (t) { return t.id === selectedId; });
 
+    function binDockClickEnabled(item, targetKey) {
+      if (targetKey === 'cooler') return item.kind === 'fish';
+      if (item.kind === 'junk' || item.kind === 'emptyBottle') return true;
+      if (item.kind === 'curio' && item.identified) return curioChoosingBin === item.id;
+      return false;
+    }
+
+    function startDrag(item, e) {
+      if (busy || !isBinDockDraggable(item)) return;
+      var startX = e.clientX, startY = e.clientY;
+      var state = { itemId: item.id, startX: startX, startY: startY, x: startX, y: startY, dragging: false, hoverTarget: null };
+      dragRef.current = state;
+      setDrag(state);
+
+      function onMove(ev) {
+        var s = dragRef.current;
+        if (!s || s.itemId !== item.id) return;
+        var dx = ev.clientX - s.startX, dy = ev.clientY - s.startY;
+        var dragging = s.dragging || Math.abs(dx) > 8 || Math.abs(dy) > 8;
+        var target = null;
+        if (dragging && root.document.elementFromPoint) {
+          var el = root.document.elementFromPoint(ev.clientX, ev.clientY);
+          var dockEl = el && el.closest ? el.closest('[data-bin-target]') : null;
+          target = dockEl ? dockEl.getAttribute('data-bin-target') : null;
+        }
+        var next = { itemId: item.id, startX: s.startX, startY: s.startY, x: ev.clientX, y: ev.clientY, dragging: dragging, hoverTarget: target };
+        dragRef.current = next;
+        setDrag(next);
+      }
+
+      function onUp() {
+        root.removeEventListener('pointermove', onMove);
+        root.removeEventListener('pointerup', onUp);
+        var s = dragRef.current;
+        dragRef.current = null;
+        setDrag(null);
+        suppressClickRef.current = true;
+        if (s && s.dragging) {
+          if (s.hoverTarget) binDockDrop(item, s.hoverTarget, { onSort: onSort, onCurioAction: onCurioAction });
+        } else {
+          onSelect(item.id === selectedId ? null : item.id);
+        }
+      }
+
+      root.addEventListener('pointermove', onMove);
+      root.addEventListener('pointerup', onUp);
+    }
+
+    var hoverKey = drag && drag.dragging ? drag.hoverTarget : null;
+    var hasFish = save.tray.some(function (t) { return t.kind === 'fish'; });
+    var hasBinnable = save.tray.some(function (t) { return t.kind === 'junk' || t.kind === 'emptyBottle' || (t.kind === 'curio' && t.identified); });
+    var actionArea = selectedItem && renderActionArea(selectedItem);
+
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'The Tray (', save.tray.length, ' item', save.tray.length === 1 ? '' : 's', ')'),
-      h('p', { className: 'shoal-hint' }, 'Tap an item, then tap what to do with it.'),
+      h('p', { className: 'shoal-hint' }, 'Drag an item onto a bin below, or tap it then tap what to do.'),
       h('div', { className: 'shoal-tray-grid' },
         save.tray.map(function (item) {
           var isSelected = item.id === selectedId;
+          var isDragging = drag && drag.itemId === item.id && drag.dragging;
           var iconName = TRAY_ICONS[item.kind] || 'Anchor';
           return h('button', {
             key: item.id,
             type: 'button',
             disabled: busy,
-            onClick: function () { onSelect(isSelected ? null : item.id); },
-            className: 'shoal-tray-item' + (isSelected ? ' shoal-tray-item-selected' : '') + (' shoal-tray-item-' + item.kind)
+            onPointerDown: function (e) { startDrag(item, e); },
+            onClick: function () {
+              if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+              onSelect(isSelected ? null : item.id);
+            },
+            className: 'shoal-tray-item' + (isSelected ? ' shoal-tray-item-selected' : '') + (isDragging ? ' shoal-tray-item-dragging' : '') + (' shoal-tray-item-' + item.kind)
           },
             h(Icons[iconName], { className: 'shoal-tray-icon' }),
             h('span', { className: 'shoal-tray-name' }, item.name),
@@ -334,38 +421,37 @@
           );
         })
       ),
-      selectedItem && h('div', { className: 'shoal-bin-row' }, renderActionArea(selectedItem)),
+      actionArea && h('div', { className: 'shoal-bin-row' }, actionArea),
+      (hasFish || hasBinnable) && h('div', { className: 'shoal-bin-dock' },
+        h('div', { className: 'shoal-bin-row' },
+          hasFish && h('button', {
+            type: 'button', disabled: busy, 'data-bin-target': 'cooler',
+            className: 'shoal-bin-btn shoal-bin-btn-cooler' + (hoverKey === 'cooler' ? ' shoal-bin-btn-hover' : ''),
+            onClick: function () { if (selectedItem && binDockClickEnabled(selectedItem, 'cooler')) binDockDrop(selectedItem, 'cooler', { onSort: onSort, onCurioAction: onCurioAction }); }
+          }, h(Icons.Fish, { className: 'shoal-bin-icon' }), h('span', null, 'Cooler')),
+          hasBinnable && ENGINE.BINS.map(function (bin) {
+            return h('button', {
+              key: bin, type: 'button', disabled: busy, 'data-bin-target': bin,
+              className: 'shoal-bin-btn shoal-bin-btn-' + bin.toLowerCase() + (hoverKey === bin ? ' shoal-bin-btn-hover' : ''),
+              onClick: function () { if (selectedItem && binDockClickEnabled(selectedItem, bin)) binDockDrop(selectedItem, bin, { onSort: onSort, onCurioAction: onCurioAction }); }
+            }, h('span', { className: 'shoal-bin-btn-icon' }, BIN_EMOJI[bin]), h('span', null, BIN_LABELS[bin]));
+          })
+        )
+      ),
       lastResult && h('div', { className: 'shoal-sort-feedback ' + (lastResult.ok ? 'shoal-sort-correct' : 'shoal-sort-wrong') }, lastResult.message)
     );
 
+    // Fish/junk/identified-curios sort through the persistent bin dock above
+    // (drag, or tap the item then tap a bin there) - this only covers the
+    // kinds with just one possible action, which a dock doesn't fit.
     function renderActionArea(item) {
-      if (item.kind === 'fish') {
-        return h('button', {
-          type: 'button', disabled: busy, onClick: function () { onSort(item.id, 'cooler'); },
-          className: 'shoal-bin-btn shoal-bin-btn-cooler'
-        }, h(Icons.Fish, { className: 'shoal-bin-icon' }), h('span', null, 'Cooler'));
-      }
-      if (item.kind === 'junk') {
-        return ENGINE.BINS.map(function (bin) {
-          return h('button', {
-            key: bin, type: 'button', disabled: busy, onClick: function () { onSort(item.id, bin); },
-            className: 'shoal-bin-btn shoal-bin-btn-' + bin.toLowerCase()
-          }, h('span', { className: 'shoal-bin-btn-icon' }, BIN_EMOJI[bin]), h('span', null, BIN_LABELS[bin]));
-        });
-      }
-      // An empty bottle sorts like any other Glass junk, OR can be kept for
+      // An empty bottle sorts like junk (via the dock), or can be kept for
       // a writing kit (13-social.md step 1) - the bottle-letter grind.
       if (item.kind === 'emptyBottle') {
-        return [
-          h('button', {
-            key: 'glass', type: 'button', disabled: busy, onClick: function () { onSort(item.id, item.bin); },
-            className: 'shoal-bin-btn'
-          }, 'Sort (', BIN_LABELS[item.bin], ')'),
-          h('button', {
-            key: 'keep', type: 'button', disabled: busy, onClick: function () { onKeepBottle(item.id); },
-            className: 'shoal-action-btn'
-          }, h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Keep for a Writing Kit'))
-        ];
+        return h('button', {
+          type: 'button', disabled: busy, onClick: function () { onKeepBottle(item.id); },
+          className: 'shoal-action-btn'
+        }, h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Keep for a Writing Kit'));
       }
       if (item.kind === 'crate') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onPry(item.id); }, className: 'shoal-action-btn' },
@@ -393,12 +479,7 @@
             h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/' + scrubsNeeded + ')' : '')));
         }
         if (curioChoosingBin === item.id) {
-          return ENGINE.BINS.map(function (bin) {
-            return h('button', {
-              key: bin, type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sort', bin); },
-              className: 'shoal-bin-btn shoal-bin-btn-' + bin.toLowerCase()
-            }, h('span', { className: 'shoal-bin-btn-icon' }, BIN_EMOJI[bin]), h('span', null, BIN_LABELS[bin]));
-          });
+          return h('p', { className: 'shoal-hint' }, 'Tap a bin below to sort it.');
         }
         return [
           h('button', { key: 'log', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'log'); }, className: 'shoal-action-btn' }, h(Icons.Book, { className: 'shoal-bin-icon' }), h('span', null, 'Log')),
@@ -3010,6 +3091,8 @@
     SceneHotspot: SceneHotspot,
     HarborScene: HarborScene,
     GuildHallScene: GuildHallScene,
-    formatCoins: formatCoins
+    formatCoins: formatCoins,
+    isBinDockDraggable: isBinDockDraggable,
+    binDockDrop: binDockDrop
   };
 })(typeof window !== 'undefined' ? window : this);

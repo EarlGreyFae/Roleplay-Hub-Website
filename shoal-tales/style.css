@@ -216,6 +216,7 @@
   border-radius: 0.65rem;
   color: var(--shoal-foam);
   text-align: center;
+  touch-action: none;
 }
 .shoal-tray-item:disabled { opacity: 0.5; }
 .shoal-tray-item-fish { border-color: #2d8fc4; }
@@ -223,6 +224,10 @@
   border-color: var(--shoal-gold-bright);
   box-shadow: 0 0 0 2px rgba(240, 193, 104, 0.4);
   background: rgba(217, 164, 65, 0.15);
+}
+.shoal-tray-item-dragging {
+  opacity: 0.4;
+  touch-action: none;
 }
 
 .shoal-tray-icon { width: 1.4rem; height: 1.4rem; opacity: 0.85; }
@@ -262,6 +267,15 @@
   border-color: #2d8fc4;
 }
 .shoal-bin-icon { width: 1rem; height: 1rem; }
+.shoal-bin-dock {
+  border-top: 1px dashed var(--shoal-card-border);
+  padding-top: 0.6rem;
+  margin-top: 0.2rem;
+}
+.shoal-bin-btn-hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px var(--shoal-gold-bright);
+}
 /* Color-code each material bin like real recycling bins, so sorting is
    "pick the matching color" rather than "read seven words". */
 .shoal-bin-btn-plastic { background: rgba(56, 142, 196, 0.3); border-color: #388ec4; }
