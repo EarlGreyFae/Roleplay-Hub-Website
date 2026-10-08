@@ -136,6 +136,10 @@
   var RARITY_LABELS = { Common: 'Common', Uncommon: 'Uncommon', Rare: 'Rare', Epic: 'Epic' };
 
   var BIN_LABELS = { Plastic: 'Plastic', Metal: 'Metal', Glass: 'Glass', Wood: 'Wood', Electronics: 'Electronics', Hazardous: 'Hazardous', Mixed: 'Mixed' };
+  // A bin you can spot by color/icon at a glance, not one you have to read -
+  // recycling-bin color convention, same visual language as the deck's
+  // object tiles (emoji + short word, no sentences).
+  var BIN_EMOJI = { Plastic: '🧴', Metal: '🔩', Glass: '🍾', Wood: '🪵', Electronics: '🔌', Hazardous: '☢️', Mixed: '🗑️' };
 
   // --- The Emporium (10-emporium.md) - mirrors server.js's own constants ---
   var EMPORIUM_REQUIRED_MATERIALS = { 'Stained Glass Panel': 2, 'Old-Growth Timber': 3, 'Brass Fittings': 3, 'Neon Sign': 1 };
@@ -345,8 +349,8 @@
         return ENGINE.BINS.map(function (bin) {
           return h('button', {
             key: bin, type: 'button', disabled: busy, onClick: function () { onSort(item.id, bin); },
-            className: 'shoal-bin-btn'
-          }, BIN_LABELS[bin]);
+            className: 'shoal-bin-btn shoal-bin-btn-' + bin.toLowerCase()
+          }, h('span', { className: 'shoal-bin-btn-icon' }, BIN_EMOJI[bin]), h('span', null, BIN_LABELS[bin]));
         });
       }
       // An empty bottle sorts like any other Glass junk, OR can be kept for
@@ -392,15 +396,15 @@
           return ENGINE.BINS.map(function (bin) {
             return h('button', {
               key: bin, type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sort', bin); },
-              className: 'shoal-bin-btn'
-            }, BIN_LABELS[bin]);
+              className: 'shoal-bin-btn shoal-bin-btn-' + bin.toLowerCase()
+            }, h('span', { className: 'shoal-bin-btn-icon' }, BIN_EMOJI[bin]), h('span', null, BIN_LABELS[bin]));
           });
         }
         return [
-          h('button', { key: 'log', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'log'); }, className: 'shoal-action-btn' }, 'Log'),
-          h('button', { key: 'sell', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sell'); }, className: 'shoal-action-btn' }, 'Sell'),
-          h('button', { key: 'store', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'store'); }, className: 'shoal-action-btn' }, 'Store'),
-          h('button', { key: 'sort', type: 'button', disabled: busy, onClick: function () { onStartCurioSort(item.id); }, className: 'shoal-action-btn' }, 'Sort')
+          h('button', { key: 'log', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'log'); }, className: 'shoal-action-btn' }, h(Icons.Book, { className: 'shoal-bin-icon' }), h('span', null, 'Log')),
+          h('button', { key: 'sell', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sell'); }, className: 'shoal-action-btn' }, h(Icons.Coins, { className: 'shoal-bin-icon' }), h('span', null, 'Sell')),
+          h('button', { key: 'store', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'store'); }, className: 'shoal-action-btn' }, h(Icons.Box, { className: 'shoal-bin-icon' }), h('span', null, 'Store')),
+          h('button', { key: 'sort', type: 'button', disabled: busy, onClick: function () { onStartCurioSort(item.id); }, className: 'shoal-action-btn' }, h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Sort'))
         ];
       }
       return null;
@@ -2319,7 +2323,7 @@
   function SceneHotspot(props) {
     return h('button', {
       type: 'button',
-      className: 'shoal-scene-hotspot' + (props.small ? ' shoal-scene-hotspot-small' : '') + (props.disabled ? ' shoal-scene-hotspot-disabled' : ''),
+      className: 'shoal-scene-hotspot' + (props.small ? ' shoal-scene-hotspot-small' : '') + (props.object ? ' shoal-scene-hotspot-object' : '') + (props.disabled ? ' shoal-scene-hotspot-disabled' : ''),
       disabled: props.disabled, onClick: props.onClick
     },
       h('span', { className: 'shoal-scene-hotspot-icon' }, props.emoji),
@@ -2366,13 +2370,15 @@
   var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', dockboard: 'the Dock Board', visiting: 'the Harbor' };
 
   // The Ship's deck fixtures: dredging/the Tray/Goods & Cooler stay on the
-  // root view (the loop you use every haul), these four are a click away
-  // instead of one long scroll past all of them.
+  // root view (the loop you use every haul). These are the other physical
+  // things on deck (same objects the new-player sparkles point at: the
+  // Cutting Board, the Desk, the Work Table) - named and shown as objects,
+  // not described menu rows.
   var SHIP_ROOMS = [
-    { id: 'stations', emoji: '⚙️', label: 'Stations', sublabel: 'Process stored goods' },
-    { id: 'work-table', emoji: '🔨', label: 'Work Table', sublabel: 'Upgrades' },
-    { id: 'shipwright', emoji: '🎨', label: 'The Shipwright', sublabel: 'Looks, pets & radio' },
-    { id: 'desk', emoji: '📖', label: 'The Desk', sublabel: 'Quest book, stats, log & retiring' }
+    { id: 'stations', emoji: '⚙️', label: 'Stations' },
+    { id: 'work-table', emoji: '🔨', label: 'Work Table' },
+    { id: 'shipwright', emoji: '🎨', label: 'Shipwright' },
+    { id: 'desk', emoji: '📖', label: 'Desk' }
   ];
 
   var GUILD_HALL_ROOMS = [
@@ -2892,9 +2898,9 @@
           onStartPuzzle: handleStartPuzzle, onKeepBottle: handleKeepBottle
         }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
-        h('div', { className: 'shoal-scene-hotspot-row' },
+        h('div', { className: 'shoal-scene-hotspot-row shoal-scene-hotspot-row-objects' },
           SHIP_ROOMS.map(function (r) {
-            return h(SceneHotspot, { key: r.id, emoji: r.emoji, label: r.label, sublabel: r.sublabel, onClick: function () { setShipRoom(r.id); } });
+            return h(SceneHotspot, { key: r.id, emoji: r.emoji, label: r.label, object: true, onClick: function () { setShipRoom(r.id); } });
           })
         )
       );

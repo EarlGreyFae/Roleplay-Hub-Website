@@ -246,11 +246,15 @@
   color: var(--shoal-foam);
   font-size: 0.7rem;
   font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
 }
 .shoal-bin-btn:disabled { opacity: 0.5; }
+.shoal-bin-btn-icon { font-size: 1.3rem; line-height: 1; }
 .shoal-bin-btn-cooler {
-  display: flex;
-  align-items: center;
+  flex-direction: row;
   justify-content: center;
   gap: 0.3rem;
   flex: 1 1 100%;
@@ -258,6 +262,15 @@
   border-color: #2d8fc4;
 }
 .shoal-bin-icon { width: 1rem; height: 1rem; }
+/* Color-code each material bin like real recycling bins, so sorting is
+   "pick the matching color" rather than "read seven words". */
+.shoal-bin-btn-plastic { background: rgba(56, 142, 196, 0.3); border-color: #388ec4; }
+.shoal-bin-btn-metal { background: rgba(148, 158, 168, 0.3); border-color: #949ea8; }
+.shoal-bin-btn-glass { background: rgba(72, 173, 115, 0.3); border-color: #48ad73; }
+.shoal-bin-btn-wood { background: rgba(160, 110, 66, 0.3); border-color: #a06e42; }
+.shoal-bin-btn-electronics { background: rgba(155, 92, 196, 0.3); border-color: #9b5cc4; }
+.shoal-bin-btn-hazardous { background: rgba(214, 90, 66, 0.3); border-color: #d65a42; }
+.shoal-bin-btn-mixed { background: rgba(100, 108, 120, 0.3); border-color: #646c78; }
 
 .shoal-sort-feedback {
   margin-top: 0.6rem;
@@ -1008,6 +1021,22 @@
   padding: 0.6rem 0.5rem;
 }
 .shoal-scene-hotspot-small .shoal-scene-hotspot-icon { font-size: 1.4rem; }
+
+/* Deck fixtures (the winch, the desk, ...): plain physical objects you
+   click on, not list rows - bigger icon, name only, no description
+   underneath, square instead of a menu-row rectangle. */
+.shoal-scene-hotspot-row-objects { justify-content: center; }
+.shoal-scene-hotspot-object {
+  min-width: 92px;
+  max-width: 92px;
+  aspect-ratio: 1;
+  flex: 0 0 92px;
+  justify-content: center;
+  background: rgba(14, 53, 80, 0.5);
+  border-radius: 0.9rem;
+}
+.shoal-scene-hotspot-object .shoal-scene-hotspot-icon { font-size: 2.4rem; }
+.shoal-scene-hotspot-object .shoal-scene-hotspot-label { font-size: 0.68rem; font-weight: 700; }
 
 .shoal-harbor-roster {
   display: flex;
