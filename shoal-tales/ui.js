@@ -141,6 +141,30 @@
   // object tiles (emoji + short word, no sentences).
   var BIN_EMOJI = { Plastic: '🧴', Metal: '🔩', Glass: '🍾', Wood: '🪵', Electronics: '🔌', Hazardous: '☢️', Mixed: '🗑️' };
 
+  // Ship-look swatches/emoji (16-minecraft-to-web.md: "Ship looks built from
+  // Minecraft blocks... -> Art for each look"). No art pipeline exists here,
+  // so this is a real color swatch per wood/sail (grounded in each one's
+  // actual real-world tone, not invented) and a representative emoji per
+  // flag - so a look is something you recognize at a glance, like the pets/
+  // badges (which already carry their own emoji) always have been.
+  var WOOD_SWATCH = {
+    oak: '#b8863b', spruce: '#6e4a2e', birch: '#e8dcb8', jungle: '#8a5a3c', acacia: '#c96a2e',
+    'dark-oak': '#3b2817', mangrove: '#8c3f36', cherry: '#e8b4c4', bamboo: '#c9c25a', crimson: '#8a1f2b',
+    warped: '#2b7a78', teak: '#9a7440', cedar: '#a85c3a', rubberwood: '#d9c3a0', walnut: '#4a3222',
+    mahogany: '#6e2f22', zebrano: '#b89b6a', rosewood: '#5c2430', 'rainbow-gum': 'linear-gradient(90deg,#e06c6c,#e0c56c,#6ce087,#6cc6e0,#a06ce0)',
+    purpleheart: '#5a3a8a', ebony: '#1a1512', livingwood: '#3f9e4d', dreamwood: '#7a6fd6'
+  };
+  var SAIL_SWATCH = {
+    white: '#f2f1ec', weathered: '#c3b9a5', tan: '#d2b48c', 'sea-blue': '#2d6ca8', 'crimson-sail': '#a13d3d',
+    midnight: '#1a2238', sunshine: '#f0c14b', royal: '#5b3a9e', sunset: '#e0763a', lagoon: '#3fae8f',
+    rose: '#d98ba6', 'starlight-sail': 'linear-gradient(135deg,#dfe6f0,#9db4d6)', 'kraken-ink-sail': '#2a1a33'
+  };
+  var FLAG_EMOJI = {
+    'plain-pennant': '🚩', 'jolly-roger': '🏴‍☠️', 'crows-colours': '🐦', 'harbour-stripes': '🎏',
+    'coral-bloom-flag': '🌸', chartmaker: '🗺️', 'lighthouse-beam': '💡', 'sunset-gradient': '🌅',
+    'the-deep-flag': '🌊', 'season-champion': '🏆', 'tide-lantern-flag': '🏮', 'golden-wake-flag': '✨', 'abyssal-banner-flag': '🐙'
+  };
+
   // --- The Emporium (10-emporium.md) - mirrors server.js's own constants ---
   var EMPORIUM_REQUIRED_MATERIALS = { 'Stained Glass Panel': 2, 'Old-Growth Timber': 3, 'Brass Fittings': 3, 'Neon Sign': 1 };
   var EMPORIUM_OPEN_COST = 6000;
@@ -1272,6 +1296,8 @@
         var unlocked = opts.unlockedIds.indexOf(item.id) !== -1;
         var equipped = opts.equippedId === item.id;
         var clickable = opts.tryOnMode || unlocked;
+        var swatch = opts.swatchFor && opts.swatchFor(item);
+        var emoji = opts.emojiFor ? opts.emojiFor(item) : item.emoji;
         return h('button', {
           key: item.id, type: 'button', disabled: opts.busy || !clickable,
           onClick: function () {
@@ -1280,7 +1306,8 @@
           },
           className: 'shoal-look-chip' + (equipped ? ' shoal-look-chip-equipped' : '') + (!unlocked ? ' shoal-look-chip-locked' : '')
         },
-          item.emoji ? (item.emoji + ' ') : '', item.name,
+          swatch && h('span', { className: 'shoal-look-swatch', style: { background: swatch } }),
+          emoji ? (emoji + ' ') : '', item.name,
           !unlocked && h('span', { className: 'shoal-look-lock' }, ' (', shoalLookUnlockHint(item), ')')
         );
       })
@@ -1335,6 +1362,7 @@
           var equipped = c.equippedWood[part];
           var options = tryOnMode ? DATA.woods : DATA.woods.filter(function (w) { return c.unlockedWoods.indexOf(w.id) !== -1; });
           return h('div', { key: part, className: 'shoal-wood-part-row' },
+            h('span', { className: 'shoal-look-swatch', style: { background: WOOD_SWATCH[equipped] || '#8a8a8a' } }),
             h('span', { className: 'shoal-wood-part-label' }, part.charAt(0).toUpperCase() + part.slice(1)),
             h('select', {
               value: equipped, disabled: busy,
@@ -1360,12 +1388,12 @@
 
       h('div', { className: 'shoal-shipwright-section' },
         h('div', { className: 'shoal-shipwright-subtitle' }, 'Sails'),
-        h(LookGrid, { items: DATA.sails, unlockedIds: c.unlockedSails, equippedId: c.equippedSail, onEquip: onEquipSail, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem })
+        h(LookGrid, { items: DATA.sails, unlockedIds: c.unlockedSails, equippedId: c.equippedSail, onEquip: onEquipSail, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem, swatchFor: function (item) { return SAIL_SWATCH[item.id]; } })
       ),
 
       h('div', { className: 'shoal-shipwright-section' },
         h('div', { className: 'shoal-shipwright-subtitle' }, 'Flags'),
-        h(LookGrid, { items: DATA.flags, unlockedIds: c.unlockedFlags, equippedId: c.equippedFlag, onEquip: onEquipFlag, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem })
+        h(LookGrid, { items: DATA.flags, unlockedIds: c.unlockedFlags, equippedId: c.equippedFlag, onEquip: onEquipFlag, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem, emojiFor: function (item) { return FLAG_EMOJI[item.id]; } })
       ),
 
       h('div', { className: 'shoal-shipwright-section' },

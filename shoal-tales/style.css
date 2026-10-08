@@ -653,6 +653,16 @@
 }
 .shoal-look-chip-locked { opacity: 0.55; }
 .shoal-look-lock { font-size: 0.6rem; font-style: italic; }
+.shoal-look-swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.35);
+  margin-right: 0.3rem;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
 
 .shoal-preview-banner {
   margin: 0.4rem 0;
