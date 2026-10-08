@@ -880,6 +880,11 @@
     );
   }
 
+  // The three Arcade games (10-emporium.md) are real timing/memory
+  // minigames the client plays out, not one-click gambles - the server
+  // still owns the money and the final payout, but Tide Timer and Crab
+  // Grab need the client to report what actually happened during the
+  // round (see the matching endpoints' comments in server.js).
   function ArcadePanel(props) {
     var save = props.save;
     var busy = props.busy;
@@ -888,19 +893,117 @@
     var onShellGame = props.onShellGame;
     var affordable = save.coins >= 25;
 
+    // --- Tide Timer: a float bounces along 9 cells; Stop locks in the
+    // current cell. ---
+    var _tidePlaying = useState(false); var tidePlaying = _tidePlaying[0]; var setTidePlaying = _tidePlaying[1];
+    var _tideIndex = useState(0); var tideIndex = _tideIndex[0]; var setTideIndex = _tideIndex[1];
+    var tideTimerRef = useRef(null);
+    var tideDirRef = useRef(1);
+    function startTideTimer() {
+      setTideIndex(0); tideDirRef.current = 1; setTidePlaying(true);
+      tideTimerRef.current = setInterval(function () {
+        setTideIndex(function (i) {
+          var next = i + tideDirRef.current;
+          if (next >= 8) { next = 8; tideDirRef.current = -1; }
+          else if (next <= 0) { next = 0; tideDirRef.current = 1; }
+          return next;
+        });
+      }, 140);
+    }
+    function stopTideTimer() {
+      clearInterval(tideTimerRef.current);
+      setTidePlaying(false);
+      onTideTimer(tideIndex);
+    }
+    useEffect(function () { return function () { clearInterval(tideTimerRef.current); }; }, []);
+
+    // --- Crab Grab: crabs pop up one at a time in a 3x3 patch for 1.1s
+    // each; click before they duck, 20 seconds total. ---
+    var _crabPlaying = useState(false); var crabPlaying = _crabPlaying[0]; var setCrabPlaying = _crabPlaying[1];
+    var _crabCell = useState(null); var crabCell = _crabCell[0]; var setCrabCell = _crabCell[1];
+    var crabHitsRef = useRef(0);
+    var crabSpawnRef = useRef(null);
+    var crabEndRef = useRef(null);
+    function startCrabGrab() {
+      crabHitsRef.current = 0;
+      setCrabPlaying(true);
+      setCrabCell(Math.floor(Math.random() * 9));
+      crabSpawnRef.current = setInterval(function () {
+        setCrabCell(Math.floor(Math.random() * 9));
+      }, 1100);
+      crabEndRef.current = setTimeout(function () {
+        clearInterval(crabSpawnRef.current);
+        setCrabPlaying(false);
+        setCrabCell(null);
+        onCrabGrab(Math.min(20, crabHitsRef.current));
+      }, 20000);
+    }
+    function clickCrabCell(cellIndex) {
+      if (crabPlaying && cellIndex === crabCell) {
+        crabHitsRef.current += 1;
+        setCrabCell(null);
+      }
+    }
+    useEffect(function () {
+      return function () { clearInterval(crabSpawnRef.current); clearTimeout(crabEndRef.current); };
+    }, []);
+
+    // --- Shell Game: a cosmetic shuffle before the pick buttons unlock. ---
+    var _shellShuffling = useState(false); var shellShuffling = _shellShuffling[0]; var setShellShuffling = _shellShuffling[1];
+    var _shellReady = useState(false); var shellReady = _shellReady[0]; var setShellReady = _shellReady[1];
+    var shellTimerRef = useRef(null);
+    function startShellGame() {
+      setShellShuffling(true); setShellReady(false);
+      shellTimerRef.current = setTimeout(function () { setShellShuffling(false); setShellReady(true); }, 1200);
+    }
+    function pickShell(i) {
+      setShellReady(false);
+      onShellGame(i);
+    }
+    useEffect(function () { return function () { clearTimeout(shellTimerRef.current); }; }, []);
+
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Arcade (25 coins a game)'),
-      h('div', { className: 'shoal-controls-row' },
-        h('button', { type: 'button', disabled: busy || !affordable, onClick: onTideTimer, className: 'shoal-action-btn' }, 'Tide Timer'),
-        h('button', { type: 'button', disabled: busy || !affordable, onClick: onCrabGrab, className: 'shoal-action-btn' }, 'Crab Grab')
+
+      h('div', { className: 'shoal-arcade-game' },
+        h('div', { className: 'shoal-arcade-game-title' }, 'Tide Timer'),
+        h('div', { className: 'shoal-tide-track' },
+          [0, 1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
+            return h('div', { key: i, className: 'shoal-tide-cell' + (tidePlaying && i === tideIndex ? ' shoal-tide-cell-active' : '') + (i === 4 ? ' shoal-tide-cell-center' : '') });
+          })
+        ),
+        tidePlaying
+          ? h('button', { type: 'button', disabled: busy, onClick: stopTideTimer, className: 'shoal-action-btn' }, 'Stop!')
+          : h('button', { type: 'button', disabled: busy || !affordable, onClick: startTideTimer, className: 'shoal-action-btn' }, 'Play Tide Timer')
       ),
-      h('p', { className: 'shoal-hint' }, 'Shell Game: guess which shell hides the pearl.'),
-      h('div', { className: 'shoal-controls-row' },
-        [0, 1, 2].map(function (i) {
-          return h('button', {
-            key: i, type: 'button', disabled: busy || !affordable, onClick: function () { onShellGame(i); }, className: 'shoal-action-btn'
-          }, 'Shell ', i + 1);
-        })
+
+      h('div', { className: 'shoal-arcade-game' },
+        h('div', { className: 'shoal-arcade-game-title' }, 'Crab Grab', crabPlaying ? ' (' + crabHitsRef.current + ' hit)' : ''),
+        h('div', { className: 'shoal-crab-grid' },
+          [0, 1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
+            return h('button', {
+              key: i, type: 'button', disabled: !crabPlaying, onClick: function () { clickCrabCell(i); },
+              className: 'shoal-crab-cell' + (crabPlaying && i === crabCell ? ' shoal-crab-cell-active' : '')
+            }, crabPlaying && i === crabCell ? '🦀' : '');
+          })
+        ),
+        !crabPlaying && h('button', { type: 'button', disabled: busy || !affordable, onClick: startCrabGrab, className: 'shoal-action-btn' }, 'Play Crab Grab')
+      ),
+
+      h('div', { className: 'shoal-arcade-game' },
+        h('div', { className: 'shoal-arcade-game-title' }, 'Shell Game'),
+        h('p', { className: 'shoal-hint' }, 'Guess which shell hides the pearl.'),
+        shellShuffling
+          ? h('p', { className: 'shoal-hint' }, 'Shuffling...')
+          : shellReady
+          ? h('div', { className: 'shoal-controls-row' },
+              [0, 1, 2].map(function (i) {
+                return h('button', {
+                  key: i, type: 'button', disabled: busy, onClick: function () { pickShell(i); }, className: 'shoal-action-btn'
+                }, 'Shell ', i + 1);
+              })
+            )
+          : h('button', { type: 'button', disabled: busy || !affordable, onClick: startShellGame, className: 'shoal-action-btn' }, 'Play Shell Game')
       )
     );
   }
@@ -950,6 +1053,19 @@
     var save = props.save;
     var busy = props.busy;
     var handlers = props.handlers;
+    // "Customers walk in every 25 seconds while the owner is in the game,
+    // up to 3 waiting" (10-emporium.md) - arrival is automatic, not
+    // something the player has to click for; the manual button stays too,
+    // for whenever a player wants one sooner.
+    var waitingRef = useRef(0);
+    waitingRef.current = save.emporiumOpen ? save.emporium.counterCustomers.length : 3;
+    useEffect(function () {
+      if (!save.emporiumOpen) return undefined;
+      var interval = setInterval(function () {
+        if (waitingRef.current < 3) handlers.onNextCustomer();
+      }, 25000);
+      return function () { clearInterval(interval); };
+    }, [save.emporiumOpen]);
 
     if (!save.emporiumOpen) {
       return h(EmporiumGate, { save: save, busy: busy, onOpen: handlers.onOpenEmporium });
@@ -2584,14 +2700,14 @@
           setLastResult({ ok: true, message: 'Hint used (' + data.ticketsLeft + ' tickets left).' });
         });
       },
-      onTideTimer: function () {
-        runAction(apiPost('/api/shoal-tales/emporium/arcade/tide-timer', { handle: handle })).then(function (data) {
+      onTideTimer: function (stopIndex) {
+        runAction(apiPost('/api/shoal-tales/emporium/arcade/tide-timer', { handle: handle, stopIndex: stopIndex })).then(function (data) {
           if (!data) return;
           setLastResult({ ok: true, message: '+' + data.tickets + ' tickets' });
         });
       },
-      onCrabGrab: function () {
-        runAction(apiPost('/api/shoal-tales/emporium/arcade/crab-grab', { handle: handle })).then(function (data) {
+      onCrabGrab: function (crabsHit) {
+        runAction(apiPost('/api/shoal-tales/emporium/arcade/crab-grab', { handle: handle, crabsHit: crabsHit })).then(function (data) {
           if (!data) return;
           setLastResult({ ok: true, message: 'Hit ' + data.crabsHit + ' crabs - +' + data.tickets + ' tickets' });
         });

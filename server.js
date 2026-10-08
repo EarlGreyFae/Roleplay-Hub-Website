@@ -4017,34 +4017,50 @@ const server = http.createServer(async (req, res) => {
   // unverifiable client-reported score - still a real coin cost and a real
   // (random) ticket payout, just not a skill test. Shell Game keeps its real
   // 3-way guess, since that needs no timing data.
+  // "A float slides along 9 cells. Stopping it in the middle pays 10, then
+  // 5, 3, 1, 1 further out" (10-emporium.md) - a real timing minigame, so
+  // the client runs the sliding animation and reports which cell it was
+  // over when the player hit Stop. Like a reaction-timing game inherently
+  // must, this trusts the client's reported stop cell; the index is tightly
+  // bounded (0-8) and the stakes are a few arcade tickets.
   if (reqPath === '/api/shoal-tales/emporium/arcade/tide-timer' && req.method === 'POST') {
     try {
-      const { handle } = await parseJsonBody(req);
+      const { handle, stopIndex } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      if (!Number.isInteger(stopIndex) || stopIndex < 0 || stopIndex > 8) {
+        return sendJson(res, 400, { error: 'stopIndex must be an integer 0-8.' });
+      }
       const save = getOrCreateShoalTalesSave(handle);
       if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
       if (save.coins < 25) return sendJson(res, 400, { error: 'Not enough coins (need 25).' });
       save.coins -= 25;
-      const stop = Math.floor(Math.random() * 9); // 0-8, center=4
-      const distance = Math.abs(stop - 4);
+      const distance = Math.abs(stopIndex - 4);
       const tickets = [10, 5, 3, 1, 1][distance];
       save.emporium.tickets += tickets;
       saveDatabase();
-      return sendJson(res, 200, { success: true, stop, distance, tickets });
+      return sendJson(res, 200, { success: true, stop: stopIndex, distance, tickets });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
   }
 
+  // "Crabs pop up in a 3x3 sand patch for 1.1s each; click before they
+  // duck. 20 seconds, 1 ticket per 3 crabs, up to 10" (10-emporium.md) - the
+  // client runs the real 20s round and reports how many crabs were clicked
+  // in time; bounded to what's physically possible in that window (~18
+  // crabs at one every 1.1s, rounded up for slack) so a tampered client
+  // can't claim more than the game could ever produce.
   if (reqPath === '/api/shoal-tales/emporium/arcade/crab-grab' && req.method === 'POST') {
     try {
-      const { handle } = await parseJsonBody(req);
+      const { handle, crabsHit } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      if (!Number.isInteger(crabsHit) || crabsHit < 0 || crabsHit > 20) {
+        return sendJson(res, 400, { error: 'crabsHit must be an integer 0-20.' });
+      }
       const save = getOrCreateShoalTalesSave(handle);
       if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
       if (save.coins < 25) return sendJson(res, 400, { error: 'Not enough coins (need 25).' });
       save.coins -= 25;
-      const crabsHit = Math.floor(Math.random() * 21); // 0-20
       const tickets = Math.min(10, Math.floor(crabsHit / 3));
       save.emporium.tickets += tickets;
       saveDatabase();

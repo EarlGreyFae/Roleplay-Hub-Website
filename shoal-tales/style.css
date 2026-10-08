@@ -129,6 +129,39 @@
 }
 
 .shoal-select-wrap { flex: 1; min-width: 0; }
+
+.shoal-arcade-game { margin-bottom: 1rem; }
+.shoal-arcade-game:last-child { margin-bottom: 0; }
+.shoal-arcade-game-title { font-weight: 700; font-size: 0.78rem; margin-bottom: 0.35rem; }
+.shoal-tide-track { display: flex; gap: 0.2rem; margin-bottom: 0.5rem; }
+.shoal-tide-cell {
+  flex: 1;
+  height: 1.4rem;
+  border-radius: 0.3rem;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+}
+.shoal-tide-cell-center { border-color: var(--shoal-gold); }
+.shoal-tide-cell-active { background: var(--shoal-gold-bright); border-color: var(--shoal-gold-bright); }
+.shoal-crab-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.3rem;
+  max-width: 180px;
+  margin-bottom: 0.5rem;
+}
+.shoal-crab-cell {
+  aspect-ratio: 1;
+  border-radius: 0.4rem;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--shoal-card-border);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shoal-crab-cell:disabled { opacity: 0.6; }
+.shoal-crab-cell-active { background: rgba(217, 164, 65, 0.25); border-color: var(--shoal-gold); }
 .shoal-select-wrap label {
   display: block;
   font-size: 0.65rem;
