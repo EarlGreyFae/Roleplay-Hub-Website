@@ -4926,28 +4926,46 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // "Visitors can leave tips of 10, 50, 100, or 500 coins (500 needs a
+  // confirm click). Tips are stored even while the owner is offline,
+  // collected at the jar." (10-emporium.md) - like Away Earnings, tips
+  // accumulate in the jar rather than landing in the owner's coins
+  // immediately; /visit/collect-tips below is the explicit collection step.
+  const TIP_AMOUNTS = [10, 50, 100, 500];
   if (reqPath === '/api/shoal-tales/visit/tip' && req.method === 'POST') {
     try {
       const { handle, ownerHandle, amount } = await parseJsonBody(req);
       if (!handle || !ownerHandle || !amount) return sendJson(res, 400, { error: 'Missing handle, ownerHandle or amount' });
       if (handle === ownerHandle) return sendJson(res, 400, { error: "You can't tip yourself." });
-      if (amount <= 0) return sendJson(res, 400, { error: 'Tip must be a positive amount.' });
+      if (!TIP_AMOUNTS.includes(amount)) return sendJson(res, 400, { error: 'Tip must be 10, 50, 100, or 500 coins.' });
       const save = getOrCreateShoalTalesSave(handle);
       const ownerSave = getOrCreateShoalTalesSave(ownerHandle);
       if (!ownerSave.emporiumOpen || ownerSave.retirements < 1) return sendJson(res, 400, { error: 'This player is not accepting tips yet.' });
       if (!shoalCanVisit(handle, ownerSave)) return sendJson(res, 400, { error: 'You are not welcome to visit this boat.' });
       if (save.coins < amount) return sendJson(res, 400, { error: `Not enough coins (need ${amount}, have ${save.coins}).` });
       save.coins -= amount;
-      // Tips go straight into the owner's coins (it's real money for their
-      // shop) - tipJar is kept alongside as a running "lifetime tips" total
-      // for display, since nothing in 13-social.md calls for a separate
-      // jar-collection step.
-      ownerSave.coins += amount;
-      ownerSave.allTimeStats.coinsEarned += amount;
-      ownerSave.monthlyCoinsEarned = (ownerSave.monthlyCoinsEarned || 0) + amount;
       ownerSave.emporium.tipJar = (ownerSave.emporium.tipJar || 0) + amount;
       saveDatabase();
       return sendJson(res, 200, { success: true, tipJar: ownerSave.emporium.tipJar });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/visit/collect-tips' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const amount = save.emporium.tipJar || 0;
+      if (amount <= 0) return sendJson(res, 400, { error: 'The tip jar is empty.' });
+      save.coins += amount;
+      save.allTimeStats.coinsEarned += amount;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + amount;
+      save.emporium.tipJar = 0;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, collected: amount });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

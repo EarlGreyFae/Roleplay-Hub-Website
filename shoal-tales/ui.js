@@ -531,6 +531,12 @@
       if (have <= 0) return null;
       return p.name + ' (' + describeRequires(current.requires) + ')';
     }).filter(Boolean);
+    // "Warns when meals are included, since the Counter can use them"
+    // (10-emporium.md's Sell Room) - unconditional on meals existing at
+    // all, unlike the request warning above.
+    if (mealFish.length > 0) {
+      sellWarnings.push('the Counter (' + mealFish.length + ' meal' + (mealFish.length === 1 ? '' : 's') + ')');
+    }
 
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Held Goods'),
@@ -748,6 +754,10 @@
     var onTradeUp = props.onTradeUp;
     var emp = save.emporium;
     var _picked = useState(null); var pickedId = _picked[0]; var setPickedId = _picked[1];
+    // "Each expansion... (two clicks each)" and "Trade Up... (two clicks)"
+    // (10-emporium.md) - same confirm pattern as Sell Everything/Retire.
+    var _confirmExpand = useState(false); var confirmingExpand = _confirmExpand[0]; var setConfirmingExpand = _confirmExpand[1];
+    var _confirmTradeUp = useState(null); var confirmingTradeUpRarity = _confirmTradeUp[0]; var setConfirmingTradeUpRarity = _confirmTradeUp[1];
 
     function decorationById(id) { return DATA.decorations.find(function (d) { return d.id === id; }); }
     var spareIds = Object.keys(emp.decorationsOwned).filter(function (id) { return emp.decorationsOwned[id] > 0; });
@@ -782,9 +792,19 @@
         })
       ),
       h('div', { className: 'shoal-controls-row' },
-        tier < PEDESTAL_EXPANSION_COSTS.length && h('button', {
-          type: 'button', disabled: busy || save.coins < expansionCost, onClick: onExpand, className: 'shoal-action-btn'
-        }, 'Add 2 Pedestals (', formatCoins(expansionCost), 'c)'),
+        tier < PEDESTAL_EXPANSION_COSTS.length && (
+          confirmingExpand
+            ? [
+                h('button', {
+                  key: 'confirm', type: 'button', disabled: busy || save.coins < expansionCost, className: 'shoal-action-btn',
+                  onClick: function () { setConfirmingExpand(false); onExpand(); }
+                }, 'Confirm: Add 2 Pedestals (', formatCoins(expansionCost), 'c)'),
+                h('button', { key: 'cancel', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { setConfirmingExpand(false); } }, 'Cancel')
+              ]
+            : h('button', {
+                type: 'button', disabled: busy || save.coins < expansionCost, onClick: function () { setConfirmingExpand(true); }, className: 'shoal-action-btn'
+              }, 'Add 2 Pedestals (', formatCoins(expansionCost), 'c)')
+        ),
         emp.pedestalCount >= 16 && !emp.backRoomBuilt && h('button', {
           type: 'button', disabled: busy || save.coins < BACK_ROOM_COST, onClick: onBuildBackRoom, className: 'shoal-action-btn'
         }, 'Build the Back Room (', formatCoins(BACK_ROOM_COST), 'c)')
@@ -793,8 +813,17 @@
         RARITY_ORDER.slice(0, 3).map(function (rarity) {
           var count = spareIds.filter(function (id) { var d = decorationById(id); return d && d.rarity === rarity; })
             .reduce(function (s, id) { return s + emp.decorationsOwned[id]; }, 0);
+          if (confirmingTradeUpRarity === rarity) {
+            return [
+              h('button', {
+                key: rarity + '-confirm', type: 'button', disabled: busy || count < 3, className: 'shoal-action-btn',
+                onClick: function () { setConfirmingTradeUpRarity(null); onTradeUp(rarity); }
+              }, 'Confirm: Trade Up 3 ', rarity),
+              h('button', { key: rarity + '-cancel', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { setConfirmingTradeUpRarity(null); } }, 'Cancel')
+            ];
+          }
           return h('button', {
-            key: rarity, type: 'button', disabled: busy || count < 3, onClick: function () { onTradeUp(rarity); }, className: 'shoal-action-btn'
+            key: rarity, type: 'button', disabled: busy || count < 3, onClick: function () { setConfirmingTradeUpRarity(rarity); }, className: 'shoal-action-btn'
           }, 'Trade Up 3 ', rarity, ' (have ', count, ')');
         })
       )
@@ -1074,7 +1103,10 @@
     return h('div', { className: 'shoal-emporium' },
       h('div', { className: 'shoal-card' },
         h('div', { className: 'shoal-card-title' }, 'The Emporium'),
-        h('button', { type: 'button', disabled: busy, onClick: handlers.onCollectAwayEarnings, className: 'shoal-action-btn' }, 'Collect Away Earnings')
+        h('button', { type: 'button', disabled: busy, onClick: handlers.onCollectAwayEarnings, className: 'shoal-action-btn' }, 'Collect Away Earnings'),
+        save.emporium.tipJar > 0 && h('button', {
+          type: 'button', disabled: busy, onClick: handlers.onCollectTips, className: 'shoal-action-btn'
+        }, 'Collect Tip Jar (', formatCoins(save.emporium.tipJar), 'c)')
       ),
       h(ShopFloorPanel, { save: save, busy: busy, onPlace: handlers.onPlaceDecoration, onTake: handlers.onTakeDecoration, onExpand: handlers.onExpandPedestals, onBuildBackRoom: handlers.onBuildBackRoom, onTradeUp: handlers.onTradeUp }),
       h(CounterPanel, { save: save, busy: busy, onNextCustomer: handlers.onNextCustomer, onServe: handlers.onServeCustomer }),
@@ -1722,7 +1754,8 @@
     var _boat = useState(null); var boat = _boat[0]; var setBoat = _boat[1];
     var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
     var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
-    var _tipAmount = useState(10); var tipAmount = _tipAmount[0]; var setTipAmount = _tipAmount[1];
+    // "500 needs a confirm click" (10-emporium.md) - the other 3 amounts don't.
+    var _confirmTip = useState(false); var confirmingBigTip = _confirmTip[0]; var setConfirmingBigTip = _confirmTip[1];
     var _drink = useState({ base: DRINK_PARTS.base[0], flavour: DRINK_PARTS.flavour[0], finish: DRINK_PARTS.finish[0] });
     var drink = _drink[0]; var setDrink = _drink[1];
 
@@ -1738,10 +1771,11 @@
       if (initialTarget) doVisit(initialTarget);
     }, [initialTarget]);
 
-    function doTip() {
+    function doTip(amount) {
+      setConfirmingBigTip(false);
       setBusy(true); setMsg(null);
-      apiPost('/api/shoal-tales/visit/tip', { handle: handle, ownerHandle: target, amount: tipAmount })
-        .then(function () { setMsg('Tipped ' + formatCoins(tipAmount) + ' coins!'); return doVisit(); })
+      apiPost('/api/shoal-tales/visit/tip', { handle: handle, ownerHandle: target, amount: amount })
+        .then(function () { setMsg('Tipped ' + formatCoins(amount) + ' coins!'); return doVisit(); })
         .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
     }
 
@@ -1766,9 +1800,15 @@
         ),
         boat.emporiumOpen && h('div', { className: 'shoal-hint' }, 'Tip jar: ', formatCoins(boat.tipJar), ' coins'),
         boat.canTip && h('div', { className: 'shoal-bank-row' },
-          [10, 25, 50, 100].map(function (amt) {
-            return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { setTipAmount(amt); doTip(); } }, 'Tip ', amt);
-          })
+          [10, 50, 100].map(function (amt) {
+            return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { doTip(amt); } }, 'Tip ', amt);
+          }),
+          confirmingBigTip
+            ? [
+                h('button', { key: 'confirm500', type: 'button', disabled: busy || save.coins < 500, onClick: function () { doTip(500); } }, 'Confirm: Tip 500'),
+                h('button', { key: 'cancel500', type: 'button', disabled: busy, onClick: function () { setConfirmingBigTip(false); } }, 'Cancel')
+              ]
+            : h('button', { key: 500, type: 'button', disabled: busy || save.coins < 500, onClick: function () { setConfirmingBigTip(true); } }, 'Tip 500')
         ),
         boat.canServeCounter && boat.counterCustomers && boat.counterCustomers.length > 0 && h('div', null,
           h('div', { className: 'shoal-subtitle' }, 'Serve at the Counter'),
@@ -2646,6 +2686,12 @@
         runAction(apiPost('/api/shoal-tales/emporium/collect-away-earnings', { handle: handle })).then(function (data) {
           if (!data) return;
           setLastResult({ ok: true, message: 'Collected +' + formatCoins(data.earnings) + ' coins while you were away.' });
+        });
+      },
+      onCollectTips: function () {
+        runAction(apiPost('/api/shoal-tales/visit/collect-tips', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Collected +' + formatCoins(data.collected) + ' coins from the tip jar.' });
         });
       },
       onPlaceDecoration: function (pedestalIndex, decorationId) {
