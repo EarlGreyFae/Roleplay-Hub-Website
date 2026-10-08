@@ -374,7 +374,8 @@ function defaultShoalTalesSave(handle) {
       unlockedTracks: ShoalTalesData.radioTracks.filter(t => t.unlocksAtRetirement === 0).map(t => t.id),
       equippedTrack: null,
       petPattedDate: null,
-      petTreatExpiresAt: null
+      petTreatExpiresAt: null,
+      petHearts: 0
     },
     // Social (docs/shoal-tales-spec/13-social.md). partyId/guildId point
     // into db.shoalTalesParties/db.shoalTalesGuilds. lastDredgeAt backs both
@@ -4360,22 +4361,45 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Once per real-world day, patting your own equipped pet grants "+5% value
-  // for 10 minutes" (folded into shoalPayoutBonus via shoalPetTreatActive).
-  // Petting OTHER players' pets needs Visits (task 24) - not built yet.
+  // for 10 minutes" (folded into shoalPayoutBonus via shoalPetTreatActive) -
+  // on top of the heart+sound every pat gives (12-cosmetics.md: "Anyone can
+  // pet any boat's pet for hearts and a happy sound"). Only the once-daily
+  // treat is gated; hearts have no limit, here or from visitors below.
   if (reqPath === '/api/shoal-tales/cosmetics/pat-pet' && req.method === 'POST') {
     try {
       const { handle } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
       const save = getOrCreateShoalTalesSave(handle);
       if (!save.cosmetics.equippedPet) return sendJson(res, 400, { error: 'You have no pet equipped.' });
+      save.cosmetics.petHearts = (save.cosmetics.petHearts || 0) + 1;
       const today = new Date().toISOString().slice(0, 10);
-      if (save.cosmetics.petPattedDate === today) {
-        return sendJson(res, 400, { error: "Already patted your pet's treat today." });
+      // Petting always gives a heart; the treat is still gated to once a
+      // day, but that's never a reason to refuse the pat itself.
+      const treatGranted = save.cosmetics.petPattedDate !== today;
+      if (treatGranted) {
+        save.cosmetics.petPattedDate = today;
+        save.cosmetics.petTreatExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       }
-      save.cosmetics.petPattedDate = today;
-      save.cosmetics.petTreatExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       saveDatabase();
-      return sendJson(res, 200, { success: true, petTreatExpiresAt: save.cosmetics.petTreatExpiresAt });
+      return sendJson(res, 200, { success: true, treatGranted, petTreatExpiresAt: save.cosmetics.petTreatExpiresAt, petHearts: save.cosmetics.petHearts });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "Anyone can pet any boat's pet for hearts and a happy sound" - the
+  // visiting-player version of the pat above: no daily limit, no treat
+  // bonus (that's the owner-only mechanic above), just a heart.
+  if (reqPath === '/api/shoal-tales/visit/pat-pet' && req.method === 'POST') {
+    try {
+      const { handle, ownerHandle } = await parseJsonBody(req);
+      if (!handle || !ownerHandle) return sendJson(res, 400, { error: 'Missing handle or ownerHandle' });
+      const ownerSave = getOrCreateShoalTalesSave(ownerHandle);
+      if (!ownerSave.cosmetics.equippedPet) return sendJson(res, 400, { error: 'This boat has no pet equipped.' });
+      if (!shoalCanVisit(handle, ownerSave)) return sendJson(res, 400, { error: 'You are not welcome to visit this boat.' });
+      ownerSave.cosmetics.petHearts = (ownerSave.cosmetics.petHearts || 0) + 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, petHearts: ownerSave.cosmetics.petHearts });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

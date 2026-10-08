@@ -1286,9 +1286,13 @@
       h('div', { className: 'shoal-shipwright-section' },
         h('div', { className: 'shoal-shipwright-subtitle' }, 'Pets'),
         h(LookGrid, { items: DATA.pets, unlockedIds: c.unlockedPets, equippedId: c.equippedPet, onEquip: onEquipPet, busy: busy, allowNone: true, tryOnMode: tryOnMode, onTryOn: previewItem }),
+        // "Anyone can pet any boat's pet for hearts and a happy sound"
+        // (12-cosmetics.md) - patting stays available after today's treat
+        // is used; it just won't grant a second one.
         c.equippedPet && h('button', {
-          type: 'button', disabled: busy || pattedToday, onClick: onPatPet, className: 'shoal-action-btn'
-        }, pattedToday ? 'Already patted today' : 'Pat your pet (+5% value, 10 min)'),
+          type: 'button', disabled: busy, onClick: onPatPet, className: 'shoal-action-btn'
+        }, 'Pat ', (DATA.pets.find(function (p) { return p.id === c.equippedPet; }) || {}).name || c.equippedPet,
+           pattedToday ? '' : ' (+5% value, 10 min)', ' (', c.petHearts || 0, ' ❤️)'),
         treatActive && h('p', { className: 'shoal-hint' }, "Treat active: +5% value until the timer runs out.")
       ),
 
@@ -1779,6 +1783,13 @@
         .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
     }
 
+    function doPatPet() {
+      setBusy(true); setMsg(null);
+      apiPost('/api/shoal-tales/visit/pat-pet', { handle: handle, ownerHandle: target })
+        .then(function () { setMsg('❤️'); return doVisit(); })
+        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
+    }
+
     function doServe(customerId) {
       setBusy(true); setMsg(null);
       apiPost('/api/shoal-tales/visit/serve-counter', { handle: handle, ownerHandle: target, customerId: customerId, drink: drink })
@@ -1799,6 +1810,14 @@
           h('span', null, 'Best streak x', boat.bestStreakEver)
         ),
         boat.emporiumOpen && h('div', { className: 'shoal-hint' }, 'Tip jar: ', formatCoins(boat.tipJar), ' coins'),
+        // "Anyone can pet any boat's pet for hearts and a happy sound"
+        // (12-cosmetics.md) - lives on deck regardless of emporiumOpen.
+        boat.cosmetics && boat.cosmetics.equippedPet && h('div', { className: 'shoal-bank-row' },
+          h('button', {
+            type: 'button', disabled: busy, onClick: doPatPet, className: 'shoal-action-btn'
+          }, 'Pat ', (DATA.pets.find(function (p) { return p.id === boat.cosmetics.equippedPet; }) || {}).name || boat.cosmetics.equippedPet,
+             ' (', boat.cosmetics.petHearts || 0, ' ❤️)')
+        ),
         boat.canTip && h('div', { className: 'shoal-bank-row' },
           [10, 50, 100].map(function (amt) {
             return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { doTip(amt); } }, 'Tip ', amt);
@@ -2824,7 +2843,7 @@
     function handlePatPet() {
       runAction(apiPost('/api/shoal-tales/cosmetics/pat-pet', { handle: handle })).then(function (data) {
         if (!data) return;
-        setLastResult({ ok: true, message: 'Your pet is happy! +5% value for 10 minutes.' });
+        setLastResult({ ok: true, message: data.treatGranted ? 'Your pet is happy! +5% value for 10 minutes.' : 'Your pet is happy! ❤️' });
       });
     }
     function handleSelectTrack(trackId) {
