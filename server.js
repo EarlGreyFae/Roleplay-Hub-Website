@@ -5326,6 +5326,60 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // --- Staff: give/wipe/inspect (16-minecraft-to-web.md: "Staff commands:
+  // test shortcuts, wipes, backups, restore, inspect, give, tides, the
+  // letter review queue, bug reports" -> "Developer and admin tools").
+  // Backups/restore are already covered by the app's existing dual JSON/
+  // Postgres persistence; these three are the per-player actions that
+  // weren't built yet. ---
+
+  if (reqPath === '/api/shoal-tales/admin/give' && req.method === 'POST') {
+    try {
+      const { handle, targetHandle, coins } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      if (!targetHandle) return sendJson(res, 400, { error: 'Missing targetHandle' });
+      const amount = Number(coins);
+      if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000) {
+        return sendJson(res, 400, { error: 'coins must be a number between 1 and 1,000,000' });
+      }
+      const save = getOrCreateShoalTalesSave(targetHandle);
+      save.coins += amount;
+      save.lifetimeCoinsThisRun += amount;
+      save.allTimeStats.coinsEarned += amount;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, save });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/wipe' && req.method === 'POST') {
+    try {
+      const { handle, targetHandle, confirm } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      if (!targetHandle) return sendJson(res, 400, { error: 'Missing targetHandle' });
+      if (confirm !== true) return sendJson(res, 400, { error: 'Resend with confirm: true - this permanently erases the save.' });
+      db.shoalTalesSaves[targetHandle] = defaultShoalTalesSave(targetHandle);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, save: db.shoalTalesSaves[targetHandle] });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/inspect' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      const targetHandle = query.get('targetHandle') || '';
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      if (!targetHandle) return sendJson(res, 400, { error: 'Missing targetHandle' });
+      if (!db.shoalTalesSaves[targetHandle]) return sendJson(res, 404, { error: 'No save for that handle.' });
+      return sendJson(res, 200, { success: true, save: db.shoalTalesSaves[targetHandle] });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // --- Stats: The Desk's Profile (14-extras.md) ---
 
   if (reqPath === '/api/shoal-tales/stats' && req.method === 'GET') {

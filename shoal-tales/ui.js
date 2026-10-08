@@ -2409,7 +2409,69 @@
               }
             }, 'Start')
           ),
+
+      h('div', { className: 'shoal-subtitle' }, 'Player Tools'),
+      h(StaffPlayerTools, { handle: handle, busy: busy, run: run }),
+
       msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
+  // Give/wipe/inspect a specific player's save - the per-player admin
+  // actions from 16-minecraft-to-web.md's staff-commands row that weren't
+  // built yet (backups/restore are already covered by the app's existing
+  // dual JSON/Postgres persistence, so not duplicated here).
+  function StaffPlayerTools(props) {
+    var handle = props.handle;
+    var busy = props.busy;
+    var run = props.run;
+    var _target = useState(''); var target = _target[0]; var setTarget = _target[1];
+    var _coins = useState(1000); var coins = _coins[0]; var setCoins = _coins[1];
+    var _confirmWipe = useState(false); var confirmWipe = _confirmWipe[0]; var setConfirmWipe = _confirmWipe[1];
+    var _inspected = useState(null); var inspected = _inspected[0]; var setInspected = _inspected[1];
+    var _inspectError = useState(null); var inspectError = _inspectError[0]; var setInspectError = _inspectError[1];
+
+    return h('div', { className: 'shoal-staff-player-tools' },
+      h('input', {
+        type: 'text', placeholder: '@handle to act on', value: target,
+        onChange: function (e) { setTarget(e.target.value); setConfirmWipe(false); setInspected(null); setInspectError(null); }
+      }),
+      h('div', { className: 'shoal-action-row' },
+        h('input', { type: 'number', min: 1, max: 1000000, value: coins, onChange: function (e) { setCoins(Number(e.target.value)); } }),
+        h('button', {
+          type: 'button', disabled: busy || !target || !coins,
+          onClick: function () { run(apiPost('/api/shoal-tales/admin/give', { handle: handle, targetHandle: target, coins: coins }), 'Gave ' + formatCoins(coins) + 'c to ' + target + '.'); }
+        }, 'Give Coins')
+      ),
+      h('div', { className: 'shoal-action-row' },
+        h('button', {
+          type: 'button', disabled: busy || !target,
+          onClick: function () {
+            apiGet('/api/shoal-tales/admin/inspect?handle=' + encodeURIComponent(handle) + '&targetHandle=' + encodeURIComponent(target))
+              .then(function (d) { setInspected(d.save); setInspectError(null); })
+              .catch(function (e) { setInspected(null); setInspectError(e.message); });
+          }
+        }, 'Inspect'),
+        !confirmWipe
+          ? h('button', {
+              type: 'button', disabled: busy || !target, className: 'shoal-action-btn-danger',
+              onClick: function () { setConfirmWipe(true); }
+            }, 'Wipe Save')
+          : [
+              h('button', {
+                key: 'confirm', type: 'button', disabled: busy, className: 'shoal-action-btn-danger',
+                onClick: function () { setConfirmWipe(false); run(apiPost('/api/shoal-tales/admin/wipe', { handle: handle, targetHandle: target, confirm: true }), 'Wiped ' + target + "'s save."); }
+              }, 'Confirm: permanently erase ', target, "'s save"),
+              h('button', { key: 'cancel', type: 'button', disabled: busy, onClick: function () { setConfirmWipe(false); } }, 'Cancel')
+            ]
+      ),
+      inspectError && h('div', { className: 'shoal-sort-feedback shoal-sort-wrong' }, inspectError),
+      inspected && h('div', { className: 'shoal-member-row' },
+        h('span', null,
+          target, ': ', formatCoins(inspected.coins), 'c, run ', inspected.retirements + 1,
+          ', basket Lv.', inspected.basketLevel, ', ', inspected.tray.length, ' item(s) in tray, title "', inspected.title || '', '"'
+        )
+      )
     );
   }
 
