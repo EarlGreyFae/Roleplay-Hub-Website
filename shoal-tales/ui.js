@@ -2365,6 +2365,16 @@
 
   var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', dockboard: 'the Dock Board', visiting: 'the Harbor' };
 
+  // The Ship's deck fixtures: dredging/the Tray/Goods & Cooler stay on the
+  // root view (the loop you use every haul), these four are a click away
+  // instead of one long scroll past all of them.
+  var SHIP_ROOMS = [
+    { id: 'stations', emoji: '⚙️', label: 'Stations', sublabel: 'Process stored goods' },
+    { id: 'work-table', emoji: '🔨', label: 'Work Table', sublabel: 'Upgrades' },
+    { id: 'shipwright', emoji: '🎨', label: 'The Shipwright', sublabel: 'Looks, pets & radio' },
+    { id: 'desk', emoji: '📖', label: 'The Desk', sublabel: 'Quest book, stats, log & retiring' }
+  ];
+
   var GUILD_HALL_ROOMS = [
     { id: 'common', emoji: '🏛️', label: 'Common Room', sublabel: 'Roster & chat' },
     { id: 'quests', emoji: '📋', label: 'Quest Board', sublabel: "Today's quests" },
@@ -2416,15 +2426,21 @@
     var _countdown = useState(0); var countdown = _countdown[0]; var setCountdown = _countdown[1];
     var _curioChoosingBin = useState(null); var curioChoosingBin = _curioChoosingBin[0]; var setCurioChoosingBin = _curioChoosingBin[1];
     var _lastFoundLetter = useState(null); var lastFoundLetter = _lastFoundLetter[0]; var setLastFoundLetter = _lastFoundLetter[1];
-    // Point-and-click scene state: 'harbor' (default/hub) / 'ship' / 'town' /
-    // 'emporium' / 'guildhall' / 'dockboard' / 'visiting'. visitingHandle is
-    // only set while scene === 'visiting' (clicked a ship in the Harbor).
-    var _scene = useState('harbor'); var scene = _scene[0]; var setScene = _scene[1];
+    // Point-and-click scene state: 'ship' (default - you're always on your
+    // own boat first) / 'harbor' / 'town' / 'emporium' / 'guildhall' /
+    // 'dockboard' / 'visiting'. visitingHandle is only set while
+    // scene === 'visiting' (clicked a ship in the Harbor).
+    var _scene = useState('ship'); var scene = _scene[0]; var setScene = _scene[1];
     var _visitingHandle = useState(null); var visitingHandle = _visitingHandle[0]; var setVisitingHandle = _visitingHandle[1];
     var _roster = useState([]); var roster = _roster[0]; var setRoster = _roster[1];
+    // Which deck fixture's room is open on the Ship, same hotspot/room
+    // pattern as the Guild Hall - the dredge/tray/goods loop stays on the
+    // Ship's root view (used every haul), Stations/Work Table/Shipwright/
+    // the Desk are a click away instead of one long scroll past all of them.
+    var _shipRoom = useState(null); var shipRoom = _shipRoom[0]; var setShipRoom = _shipRoom[1];
     var presenceWsRef = useRef(null);
 
-    function goTo(nextScene) { setVisitingHandle(null); setScene(nextScene); }
+    function goTo(nextScene) { setVisitingHandle(null); setShipRoom(null); setScene(nextScene); }
     function goToHarbor() { goTo('harbor'); }
     function visitShip(targetHandle) { setVisitingHandle(targetHandle); setScene('visiting'); }
 
@@ -2863,12 +2879,11 @@
     // Harbor and Guild Hall are their own components above since they carry
     // real navigation state of their own (the live roster, the hall's rooms).
     var sceneBody;
-    if (scene === 'ship') {
-      // The ship is what you decorate and work from deck to deck: dredging,
-      // the tray/goods, Stations, the Work Table, the Shipwright (including
-      // Radio/music), the Desk (quest book/stats/feats/settings), and your
-      // Collector's Log all live here.
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Your Ship', onBack: goToHarbor },
+    if (scene === 'ship' && !shipRoom) {
+      // The root deck view: dredging/the Tray/Goods & Cooler, the loop used
+      // every haul, plus hotspots into the Stations/Work Table/Shipwright/
+      // Desk rooms instead of scrolling past all of them to reach one.
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Your Ship', onBack: goToHarbor, backLabel: 'Harbor' },
         h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
         h(TrayPanel, {
           save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult,
@@ -2877,13 +2892,30 @@
           onStartPuzzle: handleStartPuzzle, onKeepBottle: handleKeepBottle
         }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
-        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
-        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, onBuyMax: handleUpgradeMax, busy: busy }),
+        h('div', { className: 'shoal-scene-hotspot-row' },
+          SHIP_ROOMS.map(function (r) {
+            return h(SceneHotspot, { key: r.id, emoji: r.emoji, label: r.label, sublabel: r.sublabel, onClick: function () { setShipRoom(r.id); } });
+          })
+        )
+      );
+    } else if (scene === 'ship' && shipRoom === 'stations') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Stations', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
+        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk })
+      );
+    } else if (scene === 'ship' && shipRoom === 'work-table') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Work Table', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
+        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, onBuyMax: handleUpgradeMax, busy: busy })
+      );
+    } else if (scene === 'ship' && shipRoom === 'shipwright') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'The Shipwright', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
         h(ShipwrightPanel, {
           save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
           onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,
           onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
-        }),
+        })
+      );
+    } else if (scene === 'ship' && shipRoom === 'desk') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'The Desk', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
         h(CollectorsLogSummary, { save: save }),
         h(StoredCuriosPanel, { save: save, busy: busy, onStoredCurioAction: handleStoredCurioAction, onGiftCurio: handleGiftCurio }),
         h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff }),
