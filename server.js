@@ -4213,6 +4213,8 @@ const server = http.createServer(async (req, res) => {
       const title = shoalApplyRetire(save);
       const newArea = save.unlockedAreas.length > previousAreas ? save.unlockedAreas[save.unlockedAreas.length - 1] : null;
       const newDepth = save.unlockedDepths.length > previousDepths ? save.unlockedDepths[save.unlockedDepths.length - 1] : null;
+      // "Retirements... are announced to everyone in the game" (13-social.md).
+      shoalBroadcastAnnouncement(`${handle} retired! (now ${title}, retirement ${save.retirements})`);
       saveDatabase();
       return sendJson(res, 200, {
         success: true, retirements: save.retirements, title,
