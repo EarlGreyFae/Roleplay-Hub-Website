@@ -136,6 +136,10 @@
   var RARITY_LABELS = { Common: 'Common', Uncommon: 'Uncommon', Rare: 'Rare', Epic: 'Epic' };
 
   var BIN_LABELS = { Plastic: 'Plastic', Metal: 'Metal', Glass: 'Glass', Wood: 'Wood', Electronics: 'Electronics', Hazardous: 'Hazardous', Mixed: 'Mixed' };
+  // A bin you can spot by color/icon at a glance, not one you have to read -
+  // recycling-bin color convention, same visual language as the deck's
+  // object tiles (emoji + short word, no sentences).
+  var BIN_EMOJI = { Plastic: '🧴', Metal: '🔩', Glass: '🍾', Wood: '🪵', Electronics: '🔌', Hazardous: '☢️', Mixed: '🗑️' };
 
   // --- The Emporium (10-emporium.md) - mirrors server.js's own constants ---
   var EMPORIUM_REQUIRED_MATERIALS = { 'Stained Glass Panel': 2, 'Old-Growth Timber': 3, 'Brass Fittings': 3, 'Neon Sign': 1 };
@@ -281,9 +285,29 @@
     return { kind: 'standing', requires: requires, reward: { type: 'coins', amount: Math.round(amount * 3) } };
   }
 
+  // Which dock target (if any) a dragged/selected item can be dropped/sorted
+  // on, and what that does - the routing table behind drag-to-bin (16-
+  // minecraft-to-web.md: "Real UI: drag-to-bin sorting", and 17-open-
+  // items.md: "Every sort [in Minecraft] is two clicks... Drag-to-bin on
+  // the web may be faster"). Kept as a plain function, independent of any
+  // DOM/pointer code, so it's directly testable.
+  function isBinDockDraggable(item) {
+    return item.kind === 'fish' || item.kind === 'junk' || item.kind === 'emptyBottle' || (item.kind === 'curio' && item.identified);
+  }
+  // Returns true if targetKey was a valid drop for this item (and performs
+  // the sort); false if it wasn't (caller should treat the drop as a no-op).
+  function binDockDrop(item, targetKey, handlers) {
+    if (targetKey === 'cooler') { if (item.kind !== 'fish') return false; handlers.onSort(item.id, 'cooler'); return true; }
+    if (item.kind === 'junk' || item.kind === 'emptyBottle') { handlers.onSort(item.id, targetKey); return true; }
+    if (item.kind === 'curio' && item.identified) { handlers.onCurioAction(item.id, 'sort', targetKey); return true; }
+    return false;
+  }
+
   // --- The Tray: shows current haul, lets the player select an item then
   // act on it. Junk -> a bin; fish -> the cooler; curios need an extra scrub
-  // step before Log/Sell/Store/Sort; crates/bottles/creatures are one tap. ---
+  // step before Log/Sell/Store/Sort; crates/bottles/creatures are one tap.
+  // Junk/fish/identified-curios can also be dragged straight onto the bin
+  // dock instead of tapping twice. ---
   function TrayPanel(props) {
     var save = props.save;
     var selectedId = props.selectedId;
@@ -300,24 +324,95 @@
     var onKeepBottle = props.onKeepBottle;
     var busy = props.busy;
     var lastResult = props.lastResult;
+    // Soft Brush (08-stations-upgrades.md: "One fewer scrub per curio, 4
+    // down to 1") lowers the click count the Scrub button advertises -
+    // matches the server's own SCRUBS_NEEDED in the /scrub endpoint.
+    var scrubsNeeded = Math.max(1, 4 - (save.brushLevel || 0));
+
+    // Drag-to-bin state. `dragRef` mirrors the `drag` state for use inside
+    // the window-level pointermove/pointerup listeners, which close over a
+    // stale `drag` otherwise. A tap (no movement past the threshold) still
+    // falls through to the plain onSelect toggle below - dragging is purely
+    // additive, nothing about tap-to-select-then-tap changes.
+    var _drag = useState(null); var drag = _drag[0]; var setDrag = _drag[1];
+    var dragRef = useRef(null);
+    var suppressClickRef = useRef(false);
 
     if (save.tray.length === 0) return null;
 
     var selectedItem = save.tray.find(function (t) { return t.id === selectedId; });
 
+    function binDockClickEnabled(item, targetKey) {
+      if (targetKey === 'cooler') return item.kind === 'fish';
+      if (item.kind === 'junk' || item.kind === 'emptyBottle') return true;
+      if (item.kind === 'curio' && item.identified) return curioChoosingBin === item.id;
+      return false;
+    }
+
+    function startDrag(item, e) {
+      if (busy || !isBinDockDraggable(item)) return;
+      var startX = e.clientX, startY = e.clientY;
+      var state = { itemId: item.id, startX: startX, startY: startY, x: startX, y: startY, dragging: false, hoverTarget: null };
+      dragRef.current = state;
+      setDrag(state);
+
+      function onMove(ev) {
+        var s = dragRef.current;
+        if (!s || s.itemId !== item.id) return;
+        var dx = ev.clientX - s.startX, dy = ev.clientY - s.startY;
+        var dragging = s.dragging || Math.abs(dx) > 8 || Math.abs(dy) > 8;
+        var target = null;
+        if (dragging && root.document.elementFromPoint) {
+          var el = root.document.elementFromPoint(ev.clientX, ev.clientY);
+          var dockEl = el && el.closest ? el.closest('[data-bin-target]') : null;
+          target = dockEl ? dockEl.getAttribute('data-bin-target') : null;
+        }
+        var next = { itemId: item.id, startX: s.startX, startY: s.startY, x: ev.clientX, y: ev.clientY, dragging: dragging, hoverTarget: target };
+        dragRef.current = next;
+        setDrag(next);
+      }
+
+      function onUp() {
+        root.removeEventListener('pointermove', onMove);
+        root.removeEventListener('pointerup', onUp);
+        var s = dragRef.current;
+        dragRef.current = null;
+        setDrag(null);
+        suppressClickRef.current = true;
+        if (s && s.dragging) {
+          if (s.hoverTarget) binDockDrop(item, s.hoverTarget, { onSort: onSort, onCurioAction: onCurioAction });
+        } else {
+          onSelect(item.id === selectedId ? null : item.id);
+        }
+      }
+
+      root.addEventListener('pointermove', onMove);
+      root.addEventListener('pointerup', onUp);
+    }
+
+    var hoverKey = drag && drag.dragging ? drag.hoverTarget : null;
+    var hasFish = save.tray.some(function (t) { return t.kind === 'fish'; });
+    var hasBinnable = save.tray.some(function (t) { return t.kind === 'junk' || t.kind === 'emptyBottle' || (t.kind === 'curio' && t.identified); });
+    var actionArea = selectedItem && renderActionArea(selectedItem);
+
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'The Tray (', save.tray.length, ' item', save.tray.length === 1 ? '' : 's', ')'),
-      h('p', { className: 'shoal-hint' }, 'Tap an item, then tap what to do with it.'),
+      h('p', { className: 'shoal-hint' }, 'Drag an item onto a bin below, or tap it then tap what to do.'),
       h('div', { className: 'shoal-tray-grid' },
         save.tray.map(function (item) {
           var isSelected = item.id === selectedId;
+          var isDragging = drag && drag.itemId === item.id && drag.dragging;
           var iconName = TRAY_ICONS[item.kind] || 'Anchor';
           return h('button', {
             key: item.id,
             type: 'button',
             disabled: busy,
-            onClick: function () { onSelect(isSelected ? null : item.id); },
-            className: 'shoal-tray-item' + (isSelected ? ' shoal-tray-item-selected' : '') + (' shoal-tray-item-' + item.kind)
+            onPointerDown: function (e) { startDrag(item, e); },
+            onClick: function () {
+              if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+              onSelect(isSelected ? null : item.id);
+            },
+            className: 'shoal-tray-item' + (isSelected ? ' shoal-tray-item-selected' : '') + (isDragging ? ' shoal-tray-item-dragging' : '') + (' shoal-tray-item-' + item.kind)
           },
             h(Icons[iconName], { className: 'shoal-tray-icon' }),
             h('span', { className: 'shoal-tray-name' }, item.name),
@@ -326,38 +421,37 @@
           );
         })
       ),
-      selectedItem && h('div', { className: 'shoal-bin-row' }, renderActionArea(selectedItem)),
+      actionArea && h('div', { className: 'shoal-bin-row' }, actionArea),
+      (hasFish || hasBinnable) && h('div', { className: 'shoal-bin-dock' },
+        h('div', { className: 'shoal-bin-row' },
+          hasFish && h('button', {
+            type: 'button', disabled: busy, 'data-bin-target': 'cooler',
+            className: 'shoal-bin-btn shoal-bin-btn-cooler' + (hoverKey === 'cooler' ? ' shoal-bin-btn-hover' : ''),
+            onClick: function () { if (selectedItem && binDockClickEnabled(selectedItem, 'cooler')) binDockDrop(selectedItem, 'cooler', { onSort: onSort, onCurioAction: onCurioAction }); }
+          }, h(Icons.Fish, { className: 'shoal-bin-icon' }), h('span', null, 'Cooler')),
+          hasBinnable && ENGINE.BINS.map(function (bin) {
+            return h('button', {
+              key: bin, type: 'button', disabled: busy, 'data-bin-target': bin,
+              className: 'shoal-bin-btn shoal-bin-btn-' + bin.toLowerCase() + (hoverKey === bin ? ' shoal-bin-btn-hover' : ''),
+              onClick: function () { if (selectedItem && binDockClickEnabled(selectedItem, bin)) binDockDrop(selectedItem, bin, { onSort: onSort, onCurioAction: onCurioAction }); }
+            }, h('span', { className: 'shoal-bin-btn-icon' }, BIN_EMOJI[bin]), h('span', null, BIN_LABELS[bin]));
+          })
+        )
+      ),
       lastResult && h('div', { className: 'shoal-sort-feedback ' + (lastResult.ok ? 'shoal-sort-correct' : 'shoal-sort-wrong') }, lastResult.message)
     );
 
+    // Fish/junk/identified-curios sort through the persistent bin dock above
+    // (drag, or tap the item then tap a bin there) - this only covers the
+    // kinds with just one possible action, which a dock doesn't fit.
     function renderActionArea(item) {
-      if (item.kind === 'fish') {
-        return h('button', {
-          type: 'button', disabled: busy, onClick: function () { onSort(item.id, 'cooler'); },
-          className: 'shoal-bin-btn shoal-bin-btn-cooler'
-        }, h(Icons.Fish, { className: 'shoal-bin-icon' }), h('span', null, 'Cooler'));
-      }
-      if (item.kind === 'junk') {
-        return ENGINE.BINS.map(function (bin) {
-          return h('button', {
-            key: bin, type: 'button', disabled: busy, onClick: function () { onSort(item.id, bin); },
-            className: 'shoal-bin-btn'
-          }, BIN_LABELS[bin]);
-        });
-      }
-      // An empty bottle sorts like any other Glass junk, OR can be kept for
+      // An empty bottle sorts like junk (via the dock), or can be kept for
       // a writing kit (13-social.md step 1) - the bottle-letter grind.
       if (item.kind === 'emptyBottle') {
-        return [
-          h('button', {
-            key: 'glass', type: 'button', disabled: busy, onClick: function () { onSort(item.id, item.bin); },
-            className: 'shoal-bin-btn'
-          }, 'Sort (', BIN_LABELS[item.bin], ')'),
-          h('button', {
-            key: 'keep', type: 'button', disabled: busy, onClick: function () { onKeepBottle(item.id); },
-            className: 'shoal-action-btn'
-          }, h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Keep for a Writing Kit'))
-        ];
+        return h('button', {
+          type: 'button', disabled: busy, onClick: function () { onKeepBottle(item.id); },
+          className: 'shoal-action-btn'
+        }, h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Keep for a Writing Kit'));
       }
       if (item.kind === 'crate') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onPry(item.id); }, className: 'shoal-action-btn' },
@@ -373,7 +467,7 @@
       }
       if (item.kind === 'magicCurio') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn shoal-action-btn-magic' },
-          h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub'));
+          h(Icons.Sparkle, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/' + scrubsNeeded + ')' : '')));
       }
       if (item.kind === 'puzzleBox') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onStartPuzzle(item.id); }, className: 'shoal-action-btn' },
@@ -382,21 +476,16 @@
       if (item.kind === 'curio') {
         if (!item.identified) {
           return h('button', { type: 'button', disabled: busy, onClick: function () { onScrub(item.id); }, className: 'shoal-action-btn' },
-            h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub'));
+            h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Scrub' + (item.scrubProgress ? ' (' + item.scrubProgress + '/' + scrubsNeeded + ')' : '')));
         }
         if (curioChoosingBin === item.id) {
-          return ENGINE.BINS.map(function (bin) {
-            return h('button', {
-              key: bin, type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sort', bin); },
-              className: 'shoal-bin-btn'
-            }, BIN_LABELS[bin]);
-          });
+          return h('p', { className: 'shoal-hint' }, 'Tap a bin below to sort it.');
         }
         return [
-          h('button', { key: 'log', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'log'); }, className: 'shoal-action-btn' }, 'Log'),
-          h('button', { key: 'sell', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sell'); }, className: 'shoal-action-btn' }, 'Sell'),
-          h('button', { key: 'store', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'store'); }, className: 'shoal-action-btn' }, 'Store'),
-          h('button', { key: 'sort', type: 'button', disabled: busy, onClick: function () { onStartCurioSort(item.id); }, className: 'shoal-action-btn' }, 'Sort')
+          h('button', { key: 'log', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'log'); }, className: 'shoal-action-btn' }, h(Icons.Book, { className: 'shoal-bin-icon' }), h('span', null, 'Log')),
+          h('button', { key: 'sell', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'sell'); }, className: 'shoal-action-btn' }, h(Icons.Coins, { className: 'shoal-bin-icon' }), h('span', null, 'Sell')),
+          h('button', { key: 'store', type: 'button', disabled: busy, onClick: function () { onCurioAction(item.id, 'store'); }, className: 'shoal-action-btn' }, h(Icons.Box, { className: 'shoal-bin-icon' }), h('span', null, 'Store')),
+          h('button', { key: 'sort', type: 'button', disabled: busy, onClick: function () { onStartCurioSort(item.id); }, className: 'shoal-action-btn' }, h(Icons.Gem, { className: 'shoal-bin-icon' }), h('span', null, 'Sort'))
         ];
       }
       return null;
@@ -434,6 +523,64 @@
     );
   }
 
+  // Stored Curios (06-curios.md: "keep it in Stored Curios ... to log,
+  // donate, sell, gift, or process later"). Rare/Epic curios ask for a
+  // confirm click before processing, since that permanently breaks them
+  // down for station resources.
+  function StoredCuriosPanel(props) {
+    var save = props.save;
+    var busy = props.busy;
+    var onAction = props.onStoredCurioAction;
+    var onGift = props.onGiftCurio;
+    var _confirmId = useState(null); var confirmProcessId = _confirmId[0]; var setConfirmProcessId = _confirmId[1];
+    var _giftTo = useState({}); var giftTargets = _giftTo[0]; var setGiftTargets = _giftTo[1];
+
+    if (!save.storedCurios.length) return null;
+
+    return h('div', { className: 'shoal-card' },
+      h('div', { className: 'shoal-card-title' }, 'Stored Curios'),
+      h('div', { className: 'shoal-stored-curio-list' },
+        save.storedCurios.map(function (item) {
+          var stationId = PROCESS_STATION_FOR_BIN[item.bin];
+          var canProcess = stationId && save.stationsInstalled.indexOf(stationId) !== -1;
+          var needsConfirm = item.rarity === 'Rare' || item.rarity === 'Epic';
+          var confirming = confirmProcessId === item.id;
+          return h('div', { key: item.id, className: 'shoal-stored-curio-row' },
+            h('div', { className: 'shoal-cooler-name' }, item.name, ' ',
+              h('span', { className: 'shoal-tray-rarity shoal-rarity-' + item.rarity.toLowerCase() }, item.rarity, item.golden ? ' ✨' : '')),
+            h('div', { className: 'shoal-bin-row' },
+              confirming
+                ? [
+                    h('button', { key: 'confirm', type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger',
+                      onClick: function () { setConfirmProcessId(null); onAction(item.id, 'process'); } }, 'Confirm: Process'),
+                    h('button', { key: 'cancel', type: 'button', disabled: busy, className: 'shoal-action-btn',
+                      onClick: function () { setConfirmProcessId(null); } }, 'Cancel')
+                  ]
+                : [
+                    h('button', { key: 'log', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { onAction(item.id, 'log'); } }, 'Log'),
+                    h('button', { key: 'sell', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { onAction(item.id, 'sell'); } }, 'Sell'),
+                    save.guildId && h('button', { key: 'donate', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { onAction(item.id, 'donate'); } }, 'Donate'),
+                    canProcess && h('button', {
+                      key: 'process', type: 'button', disabled: busy, className: 'shoal-action-btn',
+                      onClick: function () { needsConfirm ? setConfirmProcessId(item.id) : onAction(item.id, 'process'); }
+                    }, 'Process'),
+                    h('input', {
+                      key: 'gift-input', type: 'text', placeholder: '@handle to gift', className: 'shoal-gift-input',
+                      value: giftTargets[item.id] || '',
+                      onChange: function (e) { setGiftTargets(Object.assign({}, giftTargets, { [item.id]: e.target.value })); }
+                    }),
+                    h('button', {
+                      key: 'gift', type: 'button', disabled: busy || !giftTargets[item.id], className: 'shoal-action-btn',
+                      onClick: function () { onGift(item.id, giftTargets[item.id]); setGiftTargets(Object.assign({}, giftTargets, { [item.id]: '' })); }
+                    }, 'Gift')
+                  ]
+            )
+          );
+        })
+      )
+    );
+  }
+
   var RESOURCE_LABEL = { knickKnacks: 'Knick-knacks', ingots: 'Ingots', materials: 'Materials' };
 
   function GoodsAndCoolerPanel(props) {
@@ -442,6 +589,7 @@
     var onDress = props.onDress;
     var onMakeMeal = props.onMakeMeal;
     var busy = props.busy;
+    var _confirmSell = useState(false); var confirmingSell = _confirmSell[0]; var setConfirmingSell = _confirmSell[1];
 
     var ovenInstalled = save.stationsInstalled.indexOf('oven') !== -1;
     var goodsValue = ENGINE.BINS.reduce(function (sum, b) { return sum + save.sortedGoods[b].value; }, 0);
@@ -453,7 +601,27 @@
     var totalValue = goodsValue + rawFish.reduce(function (s, f) { return s + f.value; }, 0)
       + dressedFish.reduce(function (s, f) { return s + f.value; }, 0) + mealValue + resourceValue;
 
-    if (totalValue <= 0 && save.cooler.length === 0) return null;
+    var hasRareMaterials = Object.keys(save.rareMaterials || {}).some(function (m) { return save.rareMaterials[m] > 0; });
+    if (totalValue <= 0 && save.cooler.length === 0 && !hasRareMaterials) return null;
+
+    // "It warns when a current request needs some of those goods"
+    // (07-story.md) - Sell Everything wipes every sortedGoods bin, the
+    // whole cooler, and all 3 resources, so any townsperson whose current
+    // request/standing order draws on one of those and who has stock
+    // toward it right now gets named before the sell actually happens.
+    var sellWarnings = DATA.townsfolk.map(function (p) {
+      var current = shoalCurrentRequestFor(save, p.id);
+      if (!current) return null;
+      var have = shoalHaveFor(save, current.requires);
+      if (have <= 0) return null;
+      return p.name + ' (' + describeRequires(current.requires) + ')';
+    }).filter(Boolean);
+    // "Warns when meals are included, since the Counter can use them"
+    // (10-emporium.md's Sell Room) - unconditional on meals existing at
+    // all, unlike the request warning above.
+    if (mealFish.length > 0) {
+      sellWarnings.push('the Counter (' + mealFish.length + ' meal' + (mealFish.length === 1 ? '' : 's') + ')');
+    }
 
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Held Goods'),
@@ -466,6 +634,15 @@
         ['knickKnacks', 'ingots', 'materials'].filter(function (k) { return save[k].units > 0; }).map(function (k) {
           return h('div', { key: k, className: 'shoal-goods-row' },
             h('span', null, RESOURCE_LABEL[k]), h('span', null, save[k].units, ' — ', formatCoins(save[k].value), 'c')
+          );
+        }),
+        // "The storage chest shows ... rare materials ... only appear once
+        // you've had one (no empty placeholder rows)" (08-stations-
+        // upgrades.md) - otherwise only ever surfaced buried in the
+        // Emporium build checklist, with no general inventory view.
+        Object.keys(save.rareMaterials || {}).filter(function (m) { return save.rareMaterials[m] > 0; }).map(function (m) {
+          return h('div', { key: m, className: 'shoal-goods-row' },
+            h('span', null, m), h('span', null, save.rareMaterials[m])
           );
         }),
         mealFish.length > 0 && h('div', { className: 'shoal-goods-row' },
@@ -492,10 +669,23 @@
         })
       ),
       !save.townOpen && h('p', { className: 'shoal-hint' }, 'Dress a fish to open the Town before you can sell.'),
-      h('button', {
-        type: 'button', disabled: busy || totalValue <= 0 || !save.townOpen, onClick: function () { onSell('all'); },
-        className: 'shoal-sell-btn'
-      }, 'Sell Everything for ', formatCoins(totalValue), ' coins')
+      sellWarnings.length > 0 && h('p', { className: 'shoal-hint shoal-sell-warning' },
+        '⚠ Selling everything will use up stock a current request needs: ', sellWarnings.join(', '), '.'),
+      confirmingSell
+        ? [
+            h('button', {
+              key: 'confirm', type: 'button', disabled: busy, className: 'shoal-sell-btn',
+              onClick: function () { setConfirmingSell(false); onSell('all'); }
+            }, 'Confirm: Sell All for ', formatCoins(totalValue)),
+            h('button', {
+              key: 'cancel', type: 'button', disabled: busy, className: 'shoal-action-btn',
+              onClick: function () { setConfirmingSell(false); }
+            }, 'Cancel')
+          ]
+        : h('button', {
+            type: 'button', disabled: busy || totalValue <= 0 || !save.townOpen, onClick: function () { setConfirmingSell(true); },
+            className: 'shoal-sell-btn'
+          }, 'Sell Everything for ', formatCoins(totalValue), ' coins')
     );
   }
 
@@ -562,10 +752,10 @@
   var PROCESS_STATION_FOR_BIN = { Wood: 'carpentry', Metal: 'crucible', Mixed: 'recycling' };
   var RESOURCE_FOR_BIN = { Wood: 'knickKnacks', Metal: 'ingots', Mixed: 'materials' };
 
-  // --- Stations: installed list, the next pending station (vague hint, or
-  // Install once unlocked - never exact progress numbers, per 08-stations-
-  // upgrades.md), and a Process button for each installed station with
-  // stock on hand to convert. ---
+  // --- Stations: installed list, the next pending station (a vague hint
+  // pre-Emporium, an exact progress bar once it's open, or Install once
+  // unlocked - per 08-stations-upgrades.md), and a Process button for each
+  // installed station with stock on hand to convert. ---
   function StationsPanel(props) {
     var save = props.save;
     var busy = props.busy;
@@ -583,11 +773,20 @@
           );
         })
       ),
-      next ? h('div', { className: 'shoal-station-row' },
-        h('span', null, next.name),
-        next.unlocked
-          ? h('button', { type: 'button', disabled: busy, onClick: onInstall, className: 'shoal-action-btn' }, 'Install (', formatCoins(next.cost), 'c)')
-          : h('span', { className: 'shoal-station-hint' }, next.hint)
+      next ? h('div', { className: 'shoal-station-next' },
+        h('div', { className: 'shoal-station-row' },
+          h('span', null, next.name),
+          next.unlocked
+            ? h('button', { type: 'button', disabled: busy, onClick: onInstall, className: 'shoal-action-btn' }, 'Install (', formatCoins(next.cost), 'c)')
+            : h('span', { className: 'shoal-station-hint' }, next.hint)
+        ),
+        // Once the Emporium is open, the vague hint sharpens into an exact
+        // progress bar (08-stations-upgrades.md: "the winch and the Desk
+        // show a progress bar toward the goal").
+        !next.unlocked && next.requiresAmount != null && h('div', { className: 'shoal-progress-bar' },
+          h('div', { className: 'shoal-progress-bar-fill', style: { width: Math.min(100, Math.round(100 * next.progress / next.requiresAmount)) + '%' } })
+        ),
+        !next.unlocked && next.requiresAmount != null && h('p', { className: 'shoal-hint' }, next.progress, ' / ', next.requiresAmount)
       ) : h('p', { className: 'shoal-hint' }, 'All stations installed.'),
       Object.keys(PROCESS_STATION_FOR_BIN).filter(function (bin) {
         return save.stationsInstalled.indexOf(PROCESS_STATION_FOR_BIN[bin]) !== -1 && save.sortedGoods[bin].units > 0;
@@ -640,6 +839,10 @@
     var onTradeUp = props.onTradeUp;
     var emp = save.emporium;
     var _picked = useState(null); var pickedId = _picked[0]; var setPickedId = _picked[1];
+    // "Each expansion... (two clicks each)" and "Trade Up... (two clicks)"
+    // (10-emporium.md) - same confirm pattern as Sell Everything/Retire.
+    var _confirmExpand = useState(false); var confirmingExpand = _confirmExpand[0]; var setConfirmingExpand = _confirmExpand[1];
+    var _confirmTradeUp = useState(null); var confirmingTradeUpRarity = _confirmTradeUp[0]; var setConfirmingTradeUpRarity = _confirmTradeUp[1];
 
     function decorationById(id) { return DATA.decorations.find(function (d) { return d.id === id; }); }
     var spareIds = Object.keys(emp.decorationsOwned).filter(function (id) { return emp.decorationsOwned[id] > 0; });
@@ -674,9 +877,19 @@
         })
       ),
       h('div', { className: 'shoal-controls-row' },
-        tier < PEDESTAL_EXPANSION_COSTS.length && h('button', {
-          type: 'button', disabled: busy || save.coins < expansionCost, onClick: onExpand, className: 'shoal-action-btn'
-        }, 'Add 2 Pedestals (', formatCoins(expansionCost), 'c)'),
+        tier < PEDESTAL_EXPANSION_COSTS.length && (
+          confirmingExpand
+            ? [
+                h('button', {
+                  key: 'confirm', type: 'button', disabled: busy || save.coins < expansionCost, className: 'shoal-action-btn',
+                  onClick: function () { setConfirmingExpand(false); onExpand(); }
+                }, 'Confirm: Add 2 Pedestals (', formatCoins(expansionCost), 'c)'),
+                h('button', { key: 'cancel', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { setConfirmingExpand(false); } }, 'Cancel')
+              ]
+            : h('button', {
+                type: 'button', disabled: busy || save.coins < expansionCost, onClick: function () { setConfirmingExpand(true); }, className: 'shoal-action-btn'
+              }, 'Add 2 Pedestals (', formatCoins(expansionCost), 'c)')
+        ),
         emp.pedestalCount >= 16 && !emp.backRoomBuilt && h('button', {
           type: 'button', disabled: busy || save.coins < BACK_ROOM_COST, onClick: onBuildBackRoom, className: 'shoal-action-btn'
         }, 'Build the Back Room (', formatCoins(BACK_ROOM_COST), 'c)')
@@ -685,8 +898,17 @@
         RARITY_ORDER.slice(0, 3).map(function (rarity) {
           var count = spareIds.filter(function (id) { var d = decorationById(id); return d && d.rarity === rarity; })
             .reduce(function (s, id) { return s + emp.decorationsOwned[id]; }, 0);
+          if (confirmingTradeUpRarity === rarity) {
+            return [
+              h('button', {
+                key: rarity + '-confirm', type: 'button', disabled: busy || count < 3, className: 'shoal-action-btn',
+                onClick: function () { setConfirmingTradeUpRarity(null); onTradeUp(rarity); }
+              }, 'Confirm: Trade Up 3 ', rarity),
+              h('button', { key: rarity + '-cancel', type: 'button', disabled: busy, className: 'shoal-action-btn', onClick: function () { setConfirmingTradeUpRarity(null); } }, 'Cancel')
+            ];
+          }
           return h('button', {
-            key: rarity, type: 'button', disabled: busy || count < 3, onClick: function () { onTradeUp(rarity); }, className: 'shoal-action-btn'
+            key: rarity, type: 'button', disabled: busy || count < 3, onClick: function () { setConfirmingTradeUpRarity(rarity); }, className: 'shoal-action-btn'
           }, 'Trade Up 3 ', rarity, ' (have ', count, ')');
         })
       )
@@ -772,6 +994,11 @@
     );
   }
 
+  // The three Arcade games (10-emporium.md) are real timing/memory
+  // minigames the client plays out, not one-click gambles - the server
+  // still owns the money and the final payout, but Tide Timer and Crab
+  // Grab need the client to report what actually happened during the
+  // round (see the matching endpoints' comments in server.js).
   function ArcadePanel(props) {
     var save = props.save;
     var busy = props.busy;
@@ -780,19 +1007,117 @@
     var onShellGame = props.onShellGame;
     var affordable = save.coins >= 25;
 
+    // --- Tide Timer: a float bounces along 9 cells; Stop locks in the
+    // current cell. ---
+    var _tidePlaying = useState(false); var tidePlaying = _tidePlaying[0]; var setTidePlaying = _tidePlaying[1];
+    var _tideIndex = useState(0); var tideIndex = _tideIndex[0]; var setTideIndex = _tideIndex[1];
+    var tideTimerRef = useRef(null);
+    var tideDirRef = useRef(1);
+    function startTideTimer() {
+      setTideIndex(0); tideDirRef.current = 1; setTidePlaying(true);
+      tideTimerRef.current = setInterval(function () {
+        setTideIndex(function (i) {
+          var next = i + tideDirRef.current;
+          if (next >= 8) { next = 8; tideDirRef.current = -1; }
+          else if (next <= 0) { next = 0; tideDirRef.current = 1; }
+          return next;
+        });
+      }, 140);
+    }
+    function stopTideTimer() {
+      clearInterval(tideTimerRef.current);
+      setTidePlaying(false);
+      onTideTimer(tideIndex);
+    }
+    useEffect(function () { return function () { clearInterval(tideTimerRef.current); }; }, []);
+
+    // --- Crab Grab: crabs pop up one at a time in a 3x3 patch for 1.1s
+    // each; click before they duck, 20 seconds total. ---
+    var _crabPlaying = useState(false); var crabPlaying = _crabPlaying[0]; var setCrabPlaying = _crabPlaying[1];
+    var _crabCell = useState(null); var crabCell = _crabCell[0]; var setCrabCell = _crabCell[1];
+    var crabHitsRef = useRef(0);
+    var crabSpawnRef = useRef(null);
+    var crabEndRef = useRef(null);
+    function startCrabGrab() {
+      crabHitsRef.current = 0;
+      setCrabPlaying(true);
+      setCrabCell(Math.floor(Math.random() * 9));
+      crabSpawnRef.current = setInterval(function () {
+        setCrabCell(Math.floor(Math.random() * 9));
+      }, 1100);
+      crabEndRef.current = setTimeout(function () {
+        clearInterval(crabSpawnRef.current);
+        setCrabPlaying(false);
+        setCrabCell(null);
+        onCrabGrab(Math.min(20, crabHitsRef.current));
+      }, 20000);
+    }
+    function clickCrabCell(cellIndex) {
+      if (crabPlaying && cellIndex === crabCell) {
+        crabHitsRef.current += 1;
+        setCrabCell(null);
+      }
+    }
+    useEffect(function () {
+      return function () { clearInterval(crabSpawnRef.current); clearTimeout(crabEndRef.current); };
+    }, []);
+
+    // --- Shell Game: a cosmetic shuffle before the pick buttons unlock. ---
+    var _shellShuffling = useState(false); var shellShuffling = _shellShuffling[0]; var setShellShuffling = _shellShuffling[1];
+    var _shellReady = useState(false); var shellReady = _shellReady[0]; var setShellReady = _shellReady[1];
+    var shellTimerRef = useRef(null);
+    function startShellGame() {
+      setShellShuffling(true); setShellReady(false);
+      shellTimerRef.current = setTimeout(function () { setShellShuffling(false); setShellReady(true); }, 1200);
+    }
+    function pickShell(i) {
+      setShellReady(false);
+      onShellGame(i);
+    }
+    useEffect(function () { return function () { clearTimeout(shellTimerRef.current); }; }, []);
+
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Arcade (25 coins a game)'),
-      h('div', { className: 'shoal-controls-row' },
-        h('button', { type: 'button', disabled: busy || !affordable, onClick: onTideTimer, className: 'shoal-action-btn' }, 'Tide Timer'),
-        h('button', { type: 'button', disabled: busy || !affordable, onClick: onCrabGrab, className: 'shoal-action-btn' }, 'Crab Grab')
+
+      h('div', { className: 'shoal-arcade-game' },
+        h('div', { className: 'shoal-arcade-game-title' }, 'Tide Timer'),
+        h('div', { className: 'shoal-tide-track' },
+          [0, 1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
+            return h('div', { key: i, className: 'shoal-tide-cell' + (tidePlaying && i === tideIndex ? ' shoal-tide-cell-active' : '') + (i === 4 ? ' shoal-tide-cell-center' : '') });
+          })
+        ),
+        tidePlaying
+          ? h('button', { type: 'button', disabled: busy, onClick: stopTideTimer, className: 'shoal-action-btn' }, 'Stop!')
+          : h('button', { type: 'button', disabled: busy || !affordable, onClick: startTideTimer, className: 'shoal-action-btn' }, 'Play Tide Timer')
       ),
-      h('p', { className: 'shoal-hint' }, 'Shell Game: guess which shell hides the pearl.'),
-      h('div', { className: 'shoal-controls-row' },
-        [0, 1, 2].map(function (i) {
-          return h('button', {
-            key: i, type: 'button', disabled: busy || !affordable, onClick: function () { onShellGame(i); }, className: 'shoal-action-btn'
-          }, 'Shell ', i + 1);
-        })
+
+      h('div', { className: 'shoal-arcade-game' },
+        h('div', { className: 'shoal-arcade-game-title' }, 'Crab Grab', crabPlaying ? ' (' + crabHitsRef.current + ' hit)' : ''),
+        h('div', { className: 'shoal-crab-grid' },
+          [0, 1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
+            return h('button', {
+              key: i, type: 'button', disabled: !crabPlaying, onClick: function () { clickCrabCell(i); },
+              className: 'shoal-crab-cell' + (crabPlaying && i === crabCell ? ' shoal-crab-cell-active' : '')
+            }, crabPlaying && i === crabCell ? '🦀' : '');
+          })
+        ),
+        !crabPlaying && h('button', { type: 'button', disabled: busy || !affordable, onClick: startCrabGrab, className: 'shoal-action-btn' }, 'Play Crab Grab')
+      ),
+
+      h('div', { className: 'shoal-arcade-game' },
+        h('div', { className: 'shoal-arcade-game-title' }, 'Shell Game'),
+        h('p', { className: 'shoal-hint' }, 'Guess which shell hides the pearl.'),
+        shellShuffling
+          ? h('p', { className: 'shoal-hint' }, 'Shuffling...')
+          : shellReady
+          ? h('div', { className: 'shoal-controls-row' },
+              [0, 1, 2].map(function (i) {
+                return h('button', {
+                  key: i, type: 'button', disabled: busy, onClick: function () { pickShell(i); }, className: 'shoal-action-btn'
+                }, 'Shell ', i + 1);
+              })
+            )
+          : h('button', { type: 'button', disabled: busy || !affordable, onClick: startShellGame, className: 'shoal-action-btn' }, 'Play Shell Game')
       )
     );
   }
@@ -842,6 +1167,19 @@
     var save = props.save;
     var busy = props.busy;
     var handlers = props.handlers;
+    // "Customers walk in every 25 seconds while the owner is in the game,
+    // up to 3 waiting" (10-emporium.md) - arrival is automatic, not
+    // something the player has to click for; the manual button stays too,
+    // for whenever a player wants one sooner.
+    var waitingRef = useRef(0);
+    waitingRef.current = save.emporiumOpen ? save.emporium.counterCustomers.length : 3;
+    useEffect(function () {
+      if (!save.emporiumOpen) return undefined;
+      var interval = setInterval(function () {
+        if (waitingRef.current < 3) handlers.onNextCustomer();
+      }, 25000);
+      return function () { clearInterval(interval); };
+    }, [save.emporiumOpen]);
 
     if (!save.emporiumOpen) {
       return h(EmporiumGate, { save: save, busy: busy, onOpen: handlers.onOpenEmporium });
@@ -850,7 +1188,10 @@
     return h('div', { className: 'shoal-emporium' },
       h('div', { className: 'shoal-card' },
         h('div', { className: 'shoal-card-title' }, 'The Emporium'),
-        h('button', { type: 'button', disabled: busy, onClick: handlers.onCollectAwayEarnings, className: 'shoal-action-btn' }, 'Collect Away Earnings')
+        h('button', { type: 'button', disabled: busy, onClick: handlers.onCollectAwayEarnings, className: 'shoal-action-btn' }, 'Collect Away Earnings'),
+        save.emporium.tipJar > 0 && h('button', {
+          type: 'button', disabled: busy, onClick: handlers.onCollectTips, className: 'shoal-action-btn'
+        }, 'Collect Tip Jar (', formatCoins(save.emporium.tipJar), 'c)')
       ),
       h(ShopFloorPanel, { save: save, busy: busy, onPlace: handlers.onPlaceDecoration, onTake: handlers.onTakeDecoration, onExpand: handlers.onExpandPedestals, onBuildBackRoom: handlers.onBuildBackRoom, onTradeUp: handlers.onTradeUp }),
       h(CounterPanel, { save: save, busy: busy, onNextCustomer: handlers.onNextCustomer, onServe: handlers.onServeCustomer }),
@@ -902,169 +1243,10 @@
     );
   }
 
-  // --- Cosmetics / the Shipwright (12-cosmetics.md). This build replaces
-  // the original's real-money-adjacent Seal Token shop with a coin-priced
-  // Premium Looks catalog instead (site owner's call - see server.js's
-  // matching comment): any look with a `cost` field is bought with coins,
-  // no retirement required, same as the exotic woods above it. The Season
-  // Champion flag and other event/season looks still aren't buyable (they
-  // need a leaderboard/seasons system, or an event completed). The radio
-  // has no real audio yet either - that needs original/licensed tracks, a
-  // content decision, not code. ---
-
-  function shoalLookUnlockHint(item) {
-    if (item.unlocksAtRetirement > 0) return 'Unlocks at retirement ' + item.unlocksAtRetirement;
-    if (item.id === 'season-champion') return "This month's top 3 coin earners";
-    if (item.eventReward) return 'Complete the ' + (item.eventRewardName || 'event') + ' at the Shipwright';
-    if (item.cost) return 'Buy for ' + formatCoins(item.cost) + ' coins, below';
-    return null;
-  }
-
-  // Shared grid for sails/flags/pets/badges/tracks - all "pick one from a
-  // retirement-gated list" with the same shape, modulo pets/badges/tracks
-  // allowing "none" (click the equipped one again to clear it). While
-  // tryOnMode is on, EVERY item is clickable (even locked ones) and clicking
-  // previews instead of equipping - "Try It On" per 12-cosmetics.md.
-  function LookGrid(opts) {
-    return h('div', { className: 'shoal-look-grid' },
-      opts.items.map(function (item) {
-        var unlocked = opts.unlockedIds.indexOf(item.id) !== -1;
-        var equipped = opts.equippedId === item.id;
-        var clickable = opts.tryOnMode || unlocked;
-        return h('button', {
-          key: item.id, type: 'button', disabled: opts.busy || !clickable,
-          onClick: function () {
-            if (opts.tryOnMode) { opts.onTryOn(item, !unlocked); return; }
-            opts.onEquip(opts.allowNone && equipped ? null : item.id);
-          },
-          className: 'shoal-look-chip' + (equipped ? ' shoal-look-chip-equipped' : '') + (!unlocked ? ' shoal-look-chip-locked' : '')
-        },
-          item.emoji ? (item.emoji + ' ') : '', item.name,
-          !unlocked && h('span', { className: 'shoal-look-lock' }, ' (', shoalLookUnlockHint(item), ')')
-        );
-      })
-    );
-  }
-
-  function ShipwrightPanel(props) {
-    var save = props.save;
-    var busy = props.busy;
-    var onEquipWood = props.onEquipWood;
-    var onBuyWood = props.onBuyWood;
-    var onBuyLook = props.onBuyLook;
-    var onEquipSail = props.onEquipSail;
-    var onEquipFlag = props.onEquipFlag;
-    var onEquipPet = props.onEquipPet;
-    var onEquipBadge = props.onEquipBadge;
-    var onPatPet = props.onPatPet;
-    var onSelectTrack = props.onSelectTrack;
-    var c = save.cosmetics;
-
-    var _tryOn = useState(false); var tryOnMode = _tryOn[0]; var setTryOnMode = _tryOn[1];
-    var _preview = useState(null); var preview = _preview[0]; var setPreview = _preview[1];
-
-    function previewItem(item, locked) {
-      setPreview({ name: item.name, locked: locked });
-      setTimeout(function () { setPreview(null); }, 30000);
-    }
-
-    var buyableWoods = DATA.woods.filter(function (w) { return !w.free && c.unlockedWoods.indexOf(w.id) === -1; });
-    // Premium Looks: any sail/flag/pet/badge with a `cost` - coin-priced,
-    // no retirement gate, in place of the original's Seal Token shop.
-    var buyableLooks = []
-      .concat(DATA.sails.filter(function (s) { return s.cost && c.unlockedSails.indexOf(s.id) === -1; }).map(function (item) { return { category: 'sail', item: item }; }))
-      .concat(DATA.flags.filter(function (f) { return f.cost && c.unlockedFlags.indexOf(f.id) === -1; }).map(function (item) { return { category: 'flag', item: item }; }))
-      .concat(DATA.pets.filter(function (p) { return p.cost && c.unlockedPets.indexOf(p.id) === -1; }).map(function (item) { return { category: 'pet', item: item }; }))
-      .concat(DATA.chatBadges.filter(function (b) { return b.cost && c.unlockedBadges.indexOf(b.id) === -1; }).map(function (item) { return { category: 'badge', item: item }; }));
-    var todayStr = new Date().toISOString().slice(0, 10);
-    var pattedToday = c.petPattedDate === todayStr;
-    var treatActive = !!c.petTreatExpiresAt && Date.now() < new Date(c.petTreatExpiresAt).getTime();
-
-    return h('div', { className: 'shoal-card' },
-      h('div', { className: 'shoal-card-title' }, 'The Shipwright'),
-      h('button', {
-        type: 'button', disabled: busy, onClick: function () { setTryOnMode(!tryOnMode); },
-        className: 'shoal-action-btn' + (tryOnMode ? ' shoal-action-btn-magic' : '')
-      }, tryOnMode ? 'Try It On: ON (clicking previews, even locked looks)' : 'Try It On: OFF'),
-      preview && h('div', { className: 'shoal-preview-banner' }, 'Previewing: ', preview.name, preview.locked ? ' (not owned - just a look)' : '', ' - 30s'),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Hull, Deck, Railing, Mast (wood)'),
-        DATA.woodParts.map(function (part) {
-          var equipped = c.equippedWood[part];
-          var options = tryOnMode ? DATA.woods : DATA.woods.filter(function (w) { return c.unlockedWoods.indexOf(w.id) !== -1; });
-          return h('div', { key: part, className: 'shoal-wood-part-row' },
-            h('span', { className: 'shoal-wood-part-label' }, part.charAt(0).toUpperCase() + part.slice(1)),
-            h('select', {
-              value: equipped, disabled: busy,
-              onChange: function (e) {
-                var wood = DATA.woods.find(function (w) { return w.id === e.target.value; });
-                if (tryOnMode) { previewItem(wood, c.unlockedWoods.indexOf(wood.id) === -1); return; }
-                onEquipWood(part, e.target.value);
-              }
-            }, options.map(function (w) { return h('option', { key: w.id, value: w.id }, w.name); }))
-          );
-        }),
-        buyableWoods.length > 0 && h('div', { className: 'shoal-buy-wood-list' },
-          buyableWoods.map(function (w) {
-            var unlocked = save.retirements >= w.unlocksAtRetirement;
-            return h('button', {
-              key: w.id, type: 'button', disabled: busy || !unlocked || save.coins < w.cost,
-              onClick: function () { onBuyWood(w.id); },
-              className: 'shoal-action-btn'
-            }, unlocked ? ('Buy ' + w.name + ' (' + formatCoins(w.cost) + 'c)') : (w.name + ' - retirement ' + w.unlocksAtRetirement));
-          })
-        )
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Sails'),
-        h(LookGrid, { items: DATA.sails, unlockedIds: c.unlockedSails, equippedId: c.equippedSail, onEquip: onEquipSail, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Flags'),
-        h(LookGrid, { items: DATA.flags, unlockedIds: c.unlockedFlags, equippedId: c.equippedFlag, onEquip: onEquipFlag, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Pets'),
-        h(LookGrid, { items: DATA.pets, unlockedIds: c.unlockedPets, equippedId: c.equippedPet, onEquip: onEquipPet, busy: busy, allowNone: true, tryOnMode: tryOnMode, onTryOn: previewItem }),
-        c.equippedPet && h('button', {
-          type: 'button', disabled: busy || pattedToday, onClick: onPatPet, className: 'shoal-action-btn'
-        }, pattedToday ? 'Already patted today' : 'Pat your pet (+5% value, 10 min)'),
-        treatActive && h('p', { className: 'shoal-hint' }, "Treat active: +5% value until the timer runs out.")
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Chat Badges'),
-        h(LookGrid, { items: DATA.chatBadges, unlockedIds: c.unlockedBadges, equippedId: c.equippedBadge, onEquip: onEquipBadge, busy: busy, allowNone: true, tryOnMode: tryOnMode, onTryOn: previewItem })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Radio'),
-        h('p', { className: 'shoal-hint' }, 'The web version needs its own licensed music - selecting a track here doesn’t play audio yet.'),
-        h(LookGrid, { items: DATA.radioTracks, unlockedIds: c.unlockedTracks, equippedId: c.equippedTrack, onEquip: onSelectTrack, busy: busy, allowNone: true, tryOnMode: tryOnMode, onTryOn: previewItem })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Premium Looks'),
-        h('p', { className: 'shoal-hint' }, "Steep, coin-priced extras for a boat that stands out - no retirement required, just the coins. Bought looks join their category above."),
-        buyableLooks.length === 0
-          ? h('p', { className: 'shoal-hint' }, "You've bought every premium look.")
-          : h('div', { className: 'shoal-buy-wood-list' },
-              buyableLooks.map(function (entry) {
-                return h('button', {
-                  key: entry.category + '-' + entry.item.id, type: 'button', disabled: busy || save.coins < entry.item.cost,
-                  onClick: function () { onBuyLook(entry.category, entry.item.id); },
-                  className: 'shoal-action-btn'
-                }, 'Buy ' + (entry.item.emoji ? (entry.item.emoji + ' ') : '') + entry.item.name + ' (' + formatCoins(entry.item.cost) + 'c)');
-              })
-            )
-      )
-    );
-  }
-
+  // Shipwright (ship cosmetics - wood/sail/flag/pet/badge/radio) removed:
+  // it was its own long stack of pick-one-from-a-list sections regardless
+  // of how each list was styled, and was cut rather than kept as another
+  // thing to scroll through.
   function DredgeControls(props) {
     var save = props.save;
     var onDredge = props.onDredge;
@@ -1106,10 +1288,26 @@
   function UpgradesPanel(props) {
     var save = props.save;
     var onBuy = props.onBuy;
+    var onBuyMax = props.onBuyMax;
     var busy = props.busy;
     var unlockScale = ENGINE.retireGoalForRun(save.retirements + 1).unlockScale;
+    var _confirmMax = useState(null); var confirmMaxId = _confirmMax[0]; var setConfirmMaxId = _confirmMax[1];
 
     var LEVEL_FIELD = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' };
+    var MAX_LEVEL = { 'bigger-basket': 29, 'faster-winch': 12, 'soft-brush': 3, 'lucky-charm': 10 };
+
+    // "'Buy What I Can Afford' buys as many levels in a row as coins cover"
+    // (08-stations-upgrades.md) - previewed locally with the same formula
+    // the server uses, so the first click can show exactly what it would buy.
+    function previewBuyMax(u, level) {
+      var l = level, spent = 0, bought = 0;
+      while (l < MAX_LEVEL[u.id]) {
+        var cost = Math.round(ENGINE.upgradeCost(u.id, l, unlockScale));
+        if (spent + cost > save.coins) break;
+        spent += cost; l += 1; bought += 1;
+      }
+      return { bought: bought, spent: spent };
+    }
 
     return h('div', { className: 'shoal-card' },
       h('div', { className: 'shoal-card-title' }, 'Work Table'),
@@ -1121,17 +1319,32 @@
           var maxed = level >= u.levels;
           var cost = maxed ? null : Math.round(ENGINE.upgradeCost(u.id, level, unlockScale));
           var affordable = !maxed && save.coins >= cost;
+          var confirmingMax = confirmMaxId === u.id;
+          var preview = !maxed && previewBuyMax(u, level);
           return h('div', { key: u.id, className: 'shoal-upgrade-row' },
             h('div', { className: 'shoal-upgrade-info' },
               h('div', { className: 'shoal-upgrade-name' }, u.name, ' ', h('span', { className: 'shoal-upgrade-level' }, 'Lv.', level, '/', u.levels)),
               h('div', { className: 'shoal-upgrade-effect' }, u.effectPerLevel)
             ),
-            h('button', {
-              type: 'button',
-              disabled: busy || maxed || !affordable,
-              onClick: function () { onBuy(u.id); },
-              className: 'shoal-upgrade-btn'
-            }, maxed ? 'MAX' : (formatCoins(cost) + 'c'))
+            h('div', { className: 'shoal-upgrade-buttons' },
+              h('button', {
+                type: 'button',
+                disabled: busy || maxed || !affordable,
+                onClick: function () { onBuy(u.id); },
+                className: 'shoal-upgrade-btn'
+              }, maxed ? 'MAX' : (formatCoins(cost) + 'c')),
+              !maxed && (confirmingMax
+                ? h('button', {
+                    type: 'button', disabled: busy || preview.bought === 0,
+                    onClick: function () { setConfirmMaxId(null); onBuyMax(u.id); },
+                    className: 'shoal-upgrade-btn'
+                  }, 'Confirm: +', preview.bought, ' for ', formatCoins(preview.spent), 'c')
+                : h('button', {
+                    type: 'button', disabled: busy || preview.bought === 0,
+                    onClick: function () { setConfirmMaxId(u.id); },
+                    className: 'shoal-upgrade-btn'
+                  }, 'Buy What I Can Afford'))
+            )
           );
         })
       )
@@ -1146,48 +1359,10 @@
   // (coins, partyId, guildId, writingKits, ...) so the rest of the screen
   // stays in sync. ---
 
-  // Guild management moved out to its own Guild Hall scene (point-and-click
-  // rework) - this list (and SocialPanel below) now covers everything else
-  // social that doesn't belong to a specific building: forming a party,
-  // visiting another player's boat, leaderboards, and bottle letters.
-  var SOCIAL_TABS = [
-    { id: 'party', label: 'Party', icon: 'Users' },
-    { id: 'visit', label: 'Visit', icon: 'Home' },
-    { id: 'leaderboard', label: 'Leaderboards', icon: 'Trophy' },
-    { id: 'letters', label: 'Letters', icon: 'Mail' }
-  ];
-
-  function SocialPanel(props) {
-    var save = props.save;
-    var handle = props.handle;
-    var onRefreshSave = props.onRefreshSave;
-    var lastFoundLetter = props.lastFoundLetter;
-    var onHeartLetter = props.onHeartLetter;
-    var onReportLetter = props.onReportLetter;
-    var onReplyLetter = props.onReplyLetter;
-
-    var _tab = useState('party'); var tab = _tab[0]; var setTab = _tab[1];
-
-    return h('div', { className: 'shoal-card shoal-social-card' },
-      h('div', { className: 'shoal-card-title' }, 'Social'),
-      h('div', { className: 'shoal-social-tabs' },
-        SOCIAL_TABS.map(function (t) {
-          return h('button', {
-            key: t.id, type: 'button',
-            className: 'shoal-social-tab' + (tab === t.id ? ' shoal-social-tab-active' : ''),
-            onClick: function () { setTab(t.id); }
-          }, h(Icons[t.icon], { className: 'shoal-social-tab-icon' }), t.label);
-        })
-      ),
-      tab === 'party' && h(PartyTab, { key: 'party-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
-      tab === 'visit' && h(VisitTab, { key: 'visit-' + handle, save: save, handle: handle }),
-      tab === 'leaderboard' && h(LeaderboardTab, { key: 'lb' }),
-      tab === 'letters' && h(LettersTab, {
-        key: 'letters-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave,
-        lastFoundLetter: lastFoundLetter, onHeartLetter: onHeartLetter, onReportLetter: onReportLetter, onReplyLetter: onReplyLetter
-      })
-    );
-  }
+  // Guild management is its own Guild Hall scene (point-and-click rework).
+  // Party/Leaderboards/Letters are each reached directly from the Harbor
+  // (own hotspots), not grouped under any wrapper - PartyTab/LeaderboardTab/
+  // LettersTab below are rendered standalone, one per scene.
 
   function PartyTab(props) {
     var save = props.save;
@@ -1455,88 +1630,6 @@
     );
   }
 
-  function VisitTab(props) {
-    var save = props.save;
-    var handle = props.handle;
-    // Arriving by clicking a specific ship in the Harbor (point-and-click
-    // rework) skips typing a handle - the manual form below still works
-    // too, e.g. to visit someone not currently shown there.
-    var initialTarget = props.initialTarget;
-
-    var _target = useState(initialTarget || ''); var target = _target[0]; var setTarget = _target[1];
-    var _boat = useState(null); var boat = _boat[0]; var setBoat = _boat[1];
-    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
-    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
-    var _tipAmount = useState(10); var tipAmount = _tipAmount[0]; var setTipAmount = _tipAmount[1];
-    var _drink = useState({ base: DRINK_PARTS.base[0], flavour: DRINK_PARTS.flavour[0], finish: DRINK_PARTS.finish[0] });
-    var drink = _drink[0]; var setDrink = _drink[1];
-
-    function doVisit(targetOverride) {
-      var t = targetOverride || target;
-      if (!t) return;
-      setBusy(true); setMsg(null);
-      apiGet('/api/shoal-tales/visit?handle=' + encodeURIComponent(handle) + '&ownerHandle=' + encodeURIComponent(t))
-        .then(function (data) { setBoat(data.boat); }).catch(function (e) { setMsg(e.message); setBoat(null); }).finally(function () { setBusy(false); });
-    }
-
-    useEffect(function () {
-      if (initialTarget) doVisit(initialTarget);
-    }, [initialTarget]);
-
-    function doTip() {
-      setBusy(true); setMsg(null);
-      apiPost('/api/shoal-tales/visit/tip', { handle: handle, ownerHandle: target, amount: tipAmount })
-        .then(function () { setMsg('Tipped ' + formatCoins(tipAmount) + ' coins!'); return doVisit(); })
-        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
-    }
-
-    function doServe(customerId) {
-      setBusy(true); setMsg(null);
-      apiPost('/api/shoal-tales/visit/serve-counter', { handle: handle, ownerHandle: target, customerId: customerId, drink: drink })
-        .then(function (data) { setMsg((data.correctDrink ? 'Correct drink! ' : 'Wrong drink. ') + '+' + formatCoins(data.coinsEarned) + ' coins for the host.'); return doVisit(); })
-        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
-    }
-
-    return h('div', { className: 'shoal-social-tab-body' },
-      h('div', { className: 'shoal-invite-form' },
-        h('input', { type: 'text', placeholder: '@handle to visit', value: target, onChange: function (e) { setTarget(e.target.value); } }),
-        h('button', { type: 'button', disabled: busy || !target, onClick: doVisit }, "Visit Boat")
-      ),
-      boat && h('div', { className: 'shoal-visit-boat' },
-        h('div', { className: 'shoal-subtitle' }, boat.handle, ' - ', boat.title, boat.guild ? (' [' + boat.guild.tag + ']') : ''),
-        h('div', { className: 'shoal-social-stat-row' },
-          h('span', null, boat.retirements, ' retirements'),
-          h('span', null, boat.setsCompleted, ' sets logged'),
-          h('span', null, 'Best streak x', boat.bestStreakEver)
-        ),
-        boat.emporiumOpen && h('div', { className: 'shoal-hint' }, 'Tip jar: ', formatCoins(boat.tipJar), ' coins'),
-        boat.canTip && h('div', { className: 'shoal-bank-row' },
-          [10, 25, 50, 100].map(function (amt) {
-            return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { setTipAmount(amt); doTip(); } }, 'Tip ', amt);
-          })
-        ),
-        boat.canServeCounter && boat.counterCustomers && boat.counterCustomers.length > 0 && h('div', null,
-          h('div', { className: 'shoal-subtitle' }, 'Serve at the Counter'),
-          h('div', { className: 'shoal-drink-picker' },
-            ['base', 'flavour', 'finish'].map(function (part) {
-              return h('select', {
-                key: part, value: drink[part],
-                onChange: function (e) { var d = {}; d[part] = e.target.value; setDrink(Object.assign({}, drink, d)); }
-              }, DRINK_PARTS[part].map(function (opt) { return h('option', { key: opt, value: opt }, opt); }));
-            })
-          ),
-          boat.counterCustomers.map(function (c) {
-            return h('div', { key: c.id, className: 'shoal-member-row' },
-              h('span', null, c.name, ' wants ', c.drink.base, ', ', c.drink.flavour, ', ', c.drink.finish),
-              h('button', { type: 'button', disabled: busy, onClick: function () { doServe(c.id); } }, 'Serve')
-            );
-          })
-        )
-      ),
-      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
-    );
-  }
-
   var LEADERBOARD_TYPES = [
     { id: 'retirements', label: 'Times Retired' },
     { id: 'setsCompleted', label: 'Sets Completed' },
@@ -1638,8 +1731,8 @@
   }
 
   // --- Extras (14-extras.md): Tides/Events banner, Stats (The Desk's
-  // Profile), Feat Titles, the Quest Book, and Settings. Same
-  // self-contained-tab approach as SocialPanel. ---
+  // Profile), Feat Titles, the Quest Book, and Settings - a tab bar within
+  // the Desk room itself. ---
 
   function TideEventBanner() {
     var _tide = useState(null); var tide = _tide[0]; var setTide = _tide[1];
@@ -1982,7 +2075,69 @@
               }
             }, 'Start')
           ),
+
+      h('div', { className: 'shoal-subtitle' }, 'Player Tools'),
+      h(StaffPlayerTools, { handle: handle, busy: busy, run: run }),
+
       msg && h('div', { className: 'shoal-sort-feedback' }, msg)
+    );
+  }
+
+  // Give/wipe/inspect a specific player's save - the per-player admin
+  // actions from 16-minecraft-to-web.md's staff-commands row that weren't
+  // built yet (backups/restore are already covered by the app's existing
+  // dual JSON/Postgres persistence, so not duplicated here).
+  function StaffPlayerTools(props) {
+    var handle = props.handle;
+    var busy = props.busy;
+    var run = props.run;
+    var _target = useState(''); var target = _target[0]; var setTarget = _target[1];
+    var _coins = useState(1000); var coins = _coins[0]; var setCoins = _coins[1];
+    var _confirmWipe = useState(false); var confirmWipe = _confirmWipe[0]; var setConfirmWipe = _confirmWipe[1];
+    var _inspected = useState(null); var inspected = _inspected[0]; var setInspected = _inspected[1];
+    var _inspectError = useState(null); var inspectError = _inspectError[0]; var setInspectError = _inspectError[1];
+
+    return h('div', { className: 'shoal-staff-player-tools' },
+      h('input', {
+        type: 'text', placeholder: '@handle to act on', value: target,
+        onChange: function (e) { setTarget(e.target.value); setConfirmWipe(false); setInspected(null); setInspectError(null); }
+      }),
+      h('div', { className: 'shoal-action-row' },
+        h('input', { type: 'number', min: 1, max: 1000000, value: coins, onChange: function (e) { setCoins(Number(e.target.value)); } }),
+        h('button', {
+          type: 'button', disabled: busy || !target || !coins,
+          onClick: function () { run(apiPost('/api/shoal-tales/admin/give', { handle: handle, targetHandle: target, coins: coins }), 'Gave ' + formatCoins(coins) + 'c to ' + target + '.'); }
+        }, 'Give Coins')
+      ),
+      h('div', { className: 'shoal-action-row' },
+        h('button', {
+          type: 'button', disabled: busy || !target,
+          onClick: function () {
+            apiGet('/api/shoal-tales/admin/inspect?handle=' + encodeURIComponent(handle) + '&targetHandle=' + encodeURIComponent(target))
+              .then(function (d) { setInspected(d.save); setInspectError(null); })
+              .catch(function (e) { setInspected(null); setInspectError(e.message); });
+          }
+        }, 'Inspect'),
+        !confirmWipe
+          ? h('button', {
+              type: 'button', disabled: busy || !target, className: 'shoal-action-btn-danger',
+              onClick: function () { setConfirmWipe(true); }
+            }, 'Wipe Save')
+          : [
+              h('button', {
+                key: 'confirm', type: 'button', disabled: busy, className: 'shoal-action-btn-danger',
+                onClick: function () { setConfirmWipe(false); run(apiPost('/api/shoal-tales/admin/wipe', { handle: handle, targetHandle: target, confirm: true }), 'Wiped ' + target + "'s save."); }
+              }, 'Confirm: permanently erase ', target, "'s save"),
+              h('button', { key: 'cancel', type: 'button', disabled: busy, onClick: function () { setConfirmWipe(false); } }, 'Cancel')
+            ]
+      ),
+      inspectError && h('div', { className: 'shoal-sort-feedback shoal-sort-wrong' }, inspectError),
+      inspected && h('div', { className: 'shoal-member-row' },
+        h('span', null,
+          target, ': ', formatCoins(inspected.coins), 'c, run ', inspected.retirements + 1,
+          ', basket Lv.', inspected.basketLevel, ', ', inspected.tray.length, ' item(s) in tray, title "', inspected.title || '', '"'
+        )
+      )
     );
   }
 
@@ -2005,7 +2160,7 @@
   function SceneHotspot(props) {
     return h('button', {
       type: 'button',
-      className: 'shoal-scene-hotspot' + (props.small ? ' shoal-scene-hotspot-small' : '') + (props.disabled ? ' shoal-scene-hotspot-disabled' : ''),
+      className: 'shoal-scene-hotspot' + (props.small ? ' shoal-scene-hotspot-small' : '') + (props.object ? ' shoal-scene-hotspot-object' : '') + (props.disabled ? ' shoal-scene-hotspot-disabled' : ''),
       disabled: props.disabled, onClick: props.onClick
     },
       h('span', { className: 'shoal-scene-hotspot-icon' }, props.emoji),
@@ -2014,16 +2169,16 @@
     );
   }
 
-  // The Harbor: the point-and-click hub. Your Ship/The Town/Your Emporium/
-  // Your Guild Hall/The Dock Board are always-there buildings; "Ships at
-  // Anchor" is the live presence roster (task 35) - other currently-online
-  // players, each clickable straight into Visiting them, no typing a
-  // handle required.
+  // The Harbor: the point-and-click hub. No invented "Dock Board" building -
+  // Party/Leaderboards/Letters are each their own hotspot here directly,
+  // same as Ship/Town/Emporium/Guild Hall. "Ships at Anchor" is the live
+  // presence roster (task 35) - just who's currently online and where.
+  // Visiting another player's boat was removed as a feature, so these
+  // entries are informational only, not clickable.
   function HarborScene(props) {
     var save = props.save;
     var roster = props.roster;
     var onEnter = props.onEnter;
-    var onVisit = props.onVisit;
 
     return h(Scene, { themeClass: 'shoal-scene-harbor', title: 'The Harbor' },
       h('div', { className: 'shoal-scene-hotspot-row' },
@@ -2031,25 +2186,37 @@
         h(SceneHotspot, { emoji: '🏘️', label: 'The Town', onClick: function () { onEnter('town'); } }),
         save.townOpen && h(SceneHotspot, { emoji: '🏪', label: 'Your Emporium', onClick: function () { onEnter('emporium'); } }),
         h(SceneHotspot, { emoji: '🚩', label: save.guildId ? 'Guild Hall' : 'Find a Guild', onClick: function () { onEnter('guildhall'); } }),
-        h(SceneHotspot, { emoji: '📜', label: 'The Dock Board', sublabel: 'Party, Visit, Leaderboards, Letters', onClick: function () { onEnter('dockboard'); } })
+        h(SceneHotspot, { emoji: '👥', label: 'Party', onClick: function () { onEnter('party'); } }),
+        h(SceneHotspot, { emoji: '🏆', label: 'Leaderboards', onClick: function () { onEnter('leaderboard'); } }),
+        h(SceneHotspot, { emoji: '✉️', label: 'Letters', onClick: function () { onEnter('letters'); } })
       ),
       h('div', { className: 'shoal-scene-subtitle' }, 'Ships at Anchor'),
       roster.length === 0
         ? h('p', { className: 'shoal-hint' }, 'Nobody else is around right now.')
         : h('div', { className: 'shoal-harbor-roster' },
             roster.map(function (r) {
-              return h(SceneHotspot, {
-                key: r.handle, emoji: '⛴️', small: true,
-                label: r.handle + (r.title ? (' (' + r.title + ')') : ''),
-                sublabel: 'in ' + (SCENE_NAMES[r.scene] || r.scene),
-                onClick: function () { onVisit(r.handle); }
-              });
+              return h('div', { key: r.handle, className: 'shoal-scene-hotspot shoal-scene-hotspot-small shoal-scene-hotspot-disabled' },
+                h('span', { className: 'shoal-scene-hotspot-icon' }, '⛴️'),
+                h('span', { className: 'shoal-scene-hotspot-label' }, r.handle, r.title ? (' (' + r.title + ')') : ''),
+                h('span', { className: 'shoal-scene-hotspot-sublabel' }, 'in ', SCENE_NAMES[r.scene] || r.scene)
+              );
             })
           )
     );
   }
 
-  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', dockboard: 'the Dock Board', visiting: 'the Harbor' };
+  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', party: 'the Harbor', leaderboard: 'the Harbor', letters: 'the Harbor' };
+
+  // The Ship's deck fixtures: dredging/the Tray/Goods & Cooler stay on the
+  // root view (the loop you use every haul). These are the other physical
+  // things on deck (same objects the new-player sparkles point at: the
+  // Cutting Board, the Desk, the Work Table) - named and shown as objects,
+  // not described menu rows.
+  var SHIP_ROOMS = [
+    { id: 'stations', emoji: '⚙️', label: 'Stations' },
+    { id: 'work-table', emoji: '🔨', label: 'Work Table' },
+    { id: 'desk', emoji: '📖', label: 'Desk' }
+  ];
 
   var GUILD_HALL_ROOMS = [
     { id: 'common', emoji: '🏛️', label: 'Common Room', sublabel: 'Roster & chat' },
@@ -2102,17 +2269,21 @@
     var _countdown = useState(0); var countdown = _countdown[0]; var setCountdown = _countdown[1];
     var _curioChoosingBin = useState(null); var curioChoosingBin = _curioChoosingBin[0]; var setCurioChoosingBin = _curioChoosingBin[1];
     var _lastFoundLetter = useState(null); var lastFoundLetter = _lastFoundLetter[0]; var setLastFoundLetter = _lastFoundLetter[1];
-    // Point-and-click scene state: 'harbor' (default/hub) / 'ship' / 'town' /
-    // 'emporium' / 'guildhall' / 'dockboard' / 'visiting'. visitingHandle is
-    // only set while scene === 'visiting' (clicked a ship in the Harbor).
-    var _scene = useState('harbor'); var scene = _scene[0]; var setScene = _scene[1];
-    var _visitingHandle = useState(null); var visitingHandle = _visitingHandle[0]; var setVisitingHandle = _visitingHandle[1];
+    // Point-and-click scene state: 'ship' (default - you're always on your
+    // own boat first) / 'harbor' / 'town' / 'emporium' / 'guildhall' /
+    // 'party' / 'leaderboard' / 'letters'. Visiting another player's boat
+    // was removed as a feature.
+    var _scene = useState('ship'); var scene = _scene[0]; var setScene = _scene[1];
     var _roster = useState([]); var roster = _roster[0]; var setRoster = _roster[1];
+    // Which deck fixture's room is open on the Ship, same hotspot/room
+    // pattern as the Guild Hall - the dredge/tray/goods loop stays on the
+    // Ship's root view (used every haul), Stations/Work Table/the Desk are
+    // a click away instead of one long scroll past all of them.
+    var _shipRoom = useState(null); var shipRoom = _shipRoom[0]; var setShipRoom = _shipRoom[1];
     var presenceWsRef = useRef(null);
 
-    function goTo(nextScene) { setVisitingHandle(null); setScene(nextScene); }
+    function goTo(nextScene) { setShipRoom(null); setScene(nextScene); }
     function goToHarbor() { goTo('harbor'); }
-    function visitShip(targetHandle) { setVisitingHandle(targetHandle); setScene('visiting'); }
 
     // One live presence connection per mount, reporting the current scene
     // and listening for everyone else's (14-extras.md has no precedent for
@@ -2183,14 +2354,22 @@
     }
 
     function handleScrub(trayItemId) {
-      runAction(apiPost('/api/shoal-tales/scrub', { handle: handle, trayItemId: trayItemId })).then(function (data) {
-        if (!data) return;
-        if (data.kind === 'magicCurio') {
+      // Doesn't go through the generic runAction, which always clears the
+      // tray selection - "Scrub it clean (4 clicks)" (06-curios.md) needs
+      // the item to stay selected/visible between clicks so Scrub can be
+      // tapped again immediately, not re-selected from the grid each time.
+      setBusy(true);
+      apiPost('/api/shoal-tales/scrub', { handle: handle, trayItemId: trayItemId }).then(function (data) {
+        if (data.kind === 'scrubbing') {
+          setLastResult({ ok: true, message: 'Scrubbing... (' + data.scrubProgress + '/' + data.scrubsNeeded + ')' });
+        } else if (data.kind === 'magicCurio') {
+          setSelectedId(null);
           setLastResult({ ok: true, message: '✨ Found ' + data.magicCurio.name + '! ' + data.magicCurio.description });
         } else {
           setLastResult({ ok: true, message: 'Scrubbed clean: ' + data.item.name + ' (' + data.item.rarity + (data.item.golden ? ', golden!' : '') + ')' });
         }
-      });
+        return refresh();
+      }).catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
     }
 
     function handlePry(trayItemId) {
@@ -2268,6 +2447,25 @@
       setCurioChoosingBin(trayItemId);
     }
 
+    function handleStoredCurioAction(storedCurioId, action) {
+      runAction(apiPost('/api/shoal-tales/stored-curio-action', { handle: handle, storedCurioId: storedCurioId, action: action })).then(function (data) {
+        if (!data) return;
+        var message = action === 'log' ? (data.logged ? 'Added to the Collector\'s Log!' : 'Already logged a better copy.')
+          : action === 'sell' ? ('Sold for +' + formatCoins(data.coins) + ' coins')
+          : action === 'donate' ? (data.logged ? 'Donated to the Guild Log!' : 'Your guild already has a better copy.')
+          : action === 'process' ? ('Processed into ' + formatCoins(data.producedValue) + 'c of ' + data.resource)
+          : '';
+        setLastResult({ ok: true, message: message });
+      });
+    }
+
+    function handleGiftCurio(storedCurioId, toHandle) {
+      runAction(apiPost('/api/shoal-tales/gift/send', { handle: handle, toHandle: toHandle, storedCurioId: storedCurioId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Gifted to ' + toHandle + '!' });
+      });
+    }
+
     function handleSell(what) {
       setBusy(true);
       apiPost('/api/shoal-tales/sell', { handle: handle, what: what }).then(function () { return refresh(); })
@@ -2278,6 +2476,13 @@
       setBusy(true);
       apiPost('/api/shoal-tales/upgrade', { handle: handle, upgradeId: upgradeId }).then(function () { return refresh(); })
         .catch(function (e) { setError(e.message); }).finally(function () { setBusy(false); });
+    }
+
+    function handleUpgradeMax(upgradeId) {
+      runAction(apiPost('/api/shoal-tales/upgrade-max', { handle: handle, upgradeId: upgradeId })).then(function (data) {
+        if (!data) return;
+        setLastResult({ ok: true, message: 'Bought ' + data.levelsBought + ' level' + (data.levelsBought === 1 ? '' : 's') + ' for ' + formatCoins(data.coinsSpent) + ' coins.' });
+      });
     }
 
     function handleAreaChange(area) {
@@ -2359,6 +2564,12 @@
           setLastResult({ ok: true, message: 'Collected +' + formatCoins(data.earnings) + ' coins while you were away.' });
         });
       },
+      onCollectTips: function () {
+        runAction(apiPost('/api/shoal-tales/visit/collect-tips', { handle: handle })).then(function (data) {
+          if (!data) return;
+          setLastResult({ ok: true, message: 'Collected +' + formatCoins(data.collected) + ' coins from the tip jar.' });
+        });
+      },
       onPlaceDecoration: function (pedestalIndex, decorationId) {
         runAction(apiPost('/api/shoal-tales/emporium/place-decoration', { handle: handle, pedestalIndex: pedestalIndex, decorationId: decorationId }));
       },
@@ -2411,14 +2622,14 @@
           setLastResult({ ok: true, message: 'Hint used (' + data.ticketsLeft + ' tickets left).' });
         });
       },
-      onTideTimer: function () {
-        runAction(apiPost('/api/shoal-tales/emporium/arcade/tide-timer', { handle: handle })).then(function (data) {
+      onTideTimer: function (stopIndex) {
+        runAction(apiPost('/api/shoal-tales/emporium/arcade/tide-timer', { handle: handle, stopIndex: stopIndex })).then(function (data) {
           if (!data) return;
           setLastResult({ ok: true, message: '+' + data.tickets + ' tickets' });
         });
       },
-      onCrabGrab: function () {
-        runAction(apiPost('/api/shoal-tales/emporium/arcade/crab-grab', { handle: handle })).then(function (data) {
+      onCrabGrab: function (crabsHit) {
+        runAction(apiPost('/api/shoal-tales/emporium/arcade/crab-grab', { handle: handle, crabsHit: crabsHit })).then(function (data) {
           if (!data) return;
           setLastResult({ ok: true, message: 'Hit ' + data.crabsHit + ' crabs - +' + data.tickets + ' tickets' });
         });
@@ -2459,42 +2670,6 @@
       });
     }
 
-    function handleEquipWood(part, woodId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-wood', { handle: handle, part: part, woodId: woodId }));
-    }
-    function handleBuyWood(woodId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/buy-exotic-wood', { handle: handle, woodId: woodId })).then(function (data) {
-        if (!data) return;
-        setLastResult({ ok: true, message: 'Bought for ' + formatCoins(data.coinsSpent) + ' coins.' });
-      });
-    }
-    function handleBuyLook(category, id) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/buy-look', { handle: handle, category: category, id: id })).then(function (data) {
-        if (!data) return;
-        setLastResult({ ok: true, message: 'Bought for ' + formatCoins(data.coinsSpent) + ' coins.' });
-      });
-    }
-    function handleEquipSail(sailId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-sail', { handle: handle, sailId: sailId }));
-    }
-    function handleEquipFlag(flagId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-flag', { handle: handle, flagId: flagId }));
-    }
-    function handleEquipPet(petId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-pet', { handle: handle, petId: petId }));
-    }
-    function handleEquipBadge(badgeId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-badge', { handle: handle, badgeId: badgeId }));
-    }
-    function handlePatPet() {
-      runAction(apiPost('/api/shoal-tales/cosmetics/pat-pet', { handle: handle })).then(function (data) {
-        if (!data) return;
-        setLastResult({ ok: true, message: 'Your pet is happy! +5% value for 10 minutes.' });
-      });
-    }
-    function handleSelectTrack(trackId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/select-track', { handle: handle, trackId: trackId }));
-    }
 
     if (loading) {
       return h('div', { className: 'shoal-tales-screen shoal-loading' }, 'Loading Shoal Tales...');
@@ -2509,12 +2684,11 @@
     // Harbor and Guild Hall are their own components above since they carry
     // real navigation state of their own (the live roster, the hall's rooms).
     var sceneBody;
-    if (scene === 'ship') {
-      // The ship is what you decorate and work from deck to deck: dredging,
-      // the tray/goods, Stations, the Work Table, the Shipwright (including
-      // Radio/music), the Desk (quest book/stats/feats/settings), and your
-      // Collector's Log all live here.
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Your Ship', onBack: goToHarbor },
+    if (scene === 'ship' && !shipRoom) {
+      // The root deck view: dredging/the Tray/Goods & Cooler, the loop used
+      // every haul, plus hotspots into the Stations/Work Table/Shipwright/
+      // Desk rooms instead of scrolling past all of them to reach one.
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Your Ship', onBack: goToHarbor, backLabel: 'Harbor' },
         h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
         h(TrayPanel, {
           save: save, selectedId: selectedId, onSelect: setSelectedId, onSort: handleSort, busy: busy, lastResult: lastResult,
@@ -2523,14 +2697,24 @@
           onStartPuzzle: handleStartPuzzle, onKeepBottle: handleKeepBottle
         }),
         h(GoodsAndCoolerPanel, { save: save, onSell: handleSell, onDress: handleDress, onMakeMeal: handleMakeMeal, busy: busy }),
-        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk }),
-        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, busy: busy }),
-        h(ShipwrightPanel, {
-          save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
-          onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,
-          onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
-        }),
+        h('div', { className: 'shoal-scene-hotspot-row shoal-scene-hotspot-row-objects' },
+          SHIP_ROOMS.map(function (r) {
+            return h(SceneHotspot, { key: r.id, emoji: r.emoji, label: r.label, object: true, onClick: function () { setShipRoom(r.id); } });
+          })
+        )
+      );
+    } else if (scene === 'ship' && shipRoom === 'stations') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Stations', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
+        h(StationsPanel, { save: save, busy: busy, onInstall: handleInstallStation, onProcessJunk: handleProcessJunk })
+      );
+    } else if (scene === 'ship' && shipRoom === 'work-table') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Work Table', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
+        h(UpgradesPanel, { save: save, onBuy: handleUpgrade, onBuyMax: handleUpgradeMax, busy: busy })
+      );
+    } else if (scene === 'ship' && shipRoom === 'desk') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'The Desk', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
         h(CollectorsLogSummary, { save: save }),
+        h(StoredCuriosPanel, { save: save, busy: busy, onStoredCurioAction: handleStoredCurioAction, onGiftCurio: handleGiftCurio }),
         h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff }),
         save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire })
       );
@@ -2546,19 +2730,23 @@
       );
     } else if (scene === 'guildhall') {
       sceneBody = h(GuildHallScene, { save: save, handle: handle, onRefreshSave: refresh, onBack: goToHarbor });
-    } else if (scene === 'dockboard') {
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'The Dock Board', onBack: goToHarbor },
-        h(SocialPanel, {
+    } else if (scene === 'party') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Party', onBack: goToHarbor },
+        h(PartyTab, { save: save, handle: handle, onRefreshSave: refresh })
+      );
+    } else if (scene === 'leaderboard') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Leaderboards', onBack: goToHarbor },
+        h(LeaderboardTab, {})
+      );
+    } else if (scene === 'letters') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Letters', onBack: goToHarbor },
+        h(LettersTab, {
           save: save, handle: handle, onRefreshSave: refresh,
           lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
         })
       );
-    } else if (scene === 'visiting') {
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-harbor', title: 'Visiting ' + visitingHandle, onBack: goToHarbor },
-        h(VisitTab, { key: 'visit-' + visitingHandle, save: save, handle: handle, initialTarget: visitingHandle })
-      );
     } else {
-      sceneBody = h(HarborScene, { save: save, roster: roster, onEnter: goTo, onVisit: visitShip });
+      sceneBody = h(HarborScene, { save: save, roster: roster, onEnter: goTo });
     }
 
     return h('div', { className: 'shoal-tales-screen' },
@@ -2593,15 +2781,12 @@
     WorkOrdersPanel: WorkOrdersPanel,
     EmporiumPanel: EmporiumPanel,
     RetirePanel: RetirePanel,
-    ShipwrightPanel: ShipwrightPanel,
-    LookGrid: LookGrid,
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,
-    SocialPanel: SocialPanel,
+    StoredCuriosPanel: StoredCuriosPanel,
     PartyTab: PartyTab,
     GuildTab: GuildTab,
-    VisitTab: VisitTab,
     LeaderboardTab: LeaderboardTab,
     LettersTab: LettersTab,
     ExtrasPanel: ExtrasPanel,
@@ -2616,6 +2801,8 @@
     SceneHotspot: SceneHotspot,
     HarborScene: HarborScene,
     GuildHallScene: GuildHallScene,
-    formatCoins: formatCoins
+    formatCoins: formatCoins,
+    isBinDockDraggable: isBinDockDraggable,
+    binDockDrop: binDockDrop
   };
 })(typeof window !== 'undefined' ? window : this);

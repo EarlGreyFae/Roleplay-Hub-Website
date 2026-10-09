@@ -374,7 +374,8 @@ function defaultShoalTalesSave(handle) {
       unlockedTracks: ShoalTalesData.radioTracks.filter(t => t.unlocksAtRetirement === 0).map(t => t.id),
       equippedTrack: null,
       petPattedDate: null,
-      petTreatExpiresAt: null
+      petTreatExpiresAt: null,
+      petHearts: 0
     },
     // Social (docs/shoal-tales-spec/13-social.md). partyId/guildId point
     // into db.shoalTalesParties/db.shoalTalesGuilds. lastDredgeAt backs both
@@ -545,7 +546,9 @@ function shoalTrackStationProgress(save, type, amount, bin) {
 
 // Vague progress hint for the pending station, never exact numbers (per
 // 08-stations-upgrades.md) - once requiresAmount is met the real cost is
-// shown instead, ready to install.
+// shown instead, ready to install. Once the Emporium is open, "the winch
+// and the Desk show a progress bar toward the goal" - exact numbers, same
+// hint spirit, more precise this far in.
 function shoalNextStationInfo(save) {
   const station = shoalNextStationDef(save);
   if (!station) return null;
@@ -560,11 +563,77 @@ function shoalNextStationInfo(save) {
     : frac < 0.5 ? "You're getting somewhere."
     : frac < 0.75 ? 'More than halfway there.'
     : 'Almost there!';
+  if (save.emporiumOpen) {
+    return { id: station.id, name: station.name, unlocked: false, hint, progress, requiresAmount: station.requiresAmount };
+  }
   return { id: station.id, name: station.name, unlocked: false, hint };
 }
 
 function shoalNewTrayId(i) {
   return 'tray_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+// --- Bonus system (09-economy.md "All bonus types"): every Collector's
+// Log set, magic curio, and Emporium decoration carries a named bonus
+// (payout/time/curio/luck/rarity/basket/streakCap/streakStep/townPrice/
+// fish/crate/kindness/forgive/doubleScrub/extraItem/letters/magic/bin).
+// This was tracked (completedSetIds, magicCurios, pedestals) but never
+// actually SUMMED OR APPLIED anywhere beyond a few hand-picked payout
+// sources (retirement/party/guild/tide/event/pet) - these two functions
+// are the general-purpose version every other bonus-consuming call site
+// below reads from.
+
+// Parses one bonus string from collectors-sets.csv/decorations.csv. Formats
+// seen: "payout +5%", "+15% sorted plastic", "+1 basket slot", and (for
+// decorations, which have no type prefix) "+0.5%" - pass defaultType for
+// that last shape.
+function shoalParseBonusString(str, defaultType) {
+  if (!str) return null;
+  let m = str.match(/^\+(\d+(?:\.\d+)?)%\s+sorted\s+(\w+)$/i);
+  if (m) return { type: 'bin', bin: m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase(), amount: parseFloat(m[1]) / 100 };
+  m = str.match(/^\+(\d+)\s+basket\s+slot$/i);
+  if (m) return { type: 'basket', amount: parseInt(m[1], 10) };
+  m = str.match(/^(\w+)\s+\+(\d+(?:\.\d+)?)%$/);
+  if (m) return { type: m[1], amount: parseFloat(m[2]) / 100 };
+  m = str.match(/^\+(\d+(?:\.\d+)?)%$/);
+  if (m && defaultType) return { type: defaultType, amount: parseFloat(m[1]) / 100 };
+  return null;
+}
+
+// Sums every completed-set/magic-curio/decoration/back-room bonus by type.
+// Does NOT include retirement/party/guild/tide/event/pet bonuses (those
+// were already correctly wired as payout-only - shoalPayoutBonus still
+// composes those itself, on top of this function's 'payout' total).
+function shoalCollectedBonuses(save) {
+  const totals = {};
+  function add(parsed) {
+    if (!parsed) return;
+    if (parsed.type === 'bin') {
+      totals.bin = totals.bin || {};
+      totals.bin[parsed.bin] = (totals.bin[parsed.bin] || 0) + parsed.amount;
+    } else {
+      totals[parsed.type] = (totals[parsed.type] || 0) + parsed.amount;
+    }
+  }
+  (save.completedSetIds || []).forEach(setId => {
+    const set = ShoalTalesData.sets.find(s => s.id === setId);
+    if (set) add(shoalParseBonusString(set.completionBonus));
+  });
+  (save.magicCurios || []).forEach(id => {
+    const m = ShoalTalesData.magicCurios.find(x => x.id === id);
+    if (m) add({ type: m.bonus, amount: m.amount });
+  });
+  if (save.emporiumOpen && save.emporium && Array.isArray(save.emporium.pedestals)) {
+    save.emporium.pedestals.forEach(decId => {
+      if (!decId) return;
+      const dec = ShoalTalesData.decorations.find(d => d.id === decId);
+      if (dec) add(shoalParseBonusString(dec.valueBonusOnDisplay, 'payout'));
+    });
+  }
+  if (save.emporiumOpen && save.emporium && save.emporium.backRoomBuilt) {
+    totals.payout = (totals.payout || 0) + 0.02;
+  }
+  return totals;
 }
 
 // --- Retiring (docs/shoal-tales-spec/11-retiring.md): "+10% value on
@@ -582,7 +651,12 @@ function shoalPayoutBonus(save) {
   // Completing an event's Collector's Log set "gives a small lasting bonus
   // of about +2%" - stacks per event completed, like a guild set.
   const eventBonus = (save.completedEventIds || []).length * 0.02;
-  return Math.min(0.5, retireBonus + petBonus + partyBonus + guildBonus + tideBonus + eventBonus);
+  const collectedBonus = shoalCollectedBonuses(save).payout || 0;
+  // Unlike the time bonus, payout has no cap (11-retiring.md: the "all time
+  // bonuses capped at 50% total" note sits on the dredge-time bullet only) -
+  // it keeps compounding every retirement to match "Goals keep growing 10%
+  // per run" in the endgame.
+  return retireBonus + petBonus + partyBonus + guildBonus + tideBonus + eventBonus + collectedBonus;
 }
 
 // --- Extras (docs/shoal-tales-spec/14-extras.md): Tides, Events ---
@@ -626,7 +700,7 @@ function shoalQuestProgress(save, quest) {
     case 'hauls': return { have: save.allTimeStats.hauls || 0, need: t.amount };
     case 'coinsOnHand': return { have: save.coins || 0, need: t.amount };
     case 'coinsEarnedThisRun': return { have: save.lifetimeCoinsThisRun || 0, need: t.amount };
-    case 'basketSize': return { have: ShoalTalesEngine.basketSize(save.basketLevel, 0), need: t.amount };
+    case 'basketSize': return { have: ShoalTalesEngine.basketSize(save.basketLevel, shoalCollectedBonuses(save).basket || 0), need: t.amount };
     case 'upgradeLevel': {
       const field = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' }[t.target];
       return { have: field ? save[field] : 0, need: t.amount };
@@ -1098,6 +1172,7 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
   const itemIndex = save.tray.findIndex(t => t.id === trayItemId);
   if (itemIndex < 0) return { status: 404, body: { error: 'That item is not in the tray.' } };
   const item = save.tray[itemIndex];
+  const collected = shoalCollectedBonuses(save);
 
   if (item.kind === 'fish') {
     if (bin !== 'cooler') {
@@ -1107,7 +1182,8 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
     const goldenEligible = save.retirements >= 8;
     const golden = goldenEligible && Math.random() < 0.01;
     const value = ShoalTalesEngine.fishValue({
-      base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: shoalPayoutBonus(save), bFish: 0, golden: golden
+      base: item.baseCoins, streakCount: save.streak, area: item.areaMultiplier, bPayout: shoalPayoutBonus(save), bFish: collected.fish || 0,
+      bStreakCap: collected.streakCap || 0, bStreakStep: collected.streakStep || 0, golden: golden
     });
     save.cooler.push({ id: 'fish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: item.name, value: value, golden: golden, stage: 'raw', caughtAt: new Date().toISOString() });
     save.streak += 1;
@@ -1157,11 +1233,12 @@ function shoalPerformSort(save, handle, trayItemId, bin) {
   let value;
   if (correct) {
     value = ShoalTalesEngine.correctSortValue({
-      base: item.baseCoins, streakCount: save.streak, bPayout: shoalPayoutBonus(save), bBin: 0, movedByStation: movedByStation, area: item.areaMultiplier
+      base: item.baseCoins, streakCount: save.streak, bPayout: shoalPayoutBonus(save), bBin: (collected.bin && collected.bin[bin]) || 0,
+      bStreakCap: collected.streakCap || 0, bStreakStep: collected.streakStep || 0, movedByStation: movedByStation, area: item.areaMultiplier
     });
     save.streak += 1;
   } else {
-    value = ShoalTalesEngine.wrongSortValue(item.baseCoins, 0, item.areaMultiplier);
+    value = ShoalTalesEngine.wrongSortValue(item.baseCoins, collected.forgive || 0, item.areaMultiplier);
     save.streak = 0;
   }
   save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
@@ -1210,10 +1287,14 @@ function shoalCheckSeasonRollover() {
 }
 
 function shoalTimeBonus(save) {
-  return Math.min(0.5, (save.retirements || 0) * 0.03);
+  const retireBonus = (save.retirements || 0) * 0.03;
+  const collectedBonus = shoalCollectedBonuses(save).time || 0;
+  return Math.min(0.5, retireBonus + collectedBonus);
 }
 function shoalLuckBonus(save) {
-  return save.retirements > 8 ? (save.retirements - 8) * 0.03 : 0;
+  const retireBonus = save.retirements > 8 ? (save.retirements - 8) * 0.03 : 0;
+  const collectedBonus = shoalCollectedBonuses(save).luck || 0;
+  return retireBonus + collectedBonus;
 }
 
 function shoalRetirementTitle(retirements) {
@@ -1393,9 +1474,11 @@ function generateShoalHaul(save) {
   const event = shoalActiveEvent();
   const springTideActive = tide && tide.type === 'spring';
   const glassTideActive = tide && tide.type === 'glass';
-  const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, 0, { isFirstHaulOfDay: isFirstHaulOfDay, springTideActive: springTideActive });
-  // Luck is endgame-only: "+3% luck" per retirement past the 8th (09-economy.md).
-  // Other luck sources (sets/magic curios/upgrades) aren't wired in yet.
+  const collected = shoalCollectedBonuses(save);
+  // "chance each haul brings one bonus item" (09-economy.md extraItem) -
+  // e.g. Tabletop set "extraItem +10%" - rolled once per haul, not per item.
+  const extraItemBonusHit = Math.random() < (collected.extraItem || 0);
+  const count = ShoalTalesEngine.hauledItemCount(save.basketLevel, collected.basket || 0, { isFirstHaulOfDay: isFirstHaulOfDay, springTideActive: springTideActive, extraItemBonusHit: extraItemBonusHit });
   const luck = shoalLuckBonus(save);
 
   const junkPool = ShoalTalesData.junk.filter(j => j.foundIn === 'Everywhere' || j.foundIn === area.name);
@@ -1423,13 +1506,14 @@ function generateShoalHaul(save) {
     const id = shoalNewTrayId(i);
 
     const puzzleBoxChance = save.emporiumOpen ? 0.03 * (1 + 0.5 * save.depth) : 0;
-    const magicCurioChance = magicCuriosRemaining.length > 0 ? 0.006 * (1 + luck) * (1 + 0.5 * save.depth) : 0;
+    // "The Deep Ones" set: "magic +50%" - a chance bonus on finding a magic curio.
+    const magicCurioChance = magicCuriosRemaining.length > 0 ? 0.006 * (1 + luck) * (1 + (collected.magic || 0)) * (1 + 0.5 * save.depth) : 0;
     const roll = Math.random();
 
     if (roll < puzzleBoxChance) {
       // "Common/uncommon boxes are 3x3; rare/epic are 4x4" - reuses the
       // curio rarity distribution since the spec gives no separate table.
-      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(0));
+      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(collected.rarity || 0));
       const size = (rarity === 'Rare' || rarity === 'Epic') ? 4 : 3;
       tray.push({ id, kind: 'puzzleBox', name: 'Puzzle Box', rarity, size, areaMultiplier });
       continue;
@@ -2929,7 +3013,10 @@ const server = http.createServer(async (req, res) => {
           save[key] = { units: 0, value: 0 };
         }
       });
-      coinsEarned = Math.round(coinsEarned);
+      // "townPrice: + prices when selling in Town" (09-economy.md) - Full
+      // Breakfast set "townPrice +5%".
+      const townPriceBonus = shoalCollectedBonuses(save).townPrice || 0;
+      coinsEarned = Math.round(coinsEarned * (1 + townPriceBonus));
       save.coins += coinsEarned;
       save.lifetimeCoinsThisRun += coinsEarned;
       save.allTimeStats.coinsEarned += coinsEarned;
@@ -2969,6 +3056,41 @@ const server = http.createServer(async (req, res) => {
       shoalMarkHintSeen(save, 'work-table');
       saveDatabase();
       return sendJson(res, 200, { success: true, upgradeId, newLevel: save[field], coinsSpent: cost, coins: save.coins });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "Buy What I Can Afford" (08-stations-upgrades.md): "buys as many levels
+  // in a row as coins cover". The two-click confirm itself is a UI concern
+  // (the client previews the same loop locally with ShoalTalesEngine before
+  // calling this), but the actual spend is authoritative here.
+  if (reqPath === '/api/shoal-tales/upgrade-max' && req.method === 'POST') {
+    try {
+      const { handle, upgradeId } = await parseJsonBody(req);
+      if (!handle || !upgradeId) return sendJson(res, 400, { error: 'Missing handle or upgradeId' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const LEVEL_FIELD = { 'bigger-basket': 'basketLevel', 'faster-winch': 'winchLevel', 'soft-brush': 'brushLevel', 'lucky-charm': 'charmLevel' };
+      const MAX_LEVEL = { 'bigger-basket': 29, 'faster-winch': 12, 'soft-brush': 3, 'lucky-charm': 10 };
+      const field = LEVEL_FIELD[upgradeId];
+      if (!field) return sendJson(res, 400, { error: 'Unknown upgrade.' });
+      const unlockScale = ShoalTalesEngine.retireGoalForRun(save.retirements + 1).unlockScale;
+      let levelsBought = 0;
+      let coinsSpent = 0;
+      while (save[field] < MAX_LEVEL[upgradeId]) {
+        const cost = ShoalTalesEngine.upgradeCost(upgradeId, save[field], unlockScale);
+        if (save.coins - coinsSpent < cost) break;
+        coinsSpent += cost;
+        save[field] += 1;
+        levelsBought += 1;
+      }
+      if (levelsBought === 0) {
+        return sendJson(res, 400, { error: save[field] >= MAX_LEVEL[upgradeId] ? 'Already at max level.' : 'Not enough coins to buy even one level.' });
+      }
+      save.coins -= coinsSpent;
+      shoalMarkHintSeen(save, 'work-table');
+      saveDatabase();
+      return sendJson(res, 200, { success: true, upgradeId, levelsBought, newLevel: save[field], coinsSpent, coins: save.coins });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -3018,6 +3140,25 @@ const server = http.createServer(async (req, res) => {
       if (itemIndex < 0) return sendJson(res, 404, { error: 'That item is not in your tray.' });
       const item = save.tray[itemIndex];
 
+      if (item.kind !== 'magicCurio' && (item.kind !== 'curio' || item.identified)) {
+        return sendJson(res, 400, { error: 'Nothing to scrub here.' });
+      }
+
+      // "Scrub it clean (4 clicks)" (06-curios.md) - progress is tracked on
+      // the tray item itself and only the final click actually identifies
+      // it. Soft Brush (08-stations-upgrades.md: "One fewer scrub per
+      // curio, 4 down to 1") lowers that count by one per level; Hedge
+      // Witch set "doubleScrub +15%" gives each click a chance to count
+      // as two on top of that.
+      const collected = shoalCollectedBonuses(save);
+      const SCRUBS_NEEDED = Math.max(1, 4 - (save.brushLevel || 0));
+      item.scrubProgress = (item.scrubProgress || 0) + 1;
+      if (item.scrubProgress < SCRUBS_NEEDED && Math.random() < (collected.doubleScrub || 0)) item.scrubProgress += 1;
+      if (item.scrubProgress < SCRUBS_NEEDED) {
+        saveDatabase();
+        return sendJson(res, 200, { success: true, kind: 'scrubbing', trayItemId, scrubProgress: item.scrubProgress, scrubsNeeded: SCRUBS_NEEDED });
+      }
+
       if (item.kind === 'magicCurio') {
         const remaining = ShoalTalesData.magicCurios.filter(m => save.magicCurios.indexOf(m.id) === -1);
         if (remaining.length === 0) return sendJson(res, 400, { error: 'All magic curios are already found.' });
@@ -3030,9 +3171,6 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { success: true, kind: 'magicCurio', magicCurio: found, allSixFound: save.magicCurios.length >= 6 });
       }
 
-      if (item.kind !== 'curio' || item.identified) {
-        return sendJson(res, 400, { error: 'Nothing to scrub here.' });
-      }
       const area = shoalAreaById(save.area);
       const activeEventForScrub = shoalActiveEvent();
       let curioPool = item.curioSource === 'party' ? ShoalTalesData.curios.filter(c => c.set === 'Party Favours')
@@ -3045,8 +3183,7 @@ const server = http.createServer(async (req, res) => {
       if (curioPool.length === 0) return sendJson(res, 500, { error: 'No curios available to identify in this area.' });
       const picked = curioPool[Math.floor(Math.random() * curioPool.length)];
       const goldenEligible = save.retirements >= 8;
-      const rarityShift = 0; // no rarity-boosting bonuses wired in yet (Glowing Pearl / set bonuses) - Economy phase.
-      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(rarityShift));
+      const rarity = ShoalTalesEngine.weightedPick(ShoalTalesEngine.curioRarityWeights(collected.rarity || 0));
 
       item.identified = true;
       item.name = picked.name;
@@ -3080,11 +3217,12 @@ const server = http.createServer(async (req, res) => {
       const area = shoalAreaById(save.area);
       save.tray.splice(itemIndex, 1);
       save.allTimeStats.cratesOpened += 1;
+      const crateBonus = shoalCollectedBonuses(save).crate || 0;
 
       const roll = Math.random();
       let result;
       if (roll < 0.5) {
-        const coins = Math.round((5 + Math.random() * 20) * item.areaMultiplier);
+        const coins = Math.round((5 + Math.random() * 20) * (1 + crateBonus) * item.areaMultiplier);
         save.coins += coins;
         save.allTimeStats.coinsEarned += coins;
         save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
@@ -3139,7 +3277,9 @@ const server = http.createServer(async (req, res) => {
       const pool = unfoundStatic.map(l => ({ kind: 'static', letter: l, weight: 1 }))
         .concat(eventLetters.map(l => ({ kind: 'static', letter: l, weight: 1 })))
         .concat(playerLetters.map(l => ({ kind: 'player', letter: l, weight: 1 + l.heartCount * 0.1 })));
-      if (Math.random() < 0.35 && pool.length > 0) {
+      // "35% a letter (x letter bonus)" (06-curios.md) - Film Noir set "letters +25%".
+      const lettersBonus = shoalCollectedBonuses(save).letters || 0;
+      if (Math.random() < (0.35 * (1 + lettersBonus)) && pool.length > 0) {
         const totalWeight = pool.reduce((s, p) => s + p.weight, 0);
         let roll = Math.random() * totalWeight;
         let chosen = pool[pool.length - 1];
@@ -3181,7 +3321,8 @@ const server = http.createServer(async (req, res) => {
       const item = save.tray[itemIndex];
       if (item.kind !== 'seaCreature') return sendJson(res, 400, { error: 'That is not a sea creature.' });
 
-      const coins = Math.round((2 + Math.random() * 4) * item.areaMultiplier);
+      const kindnessBonus = shoalCollectedBonuses(save).kindness || 0;
+      const coins = Math.round((2 + Math.random() * 4) * (1 + kindnessBonus) * item.areaMultiplier);
       save.coins += coins;
       save.allTimeStats.coinsEarned += coins;
       save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
@@ -3210,7 +3351,8 @@ const server = http.createServer(async (req, res) => {
       if (item.kind !== 'curio' || !item.identified) {
         return sendJson(res, 400, { error: 'Scrub this curio first.' });
       }
-      const fullValue = ShoalTalesEngine.curioValue(item.baseCoins, item.rarity, 0) * (item.golden ? 3 : 1);
+      const collected = shoalCollectedBonuses(save);
+      const fullValue = ShoalTalesEngine.curioValue(item.baseCoins, item.rarity, collected.curio || 0) * (item.golden ? 3 : 1);
       const RARITY_RANK = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3 };
 
       if (action === 'log') {
@@ -3243,7 +3385,7 @@ const server = http.createServer(async (req, res) => {
       if (action === 'sort') {
         if (!bin || !ShoalTalesEngine.BINS.includes(bin)) return sendJson(res, 400, { error: 'Not a real bin.' });
         const correct = bin === item.bin;
-        const streakMult = ShoalTalesEngine.streakMultiplier(save.streak, 0, 0);
+        const streakMult = ShoalTalesEngine.streakMultiplier(save.streak, collected.streakCap || 0, collected.streakStep || 0);
         const value = ShoalTalesEngine.curioSortValue(fullValue, streakMult, correct);
         save.streak = correct ? save.streak + 1 : 0;
         save.bestStreakThisRun = Math.max(save.bestStreakThisRun, save.streak);
@@ -3275,6 +3417,79 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Act on a Stored Curio later (06-curios.md: "keep it in Stored Curios ...
+  // to log, donate, sell, gift, or process later" - gifting is its own
+  // /gift/send endpoint). Mirrors curio-action's log/sell/donate, plus
+  // process (Wood/metal/mixed curios at their matching station, worth value
+  // x the station's factor, same as stored junk).
+  if (reqPath === '/api/shoal-tales/stored-curio-action' && req.method === 'POST') {
+    try {
+      const { handle, storedCurioId, action } = await parseJsonBody(req);
+      if (!handle || !storedCurioId || !action) return sendJson(res, 400, { error: 'Missing handle, storedCurioId or action' });
+      const save = getOrCreateShoalTalesSave(handle);
+      const itemIndex = save.storedCurios.findIndex(c => c.id === storedCurioId);
+      if (itemIndex < 0) return sendJson(res, 404, { error: 'That stored curio was not found.' });
+      const item = save.storedCurios[itemIndex];
+      const collected = shoalCollectedBonuses(save);
+      const fullValue = ShoalTalesEngine.curioValue(item.baseCoins, item.rarity, collected.curio || 0) * (item.golden ? 3 : 1);
+      const RARITY_RANK = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3 };
+
+      if (action === 'log') {
+        const existing = save.collectorsLog.curios[item.curioId];
+        const better = !existing || RARITY_RANK[item.rarity] > RARITY_RANK[existing.rarity] || (item.golden && !existing.golden);
+        if (better) {
+          save.collectorsLog.curios[item.curioId] = { rarity: item.rarity, golden: item.golden, foundAt: new Date().toISOString() };
+          if (item.golden) save.goldenLog.push({ kind: 'curio', id: item.curioId, foundAt: new Date().toISOString() });
+          shoalUpdateCompletedSets(save, handle);
+        }
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'log', logged: better });
+      }
+      if (action === 'sell') {
+        const coins = Math.round(fullValue);
+        save.coins += coins;
+        save.allTimeStats.coinsEarned += coins;
+        save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + coins;
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'sell', coins });
+      }
+      if (action === 'donate') {
+        if (!save.guildId) return sendJson(res, 400, { error: 'You are not in a guild.' });
+        const guild = db.shoalTalesGuilds[save.guildId];
+        if (!guild) return sendJson(res, 400, { error: 'Your guild no longer exists.' });
+        const existing = guild.guildLog.curios[item.curioId];
+        const better = !existing || RARITY_RANK[item.rarity] > RARITY_RANK[existing.rarity];
+        if (better) guild.guildLog.curios[item.curioId] = { rarity: item.rarity, donatedBy: handle, foundAt: new Date().toISOString() };
+        shoalUpdateGuildCompletedSets(guild);
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'donate', logged: better });
+      }
+      if (action === 'process') {
+        const STATION_FOR_BIN = { Wood: 'carpentry', Metal: 'crucible', Mixed: 'recycling' };
+        const RESOURCE_FOR_BIN = { Wood: 'knickKnacks', Metal: 'ingots', Mixed: 'materials' };
+        const stationId = STATION_FOR_BIN[item.bin];
+        if (!stationId) return sendJson(res, 400, { error: 'That curio is not made of wood, metal, or mixed materials.' });
+        if (!save.stationsInstalled.includes(stationId)) return sendJson(res, 400, { error: 'That station is not installed yet.' });
+        const station = ShoalTalesData.stations.find(s => s.id === stationId);
+        const producedValue = fullValue * station.valueFactor;
+        const resourceKey = RESOURCE_FOR_BIN[item.bin];
+        save[resourceKey].units += 1;
+        save[resourceKey].value += producedValue;
+        save.allTimeStats.goodsMade = (save.allTimeStats.goodsMade || 0) + 1;
+        shoalContributeToGuildQuests(save, 'goodsMade', 1);
+        save.storedCurios.splice(itemIndex, 1);
+        saveDatabase();
+        return sendJson(res, 200, { success: true, action: 'process', resource: resourceKey, producedValue });
+      }
+      return sendJson(res, 400, { error: 'Unknown action.' });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // Dress a raw fish at the Cutting Board (always free/available, unlike the
   // 4 paid stations - 05-fish.md): x1.6 value, or x1.6*1.3 with Limes (Priya's
   // only Cutting Board supply - Sushi Rice was dropped so every station keeps
@@ -3295,9 +3510,7 @@ const server = http.createServer(async (req, res) => {
         save.coins -= 1;
         mult = 1.3;
       }
-      const rawValue = fish.rawValue != null ? fish.rawValue : fish.value;
-      fish.rawValue = rawValue;
-      fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'dressed', mult);
+      fish.value = ShoalTalesEngine.processedFishValue(fish.value, 'dressed', mult);
       fish.stage = 'dressed';
       shoalTrackStationProgress(save, 'fishDressed', 1);
       shoalContributeToGuildQuests(save, 'fishDressed', 1);
@@ -3333,9 +3546,10 @@ const server = http.createServer(async (req, res) => {
         save.coins -= 2;
         mult = 1.4;
       }
-      const rawValue = fish.rawValue != null ? fish.rawValue : fish.value;
-      fish.rawValue = rawValue;
-      fish.value = ShoalTalesEngine.processedFishValue(rawValue, 'meal', mult);
+      // Base the meal's value on the fish's CURRENT (already-dressed) value,
+      // not the original raw value - otherwise a Limes bonus applied at the
+      // Cutting Board would be silently lost when the fish is later baked.
+      fish.value = ShoalTalesEngine.processedFishValue(fish.value, 'meal', mult);
       fish.stage = 'meal';
       shoalContributeToGuildQuests(save, 'mealsBaked', 1);
       saveDatabase();
@@ -3804,34 +4018,50 @@ const server = http.createServer(async (req, res) => {
   // unverifiable client-reported score - still a real coin cost and a real
   // (random) ticket payout, just not a skill test. Shell Game keeps its real
   // 3-way guess, since that needs no timing data.
+  // "A float slides along 9 cells. Stopping it in the middle pays 10, then
+  // 5, 3, 1, 1 further out" (10-emporium.md) - a real timing minigame, so
+  // the client runs the sliding animation and reports which cell it was
+  // over when the player hit Stop. Like a reaction-timing game inherently
+  // must, this trusts the client's reported stop cell; the index is tightly
+  // bounded (0-8) and the stakes are a few arcade tickets.
   if (reqPath === '/api/shoal-tales/emporium/arcade/tide-timer' && req.method === 'POST') {
     try {
-      const { handle } = await parseJsonBody(req);
+      const { handle, stopIndex } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      if (!Number.isInteger(stopIndex) || stopIndex < 0 || stopIndex > 8) {
+        return sendJson(res, 400, { error: 'stopIndex must be an integer 0-8.' });
+      }
       const save = getOrCreateShoalTalesSave(handle);
       if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
       if (save.coins < 25) return sendJson(res, 400, { error: 'Not enough coins (need 25).' });
       save.coins -= 25;
-      const stop = Math.floor(Math.random() * 9); // 0-8, center=4
-      const distance = Math.abs(stop - 4);
+      const distance = Math.abs(stopIndex - 4);
       const tickets = [10, 5, 3, 1, 1][distance];
       save.emporium.tickets += tickets;
       saveDatabase();
-      return sendJson(res, 200, { success: true, stop, distance, tickets });
+      return sendJson(res, 200, { success: true, stop: stopIndex, distance, tickets });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
   }
 
+  // "Crabs pop up in a 3x3 sand patch for 1.1s each; click before they
+  // duck. 20 seconds, 1 ticket per 3 crabs, up to 10" (10-emporium.md) - the
+  // client runs the real 20s round and reports how many crabs were clicked
+  // in time; bounded to what's physically possible in that window (~18
+  // crabs at one every 1.1s, rounded up for slack) so a tampered client
+  // can't claim more than the game could ever produce.
   if (reqPath === '/api/shoal-tales/emporium/arcade/crab-grab' && req.method === 'POST') {
     try {
-      const { handle } = await parseJsonBody(req);
+      const { handle, crabsHit } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      if (!Number.isInteger(crabsHit) || crabsHit < 0 || crabsHit > 20) {
+        return sendJson(res, 400, { error: 'crabsHit must be an integer 0-20.' });
+      }
       const save = getOrCreateShoalTalesSave(handle);
       if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
       if (save.coins < 25) return sendJson(res, 400, { error: 'Not enough coins (need 25).' });
       save.coins -= 25;
-      const crabsHit = Math.floor(Math.random() * 21); // 0-20
       const tickets = Math.min(10, Math.floor(crabsHit / 3));
       save.emporium.tickets += tickets;
       saveDatabase();
@@ -3983,6 +4213,8 @@ const server = http.createServer(async (req, res) => {
       const title = shoalApplyRetire(save);
       const newArea = save.unlockedAreas.length > previousAreas ? save.unlockedAreas[save.unlockedAreas.length - 1] : null;
       const newDepth = save.unlockedDepths.length > previousDepths ? save.unlockedDepths[save.unlockedDepths.length - 1] : null;
+      // "Retirements... are announced to everyone in the game" (13-social.md).
+      shoalBroadcastAnnouncement(`${handle} retired! (now ${title}, retirement ${save.retirements})`);
       saveDatabase();
       return sendJson(res, 200, {
         success: true, retirements: save.retirements, title,
@@ -4131,22 +4363,45 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Once per real-world day, patting your own equipped pet grants "+5% value
-  // for 10 minutes" (folded into shoalPayoutBonus via shoalPetTreatActive).
-  // Petting OTHER players' pets needs Visits (task 24) - not built yet.
+  // for 10 minutes" (folded into shoalPayoutBonus via shoalPetTreatActive) -
+  // on top of the heart+sound every pat gives (12-cosmetics.md: "Anyone can
+  // pet any boat's pet for hearts and a happy sound"). Only the once-daily
+  // treat is gated; hearts have no limit, here or from visitors below.
   if (reqPath === '/api/shoal-tales/cosmetics/pat-pet' && req.method === 'POST') {
     try {
       const { handle } = await parseJsonBody(req);
       if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
       const save = getOrCreateShoalTalesSave(handle);
       if (!save.cosmetics.equippedPet) return sendJson(res, 400, { error: 'You have no pet equipped.' });
+      save.cosmetics.petHearts = (save.cosmetics.petHearts || 0) + 1;
       const today = new Date().toISOString().slice(0, 10);
-      if (save.cosmetics.petPattedDate === today) {
-        return sendJson(res, 400, { error: "Already patted your pet's treat today." });
+      // Petting always gives a heart; the treat is still gated to once a
+      // day, but that's never a reason to refuse the pat itself.
+      const treatGranted = save.cosmetics.petPattedDate !== today;
+      if (treatGranted) {
+        save.cosmetics.petPattedDate = today;
+        save.cosmetics.petTreatExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       }
-      save.cosmetics.petPattedDate = today;
-      save.cosmetics.petTreatExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       saveDatabase();
-      return sendJson(res, 200, { success: true, petTreatExpiresAt: save.cosmetics.petTreatExpiresAt });
+      return sendJson(res, 200, { success: true, treatGranted, petTreatExpiresAt: save.cosmetics.petTreatExpiresAt, petHearts: save.cosmetics.petHearts });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // "Anyone can pet any boat's pet for hearts and a happy sound" - the
+  // visiting-player version of the pat above: no daily limit, no treat
+  // bonus (that's the owner-only mechanic above), just a heart.
+  if (reqPath === '/api/shoal-tales/visit/pat-pet' && req.method === 'POST') {
+    try {
+      const { handle, ownerHandle } = await parseJsonBody(req);
+      if (!handle || !ownerHandle) return sendJson(res, 400, { error: 'Missing handle or ownerHandle' });
+      const ownerSave = getOrCreateShoalTalesSave(ownerHandle);
+      if (!ownerSave.cosmetics.equippedPet) return sendJson(res, 400, { error: 'This boat has no pet equipped.' });
+      if (!shoalCanVisit(handle, ownerSave)) return sendJson(res, 400, { error: 'You are not welcome to visit this boat.' });
+      ownerSave.cosmetics.petHearts = (ownerSave.cosmetics.petHearts || 0) + 1;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, petHearts: ownerSave.cosmetics.petHearts });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -4697,28 +4952,46 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // "Visitors can leave tips of 10, 50, 100, or 500 coins (500 needs a
+  // confirm click). Tips are stored even while the owner is offline,
+  // collected at the jar." (10-emporium.md) - like Away Earnings, tips
+  // accumulate in the jar rather than landing in the owner's coins
+  // immediately; /visit/collect-tips below is the explicit collection step.
+  const TIP_AMOUNTS = [10, 50, 100, 500];
   if (reqPath === '/api/shoal-tales/visit/tip' && req.method === 'POST') {
     try {
       const { handle, ownerHandle, amount } = await parseJsonBody(req);
       if (!handle || !ownerHandle || !amount) return sendJson(res, 400, { error: 'Missing handle, ownerHandle or amount' });
       if (handle === ownerHandle) return sendJson(res, 400, { error: "You can't tip yourself." });
-      if (amount <= 0) return sendJson(res, 400, { error: 'Tip must be a positive amount.' });
+      if (!TIP_AMOUNTS.includes(amount)) return sendJson(res, 400, { error: 'Tip must be 10, 50, 100, or 500 coins.' });
       const save = getOrCreateShoalTalesSave(handle);
       const ownerSave = getOrCreateShoalTalesSave(ownerHandle);
       if (!ownerSave.emporiumOpen || ownerSave.retirements < 1) return sendJson(res, 400, { error: 'This player is not accepting tips yet.' });
       if (!shoalCanVisit(handle, ownerSave)) return sendJson(res, 400, { error: 'You are not welcome to visit this boat.' });
       if (save.coins < amount) return sendJson(res, 400, { error: `Not enough coins (need ${amount}, have ${save.coins}).` });
       save.coins -= amount;
-      // Tips go straight into the owner's coins (it's real money for their
-      // shop) - tipJar is kept alongside as a running "lifetime tips" total
-      // for display, since nothing in 13-social.md calls for a separate
-      // jar-collection step.
-      ownerSave.coins += amount;
-      ownerSave.allTimeStats.coinsEarned += amount;
-      ownerSave.monthlyCoinsEarned = (ownerSave.monthlyCoinsEarned || 0) + amount;
       ownerSave.emporium.tipJar = (ownerSave.emporium.tipJar || 0) + amount;
       saveDatabase();
       return sendJson(res, 200, { success: true, tipJar: ownerSave.emporium.tipJar });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/visit/collect-tips' && req.method === 'POST') {
+    try {
+      const { handle } = await parseJsonBody(req);
+      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
+      const save = getOrCreateShoalTalesSave(handle);
+      if (!save.emporiumOpen) return sendJson(res, 400, { error: 'The Emporium is not open yet.' });
+      const amount = save.emporium.tipJar || 0;
+      if (amount <= 0) return sendJson(res, 400, { error: 'The tip jar is empty.' });
+      save.coins += amount;
+      save.allTimeStats.coinsEarned += amount;
+      save.monthlyCoinsEarned = (save.monthlyCoinsEarned || 0) + amount;
+      save.emporium.tipJar = 0;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, collected: amount });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
@@ -5048,6 +5321,60 @@ const server = http.createServer(async (req, res) => {
       if (wasActive) shoalBroadcastAnnouncement(`The ${wasActive.name} event has ended.`);
       saveDatabase();
       return sendJson(res, 200, { success: true });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // --- Staff: give/wipe/inspect (16-minecraft-to-web.md: "Staff commands:
+  // test shortcuts, wipes, backups, restore, inspect, give, tides, the
+  // letter review queue, bug reports" -> "Developer and admin tools").
+  // Backups/restore are already covered by the app's existing dual JSON/
+  // Postgres persistence; these three are the per-player actions that
+  // weren't built yet. ---
+
+  if (reqPath === '/api/shoal-tales/admin/give' && req.method === 'POST') {
+    try {
+      const { handle, targetHandle, coins } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      if (!targetHandle) return sendJson(res, 400, { error: 'Missing targetHandle' });
+      const amount = Number(coins);
+      if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000) {
+        return sendJson(res, 400, { error: 'coins must be a number between 1 and 1,000,000' });
+      }
+      const save = getOrCreateShoalTalesSave(targetHandle);
+      save.coins += amount;
+      save.lifetimeCoinsThisRun += amount;
+      save.allTimeStats.coinsEarned += amount;
+      saveDatabase();
+      return sendJson(res, 200, { success: true, save });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/wipe' && req.method === 'POST') {
+    try {
+      const { handle, targetHandle, confirm } = await parseJsonBody(req);
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      if (!targetHandle) return sendJson(res, 400, { error: 'Missing targetHandle' });
+      if (confirm !== true) return sendJson(res, 400, { error: 'Resend with confirm: true - this permanently erases the save.' });
+      db.shoalTalesSaves[targetHandle] = defaultShoalTalesSave(targetHandle);
+      saveDatabase();
+      return sendJson(res, 200, { success: true, save: db.shoalTalesSaves[targetHandle] });
+    } catch (e) {
+      return sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  if (reqPath === '/api/shoal-tales/admin/inspect' && req.method === 'GET') {
+    try {
+      const handle = query.get('handle') || '';
+      const targetHandle = query.get('targetHandle') || '';
+      if (!isSuperAdminHandle(handle)) return sendJson(res, 403, { error: 'Staff only.' });
+      if (!targetHandle) return sendJson(res, 400, { error: 'Missing targetHandle' });
+      if (!db.shoalTalesSaves[targetHandle]) return sendJson(res, 404, { error: 'No save for that handle.' });
+      return sendJson(res, 200, { success: true, save: db.shoalTalesSaves[targetHandle] });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }
