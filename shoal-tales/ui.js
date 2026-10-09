@@ -1359,47 +1359,10 @@
   // (coins, partyId, guildId, writingKits, ...) so the rest of the screen
   // stays in sync. ---
 
-  // Guild management moved out to its own Guild Hall scene (point-and-click
-  // rework) - this list (and SocialPanel below) now covers everything else
-  // social that doesn't belong to a specific building: forming a party,
-  // leaderboards, and bottle letters. Visiting another player's boat was
-  // removed as a feature.
-  var SOCIAL_TABS = [
-    { id: 'party', label: 'Party', icon: 'Users' },
-    { id: 'leaderboard', label: 'Leaderboards', icon: 'Trophy' },
-    { id: 'letters', label: 'Letters', icon: 'Mail' }
-  ];
-
-  function SocialPanel(props) {
-    var save = props.save;
-    var handle = props.handle;
-    var onRefreshSave = props.onRefreshSave;
-    var lastFoundLetter = props.lastFoundLetter;
-    var onHeartLetter = props.onHeartLetter;
-    var onReportLetter = props.onReportLetter;
-    var onReplyLetter = props.onReplyLetter;
-
-    var _tab = useState('party'); var tab = _tab[0]; var setTab = _tab[1];
-
-    return h('div', { className: 'shoal-card shoal-social-card' },
-      h('div', { className: 'shoal-card-title' }, 'Social'),
-      h('div', { className: 'shoal-social-tabs' },
-        SOCIAL_TABS.map(function (t) {
-          return h('button', {
-            key: t.id, type: 'button',
-            className: 'shoal-social-tab' + (tab === t.id ? ' shoal-social-tab-active' : ''),
-            onClick: function () { setTab(t.id); }
-          }, h(Icons[t.icon], { className: 'shoal-social-tab-icon' }), t.label);
-        })
-      ),
-      tab === 'party' && h(PartyTab, { key: 'party-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
-      tab === 'leaderboard' && h(LeaderboardTab, { key: 'lb' }),
-      tab === 'letters' && h(LettersTab, {
-        key: 'letters-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave,
-        lastFoundLetter: lastFoundLetter, onHeartLetter: onHeartLetter, onReportLetter: onReportLetter, onReplyLetter: onReplyLetter
-      })
-    );
-  }
+  // Guild management is its own Guild Hall scene (point-and-click rework).
+  // Party/Leaderboards/Letters are each reached directly from the Harbor
+  // (own hotspots), not grouped under any wrapper - PartyTab/LeaderboardTab/
+  // LettersTab below are rendered standalone, one per scene.
 
   function PartyTab(props) {
     var save = props.save;
@@ -1768,8 +1731,8 @@
   }
 
   // --- Extras (14-extras.md): Tides/Events banner, Stats (The Desk's
-  // Profile), Feat Titles, the Quest Book, and Settings. Same
-  // self-contained-tab approach as SocialPanel. ---
+  // Profile), Feat Titles, the Quest Book, and Settings - a tab bar within
+  // the Desk room itself. ---
 
   function TideEventBanner() {
     var _tide = useState(null); var tide = _tide[0]; var setTide = _tide[1];
@@ -2206,11 +2169,12 @@
     );
   }
 
-  // The Harbor: the point-and-click hub. Your Ship/The Town/Your Emporium/
-  // Your Guild Hall/The Dock Board are always-there buildings; "Ships at
-  // Anchor" is the live presence roster (task 35) - just who's currently
-  // online and where. Visiting another player's boat was removed as a
-  // feature, so these entries are informational only, not clickable.
+  // The Harbor: the point-and-click hub. No invented "Dock Board" building -
+  // Party/Leaderboards/Letters are each their own hotspot here directly,
+  // same as Ship/Town/Emporium/Guild Hall. "Ships at Anchor" is the live
+  // presence roster (task 35) - just who's currently online and where.
+  // Visiting another player's boat was removed as a feature, so these
+  // entries are informational only, not clickable.
   function HarborScene(props) {
     var save = props.save;
     var roster = props.roster;
@@ -2222,7 +2186,9 @@
         h(SceneHotspot, { emoji: '🏘️', label: 'The Town', onClick: function () { onEnter('town'); } }),
         save.townOpen && h(SceneHotspot, { emoji: '🏪', label: 'Your Emporium', onClick: function () { onEnter('emporium'); } }),
         h(SceneHotspot, { emoji: '🚩', label: save.guildId ? 'Guild Hall' : 'Find a Guild', onClick: function () { onEnter('guildhall'); } }),
-        h(SceneHotspot, { emoji: '📜', label: 'The Dock Board', sublabel: 'Party, Leaderboards, Letters', onClick: function () { onEnter('dockboard'); } })
+        h(SceneHotspot, { emoji: '👥', label: 'Party', onClick: function () { onEnter('party'); } }),
+        h(SceneHotspot, { emoji: '🏆', label: 'Leaderboards', onClick: function () { onEnter('leaderboard'); } }),
+        h(SceneHotspot, { emoji: '✉️', label: 'Letters', onClick: function () { onEnter('letters'); } })
       ),
       h('div', { className: 'shoal-scene-subtitle' }, 'Ships at Anchor'),
       roster.length === 0
@@ -2239,7 +2205,7 @@
     );
   }
 
-  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', dockboard: 'the Dock Board' };
+  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', party: 'the Harbor', leaderboard: 'the Harbor', letters: 'the Harbor' };
 
   // The Ship's deck fixtures: dredging/the Tray/Goods & Cooler stay on the
   // root view (the loop you use every haul). These are the other physical
@@ -2305,7 +2271,8 @@
     var _lastFoundLetter = useState(null); var lastFoundLetter = _lastFoundLetter[0]; var setLastFoundLetter = _lastFoundLetter[1];
     // Point-and-click scene state: 'ship' (default - you're always on your
     // own boat first) / 'harbor' / 'town' / 'emporium' / 'guildhall' /
-    // 'dockboard'. Visiting another player's boat was removed as a feature.
+    // 'party' / 'leaderboard' / 'letters'. Visiting another player's boat
+    // was removed as a feature.
     var _scene = useState('ship'); var scene = _scene[0]; var setScene = _scene[1];
     var _roster = useState([]); var roster = _roster[0]; var setRoster = _roster[1];
     // Which deck fixture's room is open on the Ship, same hotspot/room
@@ -2763,9 +2730,17 @@
       );
     } else if (scene === 'guildhall') {
       sceneBody = h(GuildHallScene, { save: save, handle: handle, onRefreshSave: refresh, onBack: goToHarbor });
-    } else if (scene === 'dockboard') {
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'The Dock Board', onBack: goToHarbor },
-        h(SocialPanel, {
+    } else if (scene === 'party') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Party', onBack: goToHarbor },
+        h(PartyTab, { save: save, handle: handle, onRefreshSave: refresh })
+      );
+    } else if (scene === 'leaderboard') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Leaderboards', onBack: goToHarbor },
+        h(LeaderboardTab, {})
+      );
+    } else if (scene === 'letters') {
+      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Letters', onBack: goToHarbor },
+        h(LettersTab, {
           save: save, handle: handle, onRefreshSave: refresh,
           lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
         })
@@ -2810,7 +2785,6 @@
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,
     StoredCuriosPanel: StoredCuriosPanel,
-    SocialPanel: SocialPanel,
     PartyTab: PartyTab,
     GuildTab: GuildTab,
     LeaderboardTab: LeaderboardTab,
