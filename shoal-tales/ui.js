@@ -2213,10 +2213,12 @@
     { id: 'desk', emoji: '📖', label: 'Desk' }
   ];
 
+  // Spec's own words (13-social.md), not invented room names: Identity/chat/
+  // roster, Daily quests, Guild Bank.
   var GUILD_HALL_ROOMS = [
-    { id: 'common', emoji: '🏛️', label: 'Common Room', sublabel: 'Roster & chat' },
-    { id: 'quests', emoji: '📋', label: 'Quest Board', sublabel: "Today's quests" },
-    { id: 'bank', emoji: '💰', label: 'Bank Vault', sublabel: 'Deposits & upgrades' }
+    { id: 'common', emoji: '🏛️', label: 'Members & Chat' },
+    { id: 'quests', emoji: '📋', label: 'Daily Quests' },
+    { id: 'bank', emoji: '💰', label: 'Guild Bank' }
   ];
 
   // The Guild Hall: a multi-room scene wrapping GuildTab's existing content
