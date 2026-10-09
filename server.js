@@ -397,11 +397,11 @@ function defaultShoalTalesSave(handle) {
     // "The helper earns 1 arcade ticket per 5 good sorts" (Help Sort).
     helpSortCount: 0,
     // Bottle letters, player-written (13-social.md step 1-5). emptyBottlesKept
-    // holds bottles deliberately NOT sorted as junk, ready to trade for a
-    // writing kit; pendingLetterReplies are delivered via a forced tray item
-    // on the author's next dredge, same mechanism as "first haul of the day".
+    // holds bottles deliberately NOT sorted as junk - each one lets you write
+    // and throw one letter; pendingLetterReplies are delivered via a forced
+    // tray item on the author's next dredge, same mechanism as "first haul
+    // of the day".
     emptyBottlesKept: 0,
-    writingKits: 0,
     heartedLetterIds: [],
     pendingLetterReplies: [],
     // Feat titles (14-extras.md): earned once, permanent; featTitleChosen
@@ -3298,7 +3298,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
       // An empty bottle: kind 'emptyBottle' (not plain 'junk') so the UI can
-      // offer "keep it for a writing kit" alongside the usual Glass sort -
+      // offer "keep it to write a letter" alongside the usual Glass sort -
       // /sort still accepts it exactly like junk if the player sorts it instead.
       const glassBottle = ShoalTalesData.junk.find(j => j.name === 'Glass Bottle');
       const newItem = { id: shoalNewTrayId('bottleglass'), kind: 'emptyBottle', name: glassBottle.name, bin: glassBottle.bin, baseCoins: glassBottle.baseCoins, weight: glassBottle.weight, description: glassBottle.description, areaMultiplier: item.areaMultiplier };
@@ -5054,21 +5054,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (reqPath === '/api/shoal-tales/bottle/trade-for-kit' && req.method === 'POST') {
-    try {
-      const { handle } = await parseJsonBody(req);
-      if (!handle) return sendJson(res, 400, { error: 'Missing handle' });
-      const save = getOrCreateShoalTalesSave(handle);
-      if ((save.emptyBottlesKept || 0) < 1) return sendJson(res, 400, { error: 'You have no kept empty bottles to trade.' });
-      save.emptyBottlesKept -= 1;
-      save.writingKits = (save.writingKits || 0) + 1;
-      saveDatabase();
-      return sendJson(res, 200, { success: true, emptyBottlesKept: save.emptyBottlesKept, writingKits: save.writingKits });
-    } catch (e) {
-      return sendJson(res, 500, { error: e.message });
-    }
-  }
-
   // "Staff read every letter before it can wash up; at most 3 can wait for
   // review at once" - read literally, the cap is global (across all
   // authors), not per-author.
@@ -5079,17 +5064,17 @@ const server = http.createServer(async (req, res) => {
       const trimmed = String(text).trim();
       if (trimmed.length === 0 || trimmed.length > 900) return sendJson(res, 400, { error: 'A letter must be 1-900 characters.' });
       const save = getOrCreateShoalTalesSave(handle);
-      if ((save.writingKits || 0) < 1) return sendJson(res, 400, { error: 'You need a writing kit (trade a kept empty bottle for one).' });
+      if ((save.emptyBottlesKept || 0) < 1) return sendJson(res, 400, { error: 'You need a kept empty bottle to write a letter.' });
       const pendingCount = Object.values(db.shoalTalesBottleLetters).filter(l => l.status === 'pending').length;
       if (pendingCount >= 3) return sendJson(res, 400, { error: 'The review queue is full right now (max 3) - try again later.' });
-      save.writingKits -= 1;
+      save.emptyBottlesKept -= 1;
       const id = 'letter_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
       db.shoalTalesBottleLetters[id] = {
         id, authorHandle: handle, text: trimmed, anonymous: !!anonymous, status: 'pending',
         heartCount: 0, foundBy: [], createdAt: new Date().toISOString()
       };
       saveDatabase();
-      return sendJson(res, 200, { success: true, letterId: id, writingKits: save.writingKits });
+      return sendJson(res, 200, { success: true, letterId: id, emptyBottlesKept: save.emptyBottlesKept });
     } catch (e) {
       return sendJson(res, 500, { error: e.message });
     }

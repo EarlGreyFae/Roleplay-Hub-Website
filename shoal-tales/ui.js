@@ -445,13 +445,13 @@
     // (drag, or tap the item then tap a bin there) - this only covers the
     // kinds with just one possible action, which a dock doesn't fit.
     function renderActionArea(item) {
-      // An empty bottle sorts like junk (via the dock), or can be kept for
-      // a writing kit (13-social.md step 1) - the bottle-letter grind.
+      // An empty bottle sorts like junk (via the dock), or can be kept to
+      // write a letter in later (13-social.md step 1).
       if (item.kind === 'emptyBottle') {
         return h('button', {
           type: 'button', disabled: busy, onClick: function () { onKeepBottle(item.id); },
           className: 'shoal-action-btn'
-        }, h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Keep for a Writing Kit'));
+        }, h(Icons.Bottle, { className: 'shoal-bin-icon' }), h('span', null, 'Keep to Write a Letter'));
       }
       if (item.kind === 'crate') {
         return h('button', { type: 'button', disabled: busy, onClick: function () { onPry(item.id); }, className: 'shoal-action-btn' },
@@ -1356,8 +1356,8 @@
   // leaderboard don't live on the main `save` object) rather than routing
   // everything through ShoalTalesScreen's single poll loop. `onRefreshSave`
   // is called after anything that also changes fields on `save` itself
-  // (coins, partyId, guildId, writingKits, ...) so the rest of the screen
-  // stays in sync. ---
+  // (coins, partyId, guildId, emptyBottlesKept, ...) so the rest of the
+  // screen stays in sync. ---
 
   // Guild management is its own Guild Hall scene (point-and-click rework).
   // Party/Leaderboards/Letters are each reached directly from the Harbor
@@ -1694,13 +1694,8 @@
 
     return h('div', { className: 'shoal-social-tab-body' },
       h('div', { className: 'shoal-social-stat-row' },
-        h('span', null, save.writingKits || 0, ' writing kit(s)'),
         h('span', null, save.emptyBottlesKept || 0, ' empty bottle(s) kept')
       ),
-      (save.emptyBottlesKept || 0) > 0 && h('button', {
-        type: 'button', disabled: busy, className: 'shoal-action-btn',
-        onClick: function () { run(apiPost('/api/shoal-tales/bottle/trade-for-kit', { handle: handle }), 'Traded a bottle for a writing kit.'); }
-      }, 'Trade a Bottle for a Writing Kit'),
       h('div', { className: 'shoal-subtitle' }, 'Write a Letter'),
       h('textarea', {
         maxLength: 900, rows: 4, placeholder: 'Write something to toss out to sea...', value: text,
@@ -1710,8 +1705,9 @@
         h('span', null, text.length, '/900'),
         h('label', null, h('input', { type: 'checkbox', checked: anon, onChange: function (e) { setAnon(e.target.checked); } }), ' Send anonymously')
       ),
+      (save.emptyBottlesKept || 0) < 1 && h('p', { className: 'shoal-hint' }, 'Keep an empty bottle from the tray first - it corks your letter.'),
       h('button', {
-        type: 'button', disabled: busy || !text.trim() || (save.writingKits || 0) < 1,
+        type: 'button', disabled: busy || !text.trim() || (save.emptyBottlesKept || 0) < 1,
         onClick: function () { run(apiPost('/api/shoal-tales/letters/write', { handle: handle, text: text, anonymous: anon }), 'Letter sent off for review.'); setText(''); }
       }, 'Cork and Throw'),
       lastFoundLetter && h('div', { className: 'shoal-found-letter' },
@@ -2392,7 +2388,7 @@
         } else if (data.outcome === 'letter') {
           message = 'Found a letter: "' + data.letter.title + '"';
         } else {
-          message = 'Just an empty bottle - sort it, or keep it for a writing kit.';
+          message = 'Just an empty bottle - sort it, or keep it to write a letter.';
         }
         setLastResult({ ok: true, message: message });
       });
@@ -2401,7 +2397,7 @@
     function handleKeepBottle(trayItemId) {
       runAction(apiPost('/api/shoal-tales/bottle/keep', { handle: handle, trayItemId: trayItemId })).then(function (data) {
         if (!data) return;
-        setLastResult({ ok: true, message: 'Kept (' + data.emptyBottlesKept + ' saved up for a writing kit).' });
+        setLastResult({ ok: true, message: 'Kept (' + data.emptyBottlesKept + ' bottle(s) kept for letters).' });
       });
     }
 

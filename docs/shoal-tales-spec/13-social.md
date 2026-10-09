@@ -47,7 +47,7 @@ Anyone can look round anyone's boat unless that player switched visitors off. Pa
 A stored curio can be given to another online player.
 
 ## Bottle letters (player-written)
-1. A kept empty bottle is traded for a writing kit. The player writes a letter (up to 900 characters), signs it to cork it, and throws it signed or anonymously.
+1. A kept empty bottle lets the player write a letter (up to 900 characters) directly - no separate writing kit. Signing it corks it; it's thrown signed or anonymously.
 2. Staff read every letter before it can wash up; at most 3 can wait for review at once.
 3. Other players find approved letters in bottles, never their own. A found letter can be hearted once; hearted letters wash up more often.
 4. A letter can be reported with a reason, pulling it from the sea and sending it back to staff.
