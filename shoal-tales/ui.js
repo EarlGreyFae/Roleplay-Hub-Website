@@ -2187,8 +2187,7 @@
         save.townOpen && h(SceneHotspot, { emoji: '🏪', label: 'Your Emporium', onClick: function () { onEnter('emporium'); } }),
         h(SceneHotspot, { emoji: '🚩', label: save.guildId ? 'Guild Hall' : 'Find a Guild', onClick: function () { onEnter('guildhall'); } }),
         h(SceneHotspot, { emoji: '👥', label: 'Party', onClick: function () { onEnter('party'); } }),
-        h(SceneHotspot, { emoji: '🏆', label: 'Leaderboards', onClick: function () { onEnter('leaderboard'); } }),
-        h(SceneHotspot, { emoji: '✉️', label: 'Letters', onClick: function () { onEnter('letters'); } })
+        h(SceneHotspot, { emoji: '🏆', label: 'Leaderboards', onClick: function () { onEnter('leaderboard'); } })
       ),
       h('div', { className: 'shoal-scene-subtitle' }, 'Ships at Anchor'),
       roster.length === 0
@@ -2205,7 +2204,7 @@
     );
   }
 
-  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', party: 'the Harbor', leaderboard: 'the Harbor', letters: 'the Harbor' };
+  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', party: 'the Harbor', leaderboard: 'the Harbor' };
 
   // The Ship's deck fixtures: dredging/the Tray/Goods & Cooler stay on the
   // root view (the loop you use every haul). These are the other physical
@@ -2271,8 +2270,9 @@
     var _lastFoundLetter = useState(null); var lastFoundLetter = _lastFoundLetter[0]; var setLastFoundLetter = _lastFoundLetter[1];
     // Point-and-click scene state: 'ship' (default - you're always on your
     // own boat first) / 'harbor' / 'town' / 'emporium' / 'guildhall' /
-    // 'party' / 'leaderboard' / 'letters'. Visiting another player's boat
-    // was removed as a feature.
+    // 'party' / 'leaderboard'. Letters live at the Desk, on the Ship -
+    // writing/reading letters belongs there, not out in the Harbor.
+    // Visiting another player's boat was removed as a feature.
     var _scene = useState('ship'); var scene = _scene[0]; var setScene = _scene[1];
     var _roster = useState([]); var roster = _roster[0]; var setRoster = _roster[1];
     // Which deck fixture's room is open on the Ship, same hotspot/room
@@ -2715,6 +2715,10 @@
       sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'The Desk', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
         h(CollectorsLogSummary, { save: save }),
         h(StoredCuriosPanel, { save: save, busy: busy, onStoredCurioAction: handleStoredCurioAction, onGiftCurio: handleGiftCurio }),
+        h(LettersTab, {
+          save: save, handle: handle, onRefreshSave: refresh,
+          lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
+        }),
         h(ExtrasPanel, { save: save, handle: handle, onRefreshSave: refresh, isStaff: isStaff }),
         save.townOpen && h(RetirePanel, { save: save, busy: busy, onRetire: handleRetire })
       );
@@ -2737,13 +2741,6 @@
     } else if (scene === 'leaderboard') {
       sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Leaderboards', onBack: goToHarbor },
         h(LeaderboardTab, {})
-      );
-    } else if (scene === 'letters') {
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-dockboard', title: 'Letters', onBack: goToHarbor },
-        h(LettersTab, {
-          save: save, handle: handle, onRefreshSave: refresh,
-          lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
-        })
       );
     } else {
       sceneBody = h(HarborScene, { save: save, roster: roster, onEnter: goTo });
