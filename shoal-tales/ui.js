@@ -2686,8 +2686,8 @@
     var sceneBody;
     if (scene === 'ship' && !shipRoom) {
       // The root deck view: dredging/the Tray/Goods & Cooler, the loop used
-      // every haul, plus hotspots into the Stations/Work Table/Shipwright/
-      // Desk rooms instead of scrolling past all of them to reach one.
+      // every haul, plus hotspots into the Stations/Work Table/Desk rooms
+      // instead of scrolling past all of them to reach one.
       sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Your Ship', onBack: goToHarbor, backLabel: 'Harbor' },
         h(DredgeControls, { save: save, onDredge: handleDredge, onAreaChange: handleAreaChange, onDepthChange: handleDepthChange, busy: busy, dredging: dredging, dredgeCountdown: countdown }),
         h(TrayPanel, {
