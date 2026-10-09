@@ -141,30 +141,6 @@
   // object tiles (emoji + short word, no sentences).
   var BIN_EMOJI = { Plastic: '🧴', Metal: '🔩', Glass: '🍾', Wood: '🪵', Electronics: '🔌', Hazardous: '☢️', Mixed: '🗑️' };
 
-  // Ship-look swatches/emoji (16-minecraft-to-web.md: "Ship looks built from
-  // Minecraft blocks... -> Art for each look"). No art pipeline exists here,
-  // so this is a real color swatch per wood/sail (grounded in each one's
-  // actual real-world tone, not invented) and a representative emoji per
-  // flag - so a look is something you recognize at a glance, like the pets/
-  // badges (which already carry their own emoji) always have been.
-  var WOOD_SWATCH = {
-    oak: '#b8863b', spruce: '#6e4a2e', birch: '#e8dcb8', jungle: '#8a5a3c', acacia: '#c96a2e',
-    'dark-oak': '#3b2817', mangrove: '#8c3f36', cherry: '#e8b4c4', bamboo: '#c9c25a', crimson: '#8a1f2b',
-    warped: '#2b7a78', teak: '#9a7440', cedar: '#a85c3a', rubberwood: '#d9c3a0', walnut: '#4a3222',
-    mahogany: '#6e2f22', zebrano: '#b89b6a', rosewood: '#5c2430', 'rainbow-gum': 'linear-gradient(90deg,#e06c6c,#e0c56c,#6ce087,#6cc6e0,#a06ce0)',
-    purpleheart: '#5a3a8a', ebony: '#1a1512', livingwood: '#3f9e4d', dreamwood: '#7a6fd6'
-  };
-  var SAIL_SWATCH = {
-    white: '#f2f1ec', weathered: '#c3b9a5', tan: '#d2b48c', 'sea-blue': '#2d6ca8', 'crimson-sail': '#a13d3d',
-    midnight: '#1a2238', sunshine: '#f0c14b', royal: '#5b3a9e', sunset: '#e0763a', lagoon: '#3fae8f',
-    rose: '#d98ba6', 'starlight-sail': 'linear-gradient(135deg,#dfe6f0,#9db4d6)', 'kraken-ink-sail': '#2a1a33'
-  };
-  var FLAG_EMOJI = {
-    'plain-pennant': '🚩', 'jolly-roger': '🏴‍☠️', 'crows-colours': '🐦', 'harbour-stripes': '🎏',
-    'coral-bloom-flag': '🌸', chartmaker: '🗺️', 'lighthouse-beam': '💡', 'sunset-gradient': '🌅',
-    'the-deep-flag': '🌊', 'season-champion': '🏆', 'tide-lantern-flag': '🏮', 'golden-wake-flag': '✨', 'abyssal-banner-flag': '🐙'
-  };
-
   // --- The Emporium (10-emporium.md) - mirrors server.js's own constants ---
   var EMPORIUM_REQUIRED_MATERIALS = { 'Stained Glass Panel': 2, 'Old-Growth Timber': 3, 'Brass Fittings': 3, 'Neon Sign': 1 };
   var EMPORIUM_OPEN_COST = 6000;
@@ -1267,177 +1243,10 @@
     );
   }
 
-  // --- Cosmetics / the Shipwright (12-cosmetics.md). This build replaces
-  // the original's real-money-adjacent Seal Token shop with a coin-priced
-  // Premium Looks catalog instead (site owner's call - see server.js's
-  // matching comment): any look with a `cost` field is bought with coins,
-  // no retirement required, same as the exotic woods above it. The Season
-  // Champion flag and other event/season looks still aren't buyable (they
-  // need a leaderboard/seasons system, or an event completed). The radio
-  // has no real audio yet either - that needs original/licensed tracks, a
-  // content decision, not code. ---
-
-  function shoalLookUnlockHint(item) {
-    if (item.unlocksAtRetirement > 0) return 'Unlocks at retirement ' + item.unlocksAtRetirement;
-    if (item.id === 'season-champion') return "This month's top 3 coin earners";
-    if (item.eventReward) return 'Complete the ' + (item.eventRewardName || 'event') + ' at the Shipwright';
-    if (item.cost) return 'Buy for ' + formatCoins(item.cost) + ' coins, below';
-    return null;
-  }
-
-  // Shared grid for sails/flags/pets/badges/tracks - all "pick one from a
-  // retirement-gated list" with the same shape, modulo pets/badges/tracks
-  // allowing "none" (click the equipped one again to clear it). While
-  // tryOnMode is on, EVERY item is clickable (even locked ones) and clicking
-  // previews instead of equipping - "Try It On" per 12-cosmetics.md.
-  function LookGrid(opts) {
-    return h('div', { className: 'shoal-look-grid' },
-      opts.items.map(function (item) {
-        var unlocked = opts.unlockedIds.indexOf(item.id) !== -1;
-        var equipped = opts.equippedId === item.id;
-        var clickable = opts.tryOnMode || unlocked;
-        var swatch = opts.swatchFor && opts.swatchFor(item);
-        var emoji = opts.emojiFor ? opts.emojiFor(item) : item.emoji;
-        return h('button', {
-          key: item.id, type: 'button', disabled: opts.busy || !clickable,
-          onClick: function () {
-            if (opts.tryOnMode) { opts.onTryOn(item, !unlocked); return; }
-            opts.onEquip(opts.allowNone && equipped ? null : item.id);
-          },
-          className: 'shoal-look-chip' + (equipped ? ' shoal-look-chip-equipped' : '') + (!unlocked ? ' shoal-look-chip-locked' : '')
-        },
-          swatch && h('span', { className: 'shoal-look-swatch', style: { background: swatch } }),
-          emoji ? (emoji + ' ') : '', item.name,
-          !unlocked && h('span', { className: 'shoal-look-lock' }, ' (', shoalLookUnlockHint(item), ')')
-        );
-      })
-    );
-  }
-
-  function ShipwrightPanel(props) {
-    var save = props.save;
-    var busy = props.busy;
-    var onEquipWood = props.onEquipWood;
-    var onBuyWood = props.onBuyWood;
-    var onBuyLook = props.onBuyLook;
-    var onEquipSail = props.onEquipSail;
-    var onEquipFlag = props.onEquipFlag;
-    var onEquipPet = props.onEquipPet;
-    var onEquipBadge = props.onEquipBadge;
-    var onPatPet = props.onPatPet;
-    var onSelectTrack = props.onSelectTrack;
-    var c = save.cosmetics;
-
-    var _tryOn = useState(false); var tryOnMode = _tryOn[0]; var setTryOnMode = _tryOn[1];
-    var _preview = useState(null); var preview = _preview[0]; var setPreview = _preview[1];
-
-    function previewItem(item, locked) {
-      setPreview({ name: item.name, locked: locked });
-      setTimeout(function () { setPreview(null); }, 30000);
-    }
-
-    var buyableWoods = DATA.woods.filter(function (w) { return !w.free && c.unlockedWoods.indexOf(w.id) === -1; });
-    // Premium Looks: any sail/flag/pet/badge with a `cost` - coin-priced,
-    // no retirement gate, in place of the original's Seal Token shop.
-    var buyableLooks = []
-      .concat(DATA.sails.filter(function (s) { return s.cost && c.unlockedSails.indexOf(s.id) === -1; }).map(function (item) { return { category: 'sail', item: item }; }))
-      .concat(DATA.flags.filter(function (f) { return f.cost && c.unlockedFlags.indexOf(f.id) === -1; }).map(function (item) { return { category: 'flag', item: item }; }))
-      .concat(DATA.pets.filter(function (p) { return p.cost && c.unlockedPets.indexOf(p.id) === -1; }).map(function (item) { return { category: 'pet', item: item }; }))
-      .concat(DATA.chatBadges.filter(function (b) { return b.cost && c.unlockedBadges.indexOf(b.id) === -1; }).map(function (item) { return { category: 'badge', item: item }; }));
-    var todayStr = new Date().toISOString().slice(0, 10);
-    var pattedToday = c.petPattedDate === todayStr;
-    var treatActive = !!c.petTreatExpiresAt && Date.now() < new Date(c.petTreatExpiresAt).getTime();
-
-    return h('div', { className: 'shoal-card' },
-      h('div', { className: 'shoal-card-title' }, 'The Shipwright'),
-      h('button', {
-        type: 'button', disabled: busy, onClick: function () { setTryOnMode(!tryOnMode); },
-        className: 'shoal-action-btn' + (tryOnMode ? ' shoal-action-btn-magic' : '')
-      }, tryOnMode ? 'Try It On: ON (clicking previews, even locked looks)' : 'Try It On: OFF'),
-      preview && h('div', { className: 'shoal-preview-banner' }, 'Previewing: ', preview.name, preview.locked ? ' (not owned - just a look)' : '', ' - 30s'),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Hull, Deck, Railing, Mast (wood)'),
-        DATA.woodParts.map(function (part) {
-          var equipped = c.equippedWood[part];
-          var options = tryOnMode ? DATA.woods : DATA.woods.filter(function (w) { return c.unlockedWoods.indexOf(w.id) !== -1; });
-          return h('div', { key: part, className: 'shoal-wood-part-row' },
-            h('span', { className: 'shoal-look-swatch', style: { background: WOOD_SWATCH[equipped] || '#8a8a8a' } }),
-            h('span', { className: 'shoal-wood-part-label' }, part.charAt(0).toUpperCase() + part.slice(1)),
-            h('select', {
-              value: equipped, disabled: busy,
-              onChange: function (e) {
-                var wood = DATA.woods.find(function (w) { return w.id === e.target.value; });
-                if (tryOnMode) { previewItem(wood, c.unlockedWoods.indexOf(wood.id) === -1); return; }
-                onEquipWood(part, e.target.value);
-              }
-            }, options.map(function (w) { return h('option', { key: w.id, value: w.id }, w.name); }))
-          );
-        }),
-        buyableWoods.length > 0 && h('div', { className: 'shoal-buy-wood-list' },
-          buyableWoods.map(function (w) {
-            var unlocked = save.retirements >= w.unlocksAtRetirement;
-            return h('button', {
-              key: w.id, type: 'button', disabled: busy || !unlocked || save.coins < w.cost,
-              onClick: function () { onBuyWood(w.id); },
-              className: 'shoal-action-btn'
-            }, unlocked ? ('Buy ' + w.name + ' (' + formatCoins(w.cost) + 'c)') : (w.name + ' - retirement ' + w.unlocksAtRetirement));
-          })
-        )
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Sails'),
-        h(LookGrid, { items: DATA.sails, unlockedIds: c.unlockedSails, equippedId: c.equippedSail, onEquip: onEquipSail, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem, swatchFor: function (item) { return SAIL_SWATCH[item.id]; } })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Flags'),
-        h(LookGrid, { items: DATA.flags, unlockedIds: c.unlockedFlags, equippedId: c.equippedFlag, onEquip: onEquipFlag, busy: busy, allowNone: false, tryOnMode: tryOnMode, onTryOn: previewItem, emojiFor: function (item) { return FLAG_EMOJI[item.id]; } })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Pets'),
-        h(LookGrid, { items: DATA.pets, unlockedIds: c.unlockedPets, equippedId: c.equippedPet, onEquip: onEquipPet, busy: busy, allowNone: true, tryOnMode: tryOnMode, onTryOn: previewItem }),
-        // "Anyone can pet any boat's pet for hearts and a happy sound"
-        // (12-cosmetics.md) - patting stays available after today's treat
-        // is used; it just won't grant a second one.
-        c.equippedPet && h('button', {
-          type: 'button', disabled: busy, onClick: onPatPet, className: 'shoal-action-btn'
-        }, 'Pat ', (DATA.pets.find(function (p) { return p.id === c.equippedPet; }) || {}).name || c.equippedPet,
-           pattedToday ? '' : ' (+5% value, 10 min)', ' (', c.petHearts || 0, ' ❤️)'),
-        treatActive && h('p', { className: 'shoal-hint' }, "Treat active: +5% value until the timer runs out.")
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Chat Badges'),
-        h(LookGrid, { items: DATA.chatBadges, unlockedIds: c.unlockedBadges, equippedId: c.equippedBadge, onEquip: onEquipBadge, busy: busy, allowNone: true, tryOnMode: tryOnMode, onTryOn: previewItem })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Radio'),
-        h('p', { className: 'shoal-hint' }, 'The web version needs its own licensed music - selecting a track here doesn’t play audio yet.'),
-        h(LookGrid, { items: DATA.radioTracks, unlockedIds: c.unlockedTracks, equippedId: c.equippedTrack, onEquip: onSelectTrack, busy: busy, allowNone: true, tryOnMode: tryOnMode, onTryOn: previewItem })
-      ),
-
-      h('div', { className: 'shoal-shipwright-section' },
-        h('div', { className: 'shoal-shipwright-subtitle' }, 'Premium Looks'),
-        h('p', { className: 'shoal-hint' }, "Steep, coin-priced extras for a boat that stands out - no retirement required, just the coins. Bought looks join their category above."),
-        buyableLooks.length === 0
-          ? h('p', { className: 'shoal-hint' }, "You've bought every premium look.")
-          : h('div', { className: 'shoal-buy-wood-list' },
-              buyableLooks.map(function (entry) {
-                return h('button', {
-                  key: entry.category + '-' + entry.item.id, type: 'button', disabled: busy || save.coins < entry.item.cost,
-                  onClick: function () { onBuyLook(entry.category, entry.item.id); },
-                  className: 'shoal-action-btn'
-                }, 'Buy ' + (entry.item.emoji ? (entry.item.emoji + ' ') : '') + entry.item.name + ' (' + formatCoins(entry.item.cost) + 'c)');
-              })
-            )
-      )
-    );
-  }
-
+  // Shipwright (ship cosmetics - wood/sail/flag/pet/badge/radio) removed:
+  // it was its own long stack of pick-one-from-a-list sections regardless
+  // of how each list was styled, and was cut rather than kept as another
+  // thing to scroll through.
   function DredgeControls(props) {
     var save = props.save;
     var onDredge = props.onDredge;
@@ -2548,7 +2357,6 @@
   var SHIP_ROOMS = [
     { id: 'stations', emoji: '⚙️', label: 'Stations' },
     { id: 'work-table', emoji: '🔨', label: 'Work Table' },
-    { id: 'shipwright', emoji: '🎨', label: 'Shipwright' },
     { id: 'desk', emoji: '📖', label: 'Desk' }
   ];
 
@@ -3006,42 +2814,6 @@
       });
     }
 
-    function handleEquipWood(part, woodId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-wood', { handle: handle, part: part, woodId: woodId }));
-    }
-    function handleBuyWood(woodId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/buy-exotic-wood', { handle: handle, woodId: woodId })).then(function (data) {
-        if (!data) return;
-        setLastResult({ ok: true, message: 'Bought for ' + formatCoins(data.coinsSpent) + ' coins.' });
-      });
-    }
-    function handleBuyLook(category, id) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/buy-look', { handle: handle, category: category, id: id })).then(function (data) {
-        if (!data) return;
-        setLastResult({ ok: true, message: 'Bought for ' + formatCoins(data.coinsSpent) + ' coins.' });
-      });
-    }
-    function handleEquipSail(sailId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-sail', { handle: handle, sailId: sailId }));
-    }
-    function handleEquipFlag(flagId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-flag', { handle: handle, flagId: flagId }));
-    }
-    function handleEquipPet(petId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-pet', { handle: handle, petId: petId }));
-    }
-    function handleEquipBadge(badgeId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/equip-badge', { handle: handle, badgeId: badgeId }));
-    }
-    function handlePatPet() {
-      runAction(apiPost('/api/shoal-tales/cosmetics/pat-pet', { handle: handle })).then(function (data) {
-        if (!data) return;
-        setLastResult({ ok: true, message: data.treatGranted ? 'Your pet is happy! +5% value for 10 minutes.' : 'Your pet is happy! ❤️' });
-      });
-    }
-    function handleSelectTrack(trackId) {
-      runAction(apiPost('/api/shoal-tales/cosmetics/select-track', { handle: handle, trackId: trackId }));
-    }
 
     if (loading) {
       return h('div', { className: 'shoal-tales-screen shoal-loading' }, 'Loading Shoal Tales...');
@@ -3082,14 +2854,6 @@
     } else if (scene === 'ship' && shipRoom === 'work-table') {
       sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'Work Table', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
         h(UpgradesPanel, { save: save, onBuy: handleUpgrade, onBuyMax: handleUpgradeMax, busy: busy })
-      );
-    } else if (scene === 'ship' && shipRoom === 'shipwright') {
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'The Shipwright', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
-        h(ShipwrightPanel, {
-          save: save, busy: busy, onEquipWood: handleEquipWood, onBuyWood: handleBuyWood, onBuyLook: handleBuyLook,
-          onEquipSail: handleEquipSail, onEquipFlag: handleEquipFlag, onEquipPet: handleEquipPet,
-          onEquipBadge: handleEquipBadge, onPatPet: handlePatPet, onSelectTrack: handleSelectTrack
-        })
       );
     } else if (scene === 'ship' && shipRoom === 'desk') {
       sceneBody = h(Scene, { themeClass: 'shoal-scene-ship', title: 'The Desk', onBack: function () { setShipRoom(null); }, backLabel: 'Your Ship' },
@@ -3157,8 +2921,6 @@
     WorkOrdersPanel: WorkOrdersPanel,
     EmporiumPanel: EmporiumPanel,
     RetirePanel: RetirePanel,
-    ShipwrightPanel: ShipwrightPanel,
-    LookGrid: LookGrid,
     DredgeControls: DredgeControls,
     UpgradesPanel: UpgradesPanel,
     CollectorsLogSummary: CollectorsLogSummary,
