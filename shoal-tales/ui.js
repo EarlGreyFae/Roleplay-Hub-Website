@@ -1362,10 +1362,10 @@
   // Guild management moved out to its own Guild Hall scene (point-and-click
   // rework) - this list (and SocialPanel below) now covers everything else
   // social that doesn't belong to a specific building: forming a party,
-  // visiting another player's boat, leaderboards, and bottle letters.
+  // leaderboards, and bottle letters. Visiting another player's boat was
+  // removed as a feature.
   var SOCIAL_TABS = [
     { id: 'party', label: 'Party', icon: 'Users' },
-    { id: 'visit', label: 'Visit', icon: 'Home' },
     { id: 'leaderboard', label: 'Leaderboards', icon: 'Trophy' },
     { id: 'letters', label: 'Letters', icon: 'Mail' }
   ];
@@ -1393,7 +1393,6 @@
         })
       ),
       tab === 'party' && h(PartyTab, { key: 'party-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave }),
-      tab === 'visit' && h(VisitTab, { key: 'visit-' + handle, save: save, handle: handle }),
       tab === 'leaderboard' && h(LeaderboardTab, { key: 'lb' }),
       tab === 'letters' && h(LettersTab, {
         key: 'letters-' + handle, save: save, handle: handle, onRefreshSave: onRefreshSave,
@@ -1663,111 +1662,6 @@
       showIn('common') && h('div', { className: 'shoal-action-row' },
         h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/guild/leave', { handle: handle })); } }, 'Leave Guild'),
         isOwner && h('button', { type: 'button', disabled: busy, className: 'shoal-action-btn shoal-action-btn-danger', onClick: function () { run(apiPost('/api/shoal-tales/guild/disband', { handle: handle })); } }, 'Disband Guild')
-      ),
-      msg && h('div', { className: 'shoal-sort-feedback' }, msg)
-    );
-  }
-
-  function VisitTab(props) {
-    var save = props.save;
-    var handle = props.handle;
-    // Arriving by clicking a specific ship in the Harbor (point-and-click
-    // rework) skips typing a handle - the manual form below still works
-    // too, e.g. to visit someone not currently shown there.
-    var initialTarget = props.initialTarget;
-
-    var _target = useState(initialTarget || ''); var target = _target[0]; var setTarget = _target[1];
-    var _boat = useState(null); var boat = _boat[0]; var setBoat = _boat[1];
-    var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
-    var _msg = useState(null); var msg = _msg[0]; var setMsg = _msg[1];
-    // "500 needs a confirm click" (10-emporium.md) - the other 3 amounts don't.
-    var _confirmTip = useState(false); var confirmingBigTip = _confirmTip[0]; var setConfirmingBigTip = _confirmTip[1];
-    var _drink = useState({ base: DRINK_PARTS.base[0], flavour: DRINK_PARTS.flavour[0], finish: DRINK_PARTS.finish[0] });
-    var drink = _drink[0]; var setDrink = _drink[1];
-
-    function doVisit(targetOverride) {
-      var t = targetOverride || target;
-      if (!t) return;
-      setBusy(true); setMsg(null);
-      apiGet('/api/shoal-tales/visit?handle=' + encodeURIComponent(handle) + '&ownerHandle=' + encodeURIComponent(t))
-        .then(function (data) { setBoat(data.boat); }).catch(function (e) { setMsg(e.message); setBoat(null); }).finally(function () { setBusy(false); });
-    }
-
-    useEffect(function () {
-      if (initialTarget) doVisit(initialTarget);
-    }, [initialTarget]);
-
-    function doTip(amount) {
-      setConfirmingBigTip(false);
-      setBusy(true); setMsg(null);
-      apiPost('/api/shoal-tales/visit/tip', { handle: handle, ownerHandle: target, amount: amount })
-        .then(function () { setMsg('Tipped ' + formatCoins(amount) + ' coins!'); return doVisit(); })
-        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
-    }
-
-    function doPatPet() {
-      setBusy(true); setMsg(null);
-      apiPost('/api/shoal-tales/visit/pat-pet', { handle: handle, ownerHandle: target })
-        .then(function () { setMsg('❤️'); return doVisit(); })
-        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
-    }
-
-    function doServe(customerId) {
-      setBusy(true); setMsg(null);
-      apiPost('/api/shoal-tales/visit/serve-counter', { handle: handle, ownerHandle: target, customerId: customerId, drink: drink })
-        .then(function (data) { setMsg((data.correctDrink ? 'Correct drink! ' : 'Wrong drink. ') + '+' + formatCoins(data.coinsEarned) + ' coins for the host.'); return doVisit(); })
-        .catch(function (e) { setMsg(e.message); }).finally(function () { setBusy(false); });
-    }
-
-    return h('div', { className: 'shoal-social-tab-body' },
-      h('div', { className: 'shoal-invite-form' },
-        h('input', { type: 'text', placeholder: '@handle to visit', value: target, onChange: function (e) { setTarget(e.target.value); } }),
-        h('button', { type: 'button', disabled: busy || !target, onClick: doVisit }, "Visit Boat")
-      ),
-      boat && h('div', { className: 'shoal-visit-boat' },
-        h('div', { className: 'shoal-subtitle' }, boat.handle, ' - ', boat.title, boat.guild ? (' [' + boat.guild.tag + ']') : ''),
-        h('div', { className: 'shoal-social-stat-row' },
-          h('span', null, boat.retirements, ' retirements'),
-          h('span', null, boat.setsCompleted, ' sets logged'),
-          h('span', null, 'Best streak x', boat.bestStreakEver)
-        ),
-        boat.emporiumOpen && h('div', { className: 'shoal-hint' }, 'Tip jar: ', formatCoins(boat.tipJar), ' coins'),
-        // "Anyone can pet any boat's pet for hearts and a happy sound"
-        // (12-cosmetics.md) - lives on deck regardless of emporiumOpen.
-        boat.cosmetics && boat.cosmetics.equippedPet && h('div', { className: 'shoal-bank-row' },
-          h('button', {
-            type: 'button', disabled: busy, onClick: doPatPet, className: 'shoal-action-btn'
-          }, 'Pat ', (DATA.pets.find(function (p) { return p.id === boat.cosmetics.equippedPet; }) || {}).name || boat.cosmetics.equippedPet,
-             ' (', boat.cosmetics.petHearts || 0, ' ❤️)')
-        ),
-        boat.canTip && h('div', { className: 'shoal-bank-row' },
-          [10, 50, 100].map(function (amt) {
-            return h('button', { key: amt, type: 'button', disabled: busy || save.coins < amt, onClick: function () { doTip(amt); } }, 'Tip ', amt);
-          }),
-          confirmingBigTip
-            ? [
-                h('button', { key: 'confirm500', type: 'button', disabled: busy || save.coins < 500, onClick: function () { doTip(500); } }, 'Confirm: Tip 500'),
-                h('button', { key: 'cancel500', type: 'button', disabled: busy, onClick: function () { setConfirmingBigTip(false); } }, 'Cancel')
-              ]
-            : h('button', { key: 500, type: 'button', disabled: busy || save.coins < 500, onClick: function () { setConfirmingBigTip(true); } }, 'Tip 500')
-        ),
-        boat.canServeCounter && boat.counterCustomers && boat.counterCustomers.length > 0 && h('div', null,
-          h('div', { className: 'shoal-subtitle' }, 'Serve at the Counter'),
-          h('div', { className: 'shoal-drink-picker' },
-            ['base', 'flavour', 'finish'].map(function (part) {
-              return h('select', {
-                key: part, value: drink[part],
-                onChange: function (e) { var d = {}; d[part] = e.target.value; setDrink(Object.assign({}, drink, d)); }
-              }, DRINK_PARTS[part].map(function (opt) { return h('option', { key: opt, value: opt }, opt); }));
-            })
-          ),
-          boat.counterCustomers.map(function (c) {
-            return h('div', { key: c.id, className: 'shoal-member-row' },
-              h('span', null, c.name, ' wants ', c.drink.base, ', ', c.drink.flavour, ', ', c.drink.finish),
-              h('button', { type: 'button', disabled: busy, onClick: function () { doServe(c.id); } }, 'Serve')
-            );
-          })
-        )
       ),
       msg && h('div', { className: 'shoal-sort-feedback' }, msg)
     );
@@ -2314,14 +2208,13 @@
 
   // The Harbor: the point-and-click hub. Your Ship/The Town/Your Emporium/
   // Your Guild Hall/The Dock Board are always-there buildings; "Ships at
-  // Anchor" is the live presence roster (task 35) - other currently-online
-  // players, each clickable straight into Visiting them, no typing a
-  // handle required.
+  // Anchor" is the live presence roster (task 35) - just who's currently
+  // online and where. Visiting another player's boat was removed as a
+  // feature, so these entries are informational only, not clickable.
   function HarborScene(props) {
     var save = props.save;
     var roster = props.roster;
     var onEnter = props.onEnter;
-    var onVisit = props.onVisit;
 
     return h(Scene, { themeClass: 'shoal-scene-harbor', title: 'The Harbor' },
       h('div', { className: 'shoal-scene-hotspot-row' },
@@ -2329,25 +2222,24 @@
         h(SceneHotspot, { emoji: '🏘️', label: 'The Town', onClick: function () { onEnter('town'); } }),
         save.townOpen && h(SceneHotspot, { emoji: '🏪', label: 'Your Emporium', onClick: function () { onEnter('emporium'); } }),
         h(SceneHotspot, { emoji: '🚩', label: save.guildId ? 'Guild Hall' : 'Find a Guild', onClick: function () { onEnter('guildhall'); } }),
-        h(SceneHotspot, { emoji: '📜', label: 'The Dock Board', sublabel: 'Party, Visit, Leaderboards, Letters', onClick: function () { onEnter('dockboard'); } })
+        h(SceneHotspot, { emoji: '📜', label: 'The Dock Board', sublabel: 'Party, Leaderboards, Letters', onClick: function () { onEnter('dockboard'); } })
       ),
       h('div', { className: 'shoal-scene-subtitle' }, 'Ships at Anchor'),
       roster.length === 0
         ? h('p', { className: 'shoal-hint' }, 'Nobody else is around right now.')
         : h('div', { className: 'shoal-harbor-roster' },
             roster.map(function (r) {
-              return h(SceneHotspot, {
-                key: r.handle, emoji: '⛴️', small: true,
-                label: r.handle + (r.title ? (' (' + r.title + ')') : ''),
-                sublabel: 'in ' + (SCENE_NAMES[r.scene] || r.scene),
-                onClick: function () { onVisit(r.handle); }
-              });
+              return h('div', { key: r.handle, className: 'shoal-scene-hotspot shoal-scene-hotspot-small shoal-scene-hotspot-disabled' },
+                h('span', { className: 'shoal-scene-hotspot-icon' }, '⛴️'),
+                h('span', { className: 'shoal-scene-hotspot-label' }, r.handle, r.title ? (' (' + r.title + ')') : ''),
+                h('span', { className: 'shoal-scene-hotspot-sublabel' }, 'in ', SCENE_NAMES[r.scene] || r.scene)
+              );
             })
           )
     );
   }
 
-  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', dockboard: 'the Dock Board', visiting: 'the Harbor' };
+  var SCENE_NAMES = { harbor: 'the Harbor', ship: 'their Ship', town: 'the Town', emporium: 'their Emporium', guildhall: 'their Guild Hall', dockboard: 'the Dock Board' };
 
   // The Ship's deck fixtures: dredging/the Tray/Goods & Cooler stay on the
   // root view (the loop you use every haul). These are the other physical
@@ -2413,21 +2305,18 @@
     var _lastFoundLetter = useState(null); var lastFoundLetter = _lastFoundLetter[0]; var setLastFoundLetter = _lastFoundLetter[1];
     // Point-and-click scene state: 'ship' (default - you're always on your
     // own boat first) / 'harbor' / 'town' / 'emporium' / 'guildhall' /
-    // 'dockboard' / 'visiting'. visitingHandle is only set while
-    // scene === 'visiting' (clicked a ship in the Harbor).
+    // 'dockboard'. Visiting another player's boat was removed as a feature.
     var _scene = useState('ship'); var scene = _scene[0]; var setScene = _scene[1];
-    var _visitingHandle = useState(null); var visitingHandle = _visitingHandle[0]; var setVisitingHandle = _visitingHandle[1];
     var _roster = useState([]); var roster = _roster[0]; var setRoster = _roster[1];
     // Which deck fixture's room is open on the Ship, same hotspot/room
     // pattern as the Guild Hall - the dredge/tray/goods loop stays on the
-    // Ship's root view (used every haul), Stations/Work Table/Shipwright/
-    // the Desk are a click away instead of one long scroll past all of them.
+    // Ship's root view (used every haul), Stations/Work Table/the Desk are
+    // a click away instead of one long scroll past all of them.
     var _shipRoom = useState(null); var shipRoom = _shipRoom[0]; var setShipRoom = _shipRoom[1];
     var presenceWsRef = useRef(null);
 
-    function goTo(nextScene) { setVisitingHandle(null); setShipRoom(null); setScene(nextScene); }
+    function goTo(nextScene) { setShipRoom(null); setScene(nextScene); }
     function goToHarbor() { goTo('harbor'); }
-    function visitShip(targetHandle) { setVisitingHandle(targetHandle); setScene('visiting'); }
 
     // One live presence connection per mount, reporting the current scene
     // and listening for everyone else's (14-extras.md has no precedent for
@@ -2881,12 +2770,8 @@
           lastFoundLetter: lastFoundLetter, onHeartLetter: handleHeartLetter, onReportLetter: handleReportLetter, onReplyLetter: handleReplyLetter
         })
       );
-    } else if (scene === 'visiting') {
-      sceneBody = h(Scene, { themeClass: 'shoal-scene-harbor', title: 'Visiting ' + visitingHandle, onBack: goToHarbor },
-        h(VisitTab, { key: 'visit-' + visitingHandle, save: save, handle: handle, initialTarget: visitingHandle })
-      );
     } else {
-      sceneBody = h(HarborScene, { save: save, roster: roster, onEnter: goTo, onVisit: visitShip });
+      sceneBody = h(HarborScene, { save: save, roster: roster, onEnter: goTo });
     }
 
     return h('div', { className: 'shoal-tales-screen' },
@@ -2928,7 +2813,6 @@
     SocialPanel: SocialPanel,
     PartyTab: PartyTab,
     GuildTab: GuildTab,
-    VisitTab: VisitTab,
     LeaderboardTab: LeaderboardTab,
     LettersTab: LettersTab,
     ExtrasPanel: ExtrasPanel,
