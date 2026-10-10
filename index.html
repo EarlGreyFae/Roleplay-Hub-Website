@@ -39,12 +39,6 @@
   </script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<!-- Shoal Tales: a separate minigame feature, kept in its own files rather than
-     folded into this one - see docs/shoal-tales-spec/ARCHITECTURE.md -->
-<script src="shoal-tales/data.js"></script>
-<script src="shoal-tales/engine.js"></script>
-<script src="shoal-tales/ui.js"></script>
-<link rel="stylesheet" href="shoal-tales/style.css">
 
 <style>
     :root {
@@ -8992,11 +8986,7 @@ function App() {
     className: "flex items-center space-x-2 text-slate-200 font-bold text-xs sm:text-sm"
   }, /*#__PURE__*/React.createElement(Icons.Users, {
     className: "w-4 h-4 text-cyan-400"
-  }), /*#__PURE__*/React.createElement("span", null, "Cast & Personas")) : activeTab === 'shoal' ? /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center space-x-2 text-slate-200 font-bold text-xs sm:text-sm"
-  }, /*#__PURE__*/React.createElement(Icons.Anchor, {
-    className: "w-4 h-4 text-cyan-400"
-  }), /*#__PURE__*/React.createElement("span", null, "Shoal Tales")) : /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", null, "Cast & Personas")) : /*#__PURE__*/React.createElement("div", {
     className: "flex items-center space-x-2 text-slate-200 font-bold text-xs sm:text-sm"
   }, /*#__PURE__*/React.createElement(Icons.Settings, {
     className: "w-4 h-4 text-cyan-400"
@@ -9208,8 +9198,6 @@ function App() {
     },
     onDeleteEntry: handleDeleteWiki,
     onCloneEntry: entry => setCloneSourceEntry(entry)
-  }), activeTab === 'shoal' && /*#__PURE__*/React.createElement(ShoalTalesUI.ShoalTalesScreen, {
-    userProfile: userProfile
   }), isWikiArchiveOpen && /*#__PURE__*/React.createElement(WikiArchiveModal, {
     entries: wikiEntries,
     activeWorld: activeWorld,
@@ -9432,10 +9420,6 @@ function App() {
     id: 'cast',
     label: 'Cast',
     icon: Icons.Users
-  }, {
-    id: 'shoal',
-    label: 'Shoal Tales',
-    icon: Icons.Anchor
   }, {
     id: 'settings',
     label: 'Settings',
