@@ -1,0 +1,68 @@
+Name,Found in,Bin,Weight,Base coins,Inspect text
+Flip-Flop,Everywhere,Plastic,1,2,"One lonely foam sandal. Light, bendy, never breaks down."
+Shopping Bag,Everywhere,Plastic,1,1,"A thin, crinkly bag, still bobbing with trapped air."
+Rubber Duck,Everywhere,Plastic,1,3,"Squeaks when you squeeze it. Hollow, moulded, cheerful."
+Milk Crate,Everywhere,Plastic,3,5,A sturdy moulded crate. The dairy logo is barely legible.
+Soda Can,Everywhere,Metal,1,2,Crushed flat. It clinks against the tray.
+Rusty Bike Chain,Everywhere,Metal,2,4,Links fused together with orange rust.
+Tin Bucket,Everywhere,Metal,2,4,"Dented, with a wire handle. Someone's bait bucket once."
+Hubcap,Everywhere,Metal,3,6,"A chrome wheel cover, surprisingly heavy for its size."
+Shopping Cart,Everywhere,Metal,5,10,How did this even get out here? A whole wire frame of it.
+Glass Bottle,Everywhere,Glass,1,2,"Empty, clear, and cold. No message inside, sadly."
+Jam Jar,Everywhere,Glass,1,2,The label washed off long ago. You can see right through it.
+Sea Glass,Everywhere,Glass,1,3,"A frosted shard, tumbled smooth by the tide."
+Fishbowl,Everywhere,Glass,3,5,"A round, see-through bowl. Its fish is long gone."
+Driftwood,Everywhere,Wood,1,1,"A bleached, twisty branch. Grain still shows through."
+Broken Oar,Everywhere,Wood,2,3,"Half an oar, snapped at the shaft. Varnish peeling."
+Crate Plank,Everywhere,Wood,2,2,A stencilled board from a shipping crate.
+Lobster Trap Frame,Everywhere,Wood,3,4,Slatted and waterlogged. Nothing left of the netting.
+Deck Chair,Everywhere,Wood,4,6,"Heavy slats, pegged together. All one material, all soaked."
+TV Remote,Everywhere,Electronics,1,4,"Buttons, a little circuit board, a battery hatch."
+Digital Watch,Everywhere,Electronics,1,6,"The screen is blank, but there's a circuit in there."
+Solar Garden Light,Everywhere,Electronics,2,5,"A little solar panel on a stake, wires trailing out."
+Pocket Radio,Everywhere,Electronics,3,7,"An antenna, a speaker grille, and water sloshing in the circuitry."
+Boombox,Everywhere,Electronics,4,9,"Twin speakers and a tape deck. Someone's summer, drowned."
+Dead Batteries,Everywhere,Hazardous,1,3,"A handful of corroded cells, leaking something crusty. Handle with care."
+Spent Flare,Everywhere,Hazardous,1,3,A burnt-out signal flare. It still smells of chemicals.
+Motor Oil Jug,Everywhere,Hazardous,2,3,Black sludge coats the inside. Don't let it touch anything.
+Paint Tin,Everywhere,Hazardous,3,4,Half-full of old marine paint. Toxic stuff.
+Car Battery,Everywhere,Hazardous,5,10,"Heavy, with acid inside. Definitely not going in a normal bin."
+Old Sneaker,Everywhere,Mixed,1,2,"Rubber sole, fabric upper, metal eyelets. A bit of everything."
+Broken Umbrella,Everywhere,Mixed,2,3,"Metal ribs, nylon canopy, plastic handle, all tangled together."
+Tangled Net,Everywhere,Mixed,2,3,"Nylon mesh knotted with rope, floats and lead weights."
+Folding Beach Chair,Everywhere,Mixed,3,5,An aluminium frame with striped fabric stretched across it.
+Skateboard,Everywhere,Mixed,3,6,"A wooden deck on metal trucks, with plastic wheels. Mostly wood, if you could take it apart."
+Picture Frame,Everywhere,Mixed,2,4,Gilt-painted wood with brass corners. The glass is long gone.
+Snorkel,The Coral Gardens,Plastic,1,3,"A bendy tube with a mouthpiece. Light, bright and never rots."
+Swim Ring,The Coral Gardens,Plastic,2,3,A deflated ring of shiny stuff. It squeaks when you fold it.
+Dive Weight,The Coral Gardens,Metal,2,4,A small lump on a belt clip. Far heavier than it looks.
+Sunglasses,The Coral Gardens,Mixed,1,3,"Moulded frames, tinted lenses, little metal hinges."
+Circuit Board,The Wreck Field,Electronics,1,6,"Green and gold, with chips soldered on in rows."
+Old Monitor,The Wreck Field,Electronics,4,9,"A boxy screen with a coil of cable. Still faintly warm, somehow."
+Keyboard,The Wreck Field,Electronics,2,5,Missing the Q. There's a board of contacts under the keys.
+Porthole,The Wreck Field,Mixed,3,6,"A round window: brass ring, thick pane, rubber seal."
+Anchor Chain,The Black Rocks,Metal,4,8,"A heap of huge links, crusted orange. It clanks on the tray."
+Handful of Rivets,The Black Rocks,Metal,1,2,"Fat little studs, all cold and rusty."
+Lamp Oil Flask,The Black Rocks,Hazardous,2,4,Black and slick inside. Smells like it would catch.
+Diving Helmet,The Black Rocks,Mixed,5,11,A copper dome with a glass faceplate and leather straps.
+Lamp Lens,The Lighthouse,Glass,3,7,"A ridged, heavy lens. The light comes straight through it."
+Signal Lamp,The Lighthouse,Electronics,3,7,A shuttered lamp with a switch and a tangle of wire.
+Keeper's Kettle,The Lighthouse,Metal,2,4,Dented and blackened. It rings when you tap it.
+Soggy Logbook,The Lighthouse,Mixed,1,3,"Paper pages, a cloth spine and a brass clasp."
+Plastic Prize Ring,The Sunken Carnival,Plastic,1,2,"Gold-coloured, but it bends. From a lucky dip."
+Candyfloss Stick,The Sunken Carnival,Wood,1,1,"A long, thin stick, still faintly sticky. The grain shows."
+Ride Bulb,The Sunken Carnival,Glass,1,3,A coloured bulb from a ride. You can see the filament through it.
+Dodgem Battery,The Sunken Carnival,Hazardous,4,9,"A great heavy block of a battery, leaking at one corner."
+Life Ring,The Night Ferry,Plastic,2,4,"Orange and white, moulded, light enough to throw."
+Ticket Machine,The Night Ferry,Electronics,3,8,"A little printer and a keypad, both dead."
+Deck Lantern,The Night Ferry,Mixed,2,4,"Glass sides in a metal cage, with a wick inside."
+Bench Slat,The Night Ferry,Wood,2,3,A long varnished board. Someone carved their initials in it.
+Fishing Float,The River Delta,Plastic,1,2,A little red-and-white bobber. Hollow and moulded.
+Wicker Creel,The River Delta,Wood,2,4,"A woven fishing basket. Willow, all of it."
+Canoe Paddle,The River Delta,Wood,3,5,"A long carved blade, smoothed by a lot of rivers."
+Weedkiller Can,The River Delta,Hazardous,2,4,A skull and crossbones on the label. Keep it well away.
+Car Tyre,The Tip,Mixed,4,7,"Rubber all round, with steel wire in the walls."
+Fridge Door,The Tip,Mixed,5,9,"Metal skin, plastic lining, foam in between."
+Aerosol Can,The Tip,Hazardous,1,3,Still hisses a little. Pressurised - don't crush it.
+Broken Toaster,The Tip,Electronics,2,5,"Heating wires, a lever and a cracked plug."
+Dented Saucepan,The Tip,Metal,2,3,A battered pan with a riveted handle. It clangs.
