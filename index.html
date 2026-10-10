@@ -7010,20 +7010,22 @@ function SettingsScreen({
           className: `w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs transition shadow text-center disabled:opacity-50 ${pushSubscribed ? 'bg-slate-800 hover:bg-slate-750 text-rose-300 border border-rose-500/30' : 'bg-cyan-600 hover:bg-cyan-500 text-white'}`
         }, pushBusy ? "Please wait..." : pushSubscribed ? "Disable on This Device" : "Enable on This Device"),
         pushMsg && React.createElement("p", { className: "text-xs text-cyan-300" }, pushMsg),
-        pushSubscribed && React.createElement("div", { className: "pt-2 border-t border-slate-800 space-y-2" },
-          React.createElement("button", {
-            type: "button",
-            disabled: pushTestBusy,
-            onClick: handleTestPush,
-            className: "w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition disabled:opacity-50"
-          }, pushTestBusy ? "Sending test..." : "Send Test Notification"),
-          React.createElement("button", {
-            type: "button",
-            disabled: pushTestBusy,
-            onClick: handleResetAllPushDevices,
-            title: "Removes every stored subscription for this account, on any device - use this if Send Test Notification shows a subscription that isn't this device.",
-            className: "w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border border-amber-700/40 transition disabled:opacity-50"
-          }, "Reset All Devices"),
+        pushSubscribed && React.createElement("div", { className: "pt-3 mt-1 border-t border-slate-800 space-y-2.5" },
+          React.createElement("div", { className: "flex flex-col sm:flex-row gap-2" },
+            React.createElement("button", {
+              type: "button",
+              disabled: pushTestBusy,
+              onClick: handleTestPush,
+              className: "flex-1 px-4 py-2 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition disabled:opacity-50"
+            }, pushTestBusy ? "Sending test..." : "Send Test Notification"),
+            React.createElement("button", {
+              type: "button",
+              disabled: pushTestBusy,
+              onClick: handleResetAllPushDevices,
+              title: "Removes every stored subscription for this account, on any device - use this if Send Test Notification shows a subscription that isn't this device.",
+              className: "flex-1 px-4 py-2 rounded-xl font-bold text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border border-amber-700/40 transition disabled:opacity-50"
+            }, "Reset All Devices")
+          ),
           pushTestResult && React.createElement("div", {
             className: `text-xs p-2.5 rounded-xl border whitespace-pre-wrap font-mono ${pushTestResult.success ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/50 text-rose-200'}`
           }, (() => {
