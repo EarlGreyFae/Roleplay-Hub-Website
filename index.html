@@ -6993,83 +6993,6 @@ function SettingsScreen({
       )
     ),
 
-    // Section 4.5: Database Backup & Cloud Persistence
-    React.createElement("div", {
-      className: "bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3.5 shadow-md"
-    },
-      React.createElement("div", { className: "flex items-center space-x-2.5" },
-        React.createElement(Icons.Globe, { className: "w-5 h-5 text-cyan-400" }),
-        React.createElement("div", null,
-          React.createElement("h3", { className: "font-bold text-sm text-slate-100" }, "Data Backup & Cloud Persistence"),
-          React.createElement("p", { className: "text-xs text-slate-400 mt-0.5 leading-relaxed" },
-            "Your worlds, chat logs, lore, and DMs are mirrored automatically in your browser's persistent storage so website updates never erase your data. You can also export and import manual backups anytime."
-          )
-        )
-      ),
-      React.createElement("div", { className: "flex flex-wrap gap-2.5 pt-1" },
-        React.createElement("button", {
-          type: "button",
-          onClick: async () => {
-            try {
-              const res = await fetch('/api/sync/backup');
-              const data = await res.json();
-              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `roleplay-hub-backup-${new Date().toISOString().split('T')[0]}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-              SoundFX.play('chime');
-            } catch (e) {
-              alert('Error exporting backup');
-            }
-          },
-          className: "px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 font-bold text-xs border border-slate-700 flex items-center space-x-1.5 transition shadow-sm"
-        },
-          React.createElement(Icons.Download, { className: "w-3.5 h-3.5" }),
-          React.createElement("span", null, "Download Backup (.json)")
-        ),
-        React.createElement("label", {
-          className: "px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center space-x-1.5 transition shadow-sm cursor-pointer"
-        },
-          React.createElement(Icons.Upload, { className: "w-3.5 h-3.5" }),
-          React.createElement("span", null, "Restore from Backup (.json)"),
-          React.createElement("input", {
-            type: "file",
-            accept: ".json",
-            className: "hidden",
-            onChange: async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = async (evt) => {
-                try {
-                  const json = JSON.parse(evt.target.result);
-                  const res = await fetch('/api/sync/restore', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ snapshot: json })
-                  });
-                  const rData = await res.json();
-                  if (res.ok) {
-                    alert('✓ Database restored successfully! Reloading...');
-                    window.location.reload();
-                  } else {
-                    alert('Restore failed: ' + (rData.error || 'Unknown error'));
-                  }
-                } catch (err) {
-                  alert('Invalid backup JSON file.');
-                }
-              };
-              reader.readAsText(file);
-              e.target.value = '';
-            }
-          })
-        )
-      )
-    ),
-
     // Section 4.6: Push Notifications
     React.createElement("div", {
       className: "bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3.5 shadow-md"
@@ -7167,6 +7090,30 @@ function SettingsScreen({
         className: "w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100"
       }, VISUAL_THEMES.map(t => React.createElement("option", { key: t.id, value: t.id }, t.label))),
       themePrefMsg && React.createElement("p", { className: "text-xs text-cyan-300" }, themePrefMsg)
+    ),
+
+    // Section 4.8: Buy the Dev Coffee
+    React.createElement("div", {
+      className: "bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3.5 shadow-md"
+    },
+      React.createElement("div", { className: "flex items-center space-x-2.5" },
+        React.createElement(Icons.ExternalLink, { className: "w-5 h-5 text-cyan-400" }),
+        React.createElement("div", null,
+          React.createElement("h3", { className: "font-bold text-sm text-slate-100" }, "Buy the Dev Coffee"),
+          React.createElement("p", { className: "text-xs text-slate-400 mt-0.5 leading-relaxed" },
+            "If you're enjoying Roleplay Hub, you can support ongoing development here."
+          )
+        )
+      ),
+      React.createElement("a", {
+        href: "https://www.patreon.com/738825/join",
+        target: "_blank",
+        rel: "noopener noreferrer",
+        className: "inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition shadow-sm"
+      },
+        React.createElement("span", null, "Buy the Dev Coffee"),
+        React.createElement(Icons.ExternalLink, { className: "w-3.5 h-3.5" })
+      )
     ),
 
     // Section 5: Danger Zone
